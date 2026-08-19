@@ -1,6 +1,6 @@
-# JARVIS V1 Windows 11 Test Closure Plan
+# JARVIS V1 Windows 11 Test Closure Record
 
-Status: `AVAILABLE WINDOWS 11 GATES PASSED`
+Status: `HISTORICAL WINDOWS 11 GATES PASSED`
 
 Date: 2026-07-30
 
@@ -102,8 +102,8 @@ frontend suite; no user file operation was executed during closure.
   shutdown
 - signed MSIX notification-history permission lifecycle
 
-## Completion rule
+## Record scope
 
-This plan may be marked complete only when every available gate has current-run
-evidence, any discovered defect has been fixed and retested, generated packages
-match the tested commit, and the Windows desktop has been released.
+This dated record preserves the available Windows 11 evidence for the tested
+release era. It does not certify later commits or Windows 10 compatibility; use
+the current validation guidance in [README.md](README.md) for release criteria.
