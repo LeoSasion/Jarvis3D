@@ -1,0 +1,44 @@
+.visual-effects-compositor {
+  position: fixed;
+  z-index: 200;
+  inset: 0;
+  overflow: hidden;
+  contain: strict;
+  isolation: isolate;
+  pointer-events: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.visual-effects-compositor > div {
+  position: absolute;
+  pointer-events: none;
+}
+
+.visual-effects__static {
+  inset: 0;
+}
+
+.visual-effects__grain {
+  inset: -8%;
+  background-image:
+    radial-gradient(circle at 18% 31%, rgb(245 241 233 / 3.5%) 0 0.6px, transparent 0.9px),
+    radial-gradient(circle at 73% 61%, rgb(192 187 179 / 2.4%) 0 0.5px, transparent 0.8px),
+    radial-gradient(circle at 42% 86%, rgb(0 0 0 / 9%) 0 0.8px, transparent 1px);
+  background-position: 0 0, 1px 2px, 2px 1px;
+  background-size: 4px 5px, 7px 6px, 5px 8px;
+  opacity: 0.52;
+}
+
+.visual-effects__grain.is-animated {
+  animation: visual-effects-grain-shift var(--visual-effects-grain-cycle) steps(1, end) infinite;
+  will-change: transform;
+}
+
+@keyframes visual-effects-grain-shift {
+  0% { transform: translate3d(0, 0, 0); }
+  25% { transform: translate3d(-1.7%, 2.3%, 0); }
+  50% { transform: translate3d(2.1%, -1.3%, 0); }
+  75% { transform: translate3d(1.2%, 1.8%, 0); }
+  100% { transform: translate3d(-1.1%, -2.1%, 0); }
+}

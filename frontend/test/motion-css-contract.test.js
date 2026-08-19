@@ -22,14 +22,15 @@ test("motion stylesheet is loaded after the geometry and visual layers", async (
 });
 
 test("motion.css is the sole CSS owner of reduced-motion behavior", async () => {
-  const [legacy, visual, operator, motion] = await Promise.all([
+  const [legacy, visual, operator, effects, motion] = await Promise.all([
     readSource("styles.css"),
     readSource("vector-shell.css"),
     readSource("operator-workspace.css"),
+    readSource("visual-effects/visual-effects.css"),
     readSource("motion.css"),
   ]);
 
-  for (const source of [legacy, visual, operator]) {
+  for (const source of [legacy, visual, operator, effects]) {
     assert.doesNotMatch(source, /prefers-reduced-motion/u);
     assert.doesNotMatch(source, /data-motion=["']reduced["']/u);
   }
@@ -37,7 +38,7 @@ test("motion.css is the sole CSS owner of reduced-motion behavior", async () => 
   assert.match(motion, /@media \(prefers-reduced-motion: reduce\)/u);
   assert.match(motion, /:root:not\(\[data-motion="full"\]\)/u);
   assert.match(motion, /:root\[data-motion="reduced"\]/u);
-  assert.doesNotMatch(`${legacy}\n${visual}\n${operator}\n${motion}`, /0\.01ms/u);
+  assert.doesNotMatch(`${legacy}\n${visual}\n${operator}\n${effects}\n${motion}`, /0\.01ms/u);
   assert.doesNotMatch(motion, /data-motion="reduced"\]\s+\*/u);
 });
 
@@ -46,6 +47,7 @@ test("animated renderer components share the resolved motion hook", async () => 
     readSource("components/CoreStage.jsx"),
     readSource("components/WaveformCanvas.jsx"),
     readSource("components/LinkedWorkspaceRoutes.jsx"),
+    readSource("visual-effects/GlobalVisualEffects.jsx"),
   ]);
 
   for (const component of components) {

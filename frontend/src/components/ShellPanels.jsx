@@ -23,6 +23,9 @@ import {
   WindowAppsRegular,
 } from "@fluentui/react-icons";
 import {
+  Component,
+  lazy,
+  Suspense,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -146,6 +149,31 @@ import {
   getWindowCompatibilityReasonLabel,
   normalizeWindowAppearanceProcessName,
 } from "../window-appearance-model.js";
+
+const VisualEffectsSettings = lazy(() => import("../visual-effects/VisualEffectsSettings.jsx")
+  .then((module) => ({ default: module.VisualEffectsSettings })));
+
+class OptionalSettingsBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <p className="runtime-settings-error" role="status">
+          OPTIONAL SCREEN EFFECTS UNAVAILABLE · CORE SETTINGS REMAIN ACTIVE
+        </p>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const windowAppearanceOptions = [
   {
@@ -2107,12 +2135,18 @@ function InterfacePreferences({ onToast }) {
     getInterfacePreferencesSnapshot,
   );
 
-  const resetInterface = () => {
+  const resetInterface = async () => {
     setVisualTheme("nexus");
     setUiAudioEnabled(false);
     setUiAudioVolume(0.14);
     resetInterfacePreferences();
-    onToast?.("Interface preferences restored to safe defaults");
+    try {
+      const { resetVisualEffects } = await import("../visual-effects/visual-effects-system.js");
+      resetVisualEffects();
+      onToast?.("Interface preferences restored to safe defaults");
+    } catch {
+      onToast?.("Core interface preferences restored; optional screen effects are unavailable");
+    }
   };
 
   return (
@@ -2188,6 +2222,12 @@ function InterfacePreferences({ onToast }) {
         </div>
       </div>
 
+      <OptionalSettingsBoundary>
+        <Suspense fallback={<p className="shell-empty-state">Loading optional screen effects…</p>}>
+          <VisualEffectsSettings onToast={onToast} />
+        </Suspense>
+      </OptionalSettingsBoundary>
+
       <div className="audio-preference-row">
         <span className="runtime-setting-icon"><Speaker2Regular /></span>
         <span>
@@ -2223,7 +2263,7 @@ function InterfacePreferences({ onToast }) {
         <ArrowClockwiseRegular />
         <span>
           <strong>RESET INTERFACE</strong>
-          <small>Theme, motion, emission, and local interaction audio only.</small>
+          <small>Theme, motion, emission, optional visual effects, and local interaction audio only.</small>
         </span>
       </button>
     </section>

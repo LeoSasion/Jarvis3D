@@ -27,6 +27,17 @@ loadSurface.then((Surface) => {
       <Surface />
     </React.StrictMode>,
   );
+  if (surface === "desktop") {
+    void import("./visual-effects/mount-global-visual-effects.jsx")
+      .then(({ mountGlobalVisualEffects }) => mountGlobalVisualEffects())
+      .catch(() => {
+        document.documentElement.dataset.visualEffectsRuntime = "unavailable";
+        document.documentElement.dataset.visualEffectsRuntimeReason = "module-load";
+        window.dispatchEvent(new CustomEvent("jarvis:visual-effects-runtime-fault", {
+          detail: { reason: "module-load" },
+        }));
+      });
+  }
 }).catch((error) => {
   document.getElementById("root").textContent = `JARVIS surface failed to load: ${error.message}`;
 });
