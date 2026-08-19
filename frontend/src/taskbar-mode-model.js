@@ -27,6 +27,14 @@ export function getTaskbarTransitionToast(previous, current) {
   }
 
   if (current.transitionStatus === "settled") {
+    if (current.simulation) {
+      return {
+        source: "taskbar",
+        severity: "ok",
+        title: `Preview selection saved: ${current.requestedMode.toUpperCase()}`,
+        detail: "The Windows taskbar was not changed.",
+      };
+    }
     return {
       source: "taskbar",
       severity: "ok",

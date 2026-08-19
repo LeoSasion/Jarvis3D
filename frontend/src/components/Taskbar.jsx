@@ -10,7 +10,6 @@ import {
   Speaker2Regular,
   SpeakerOffRegular,
   Wifi4Regular,
-  WindowAppsRegular,
 } from "@fluentui/react-icons";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getAgentLauncherStatus, getAgentProviderLabel } from "../agent-provider-model.js";
@@ -60,6 +59,7 @@ import {
   TASKBAR_HOVER_PREVIEW_DELAY_MS,
 } from "../taskbar-hover-preview.js";
 import { getTaskbarLayoutPlan, TASKBAR_ICON_SLOT_WIDTH } from "../taskbar-layout-model.js";
+import { getTaskbarFallbackMark } from "../taskbar-icon-model.js";
 import { AgentGlyph } from "./VectorMarks.jsx";
 
 const processDisplayNames = {
@@ -77,17 +77,25 @@ const processDisplayNames = {
 };
 
 function createTaskbarPinnedApps(applications) {
-  return applications.map((application) => ({
-    id: getMenuApplicationPinKey(application),
-    label: application.label,
-    Icon: application.pinnedApplication?.Icon ?? WindowAppsRegular,
-    iconDataUrl: application.iconDataUrl ?? null,
-    processes: application.pinnedApplication?.processes ?? application.processes ?? [],
-    applicationId: application.applicationId ?? null,
-    kind: application.kind,
-    application: application.application ?? null,
-    pinnedApplication: application.pinnedApplication ?? null,
-  }));
+  return applications.map((application) => {
+    const Icon = application.pinnedApplication?.Icon ?? null;
+    const iconDataUrl = application.iconDataUrl ?? null;
+    const processes = application.pinnedApplication?.processes ?? application.processes ?? [];
+    return {
+      id: getMenuApplicationPinKey(application),
+      label: application.label,
+      Icon,
+      iconDataUrl,
+      fallbackMark: Icon || iconDataUrl
+        ? null
+        : getTaskbarFallbackMark({ processName: processes[0], label: application.label }),
+      processes,
+      applicationId: application.applicationId ?? null,
+      kind: application.kind,
+      application: application.application ?? null,
+      pinnedApplication: application.pinnedApplication ?? null,
+    };
+  });
 }
 
 function selectAppWindow(windows) {
@@ -99,7 +107,9 @@ function selectAppWindow(windows) {
 
 function getProcessLabel(processName, fallbackTitle) {
   const normalized = normalizeProcessName(processName);
-  if (normalized === "applicationframehost" && fallbackTitle) return fallbackTitle;
+  if (["applicationframehost", "wwahost"].includes(normalized) && fallbackTitle) {
+    return fallbackTitle;
+  }
   if (processDisplayNames[normalized]) return processDisplayNames[normalized];
   return normalized
     .replaceAll("_", " ")
@@ -131,7 +141,8 @@ function buildTaskbarItems(windows, pinnedApps, runningOrder, internalWindows = 
       group = {
         id: `running:${groupKey}`,
         label: getProcessLabel(processName, window.title),
-        Icon: WindowAppsRegular,
+        Icon: null,
+        fallbackMark: getTaskbarFallbackMark({ processName, label: window.title }),
         isPinned: false,
         windows: [],
       };
@@ -142,10 +153,14 @@ function buildTaskbarItems(windows, pinnedApps, runningOrder, internalWindows = 
   internalWindows
     .filter((window) => !consumedInternalWindowIds.has(window.windowId))
     .forEach((window) => {
+      const Icon = window.internalWindowId === "inspector" ? PulseRegular : null;
       runningGroups.set(window.taskbarItemId, {
         id: window.taskbarItemId,
         label: window.title,
-        Icon: window.internalWindowId === "inspector" ? PulseRegular : WindowAppsRegular,
+        Icon,
+        fallbackMark: Icon
+          ? null
+          : getTaskbarFallbackMark({ processName: window.processName, label: window.title }),
         isPinned: false,
         windows: [window],
       });
@@ -178,8 +193,8 @@ function resolveTaskbarIconDataUrl(item) {
     ?? null;
 }
 
-function hasRecognizableTaskbarIcon(item) {
-  return Boolean(resolveTaskbarIconDataUrl(item) || (item.Icon && item.Icon !== WindowAppsRegular));
+function hasTaskbarIcon(item) {
+  return Boolean(resolveTaskbarIconDataUrl(item) || item.fallbackMark || item.Icon);
 }
 
 function useTaskbarLayoutPlan(containerRef, measurementRefs, items) {
@@ -195,7 +210,7 @@ function useTaskbarLayoutPlan(containerRef, measurementRefs, items) {
       const plan = getTaskbarLayoutPlan(items.map((item) => ({
         id: item.id,
         fullWidth: measurementRefs.current.get(item.id)?.getBoundingClientRect().width,
-        canUseIconOnly: hasRecognizableTaskbarIcon(item),
+        canUseIconOnly: hasTaskbarIcon(item),
       })), container.clientWidth);
       const signature = JSON.stringify(plan);
       setLayout((current) => current?.itemKey === itemKey && current.signature === signature
@@ -221,8 +236,14 @@ function TaskbarAppIcon({ item }) {
     return <img className="taskbar-native-icon" src={iconDataUrl} alt="" />;
   }
 
+  if (item.fallbackMark) {
+    return <span className="taskbar-app-fallback-mark" aria-hidden="true">{item.fallbackMark}</span>;
+  }
+
   const Icon = item.Icon;
-  return <Icon />;
+  return Icon
+    ? <Icon />
+    : <span className="taskbar-app-fallback-mark" aria-hidden="true">{getTaskbarFallbackMark(item)}</span>;
 }
 
 function getContextActionLabel(action, item) {
@@ -942,6 +963,7 @@ export function Taskbar({
               type="button"
               className={className}
               data-density={itemLayout?.density ?? "icon"}
+              data-label-mode={itemLayout?.density === "full" ? "persistent" : "contextual"}
               style={{ "--taskbar-item-width": `${itemLayout?.width ?? TASKBAR_ICON_SLOT_WIDTH}px` }}
               aria-label={getTaskbarAccessibleLabel(item, isActive)}
               aria-current={isActive ? "true" : undefined}
@@ -998,7 +1020,7 @@ export function Taskbar({
               onContextMenu={(event) => showTaskbarContext(event, item)}
             >
               <TaskbarAppIcon item={item} />
-              <span>{label}</span>
+              <span className="taskbar-app-label" aria-hidden="true">{label}</span>
               {windows.length > 1 ? <small className="taskbar-window-count">{windows.length}</small> : null}
             </button>
           );

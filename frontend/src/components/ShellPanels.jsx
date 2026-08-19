@@ -1940,8 +1940,9 @@ function TaskbarModeSettings({ onToast }) {
     state.retryAfterUtc,
     clock,
   );
-  const modeMismatch = state.requestedMode !== state.effectiveMode;
-  const canRetry = canRetryTaskbarMode(state, busy, clock);
+  const simulation = state.simulation === true;
+  const modeMismatch = !simulation && state.requestedMode !== state.effectiveMode;
+  const canRetry = !simulation && canRetryTaskbarMode(state, busy, clock);
 
   useEffect(() => {
     const previous = previousTransition.current;
@@ -2005,10 +2006,12 @@ function TaskbarModeSettings({ onToast }) {
         <span className="window-appearance-icon"><WindowAppsRegular /></span>
         <span>
           <strong id="taskbar-mode-title">任务栏接管模式</strong>
-          <small>TASKBAR MODE · 分层回退，不修改 Explorer</small>
+          <small>{simulation
+            ? "BROWSER PREVIEW · 仅保存本地预览选择"
+            : "TASKBAR MODE · 分层回退，不修改 Explorer"}</small>
         </span>
-        <code className={state.effectiveMode === state.requestedMode ? "is-compatible" : ""}>
-          {(state.effectiveMode ?? "native").toUpperCase()}
+        <code className={!simulation && state.effectiveMode === state.requestedMode ? "is-compatible" : ""}>
+          {simulation ? "PREVIEW" : (state.effectiveMode ?? "native").toUpperCase()}
         </code>
       </header>
 
@@ -2042,15 +2045,15 @@ function TaskbarModeSettings({ onToast }) {
       </fieldset>
 
       <div className="window-appearance-telemetry is-taskbar" role="status" aria-live="polite">
-        <span><small>请求模式 · REQUESTED</small><strong>{busy ? "APPLYING" : state.requestedMode.toUpperCase()}</strong></span>
-        <span><small>实际模式 · EFFECTIVE</small><strong>{state.effectiveMode.toUpperCase()}</strong></span>
-        <span><small>事务状态 · TRANSITION</small><strong>{state.transitionStatus.toUpperCase()}</strong></span>
-        <span><small>恢复预算 · RECOVERY</small><strong>{state.recoveryFailureCount}/3 · G{state.transitionGeneration}</strong></span>
+        <span><small>{simulation ? "预览选择 · PREVIEW" : "请求模式 · REQUESTED"}</small><strong>{busy ? (simulation ? "SAVING" : "APPLYING") : state.requestedMode.toUpperCase()}</strong></span>
+        <span><small>{simulation ? "Windows 状态 · WINDOWS" : "实际模式 · EFFECTIVE"}</small><strong>{simulation ? "NOT INSPECTED" : state.effectiveMode.toUpperCase()}</strong></span>
+        <span><small>{simulation ? "模拟状态 · SIMULATION" : "事务状态 · TRANSITION"}</small><strong>{simulation ? "LOCAL ONLY" : state.transitionStatus.toUpperCase()}</strong></span>
+        <span><small>{simulation ? "原生变更 · NATIVE CHANGE" : "恢复预算 · RECOVERY"}</small><strong>{simulation ? "NONE" : `${state.recoveryFailureCount}/3 · G${state.transitionGeneration}`}</strong></span>
       </div>
 
       {state.transitionReason ? (
         <p className="window-appearance-feedback" role="status">
-          <PulseRegular /><span>当前事务：{state.transitionReason}</span>
+          <PulseRegular /><span>{simulation ? "预览状态" : "当前事务"}：{state.transitionReason}</span>
         </p>
       ) : null}
       {state.safeMode ? (
@@ -2236,7 +2239,10 @@ function WindowAppearanceSettings({ onToast }) {
   const [ruleInputError, setRuleInputError] = useState(null);
   const selectedMode = pendingMode ?? appearance.mode;
   const busy = appearance.loading || pendingMode !== null || pendingRule;
+  const isBrowserPreview = appearance.simulation === true ||
+    appearance.provenance?.kind === "browser-preview";
   const effectiveLabel = windowAppearanceLabels[appearance.effectiveMode] ?? "OFF";
+  const selectedLabel = windowAppearanceLabels[selectedMode] ?? "OFF";
   const windowsReleaseLabel = getWindowsReleaseLabel(appearance.windows11, appearance.osBuild);
 
   const updateMode = async (mode) => {
@@ -2245,9 +2251,13 @@ function WindowAppearanceSettings({ onToast }) {
     try {
       const nextState = await setWindowAppearanceMode(mode);
       const nextLabel = windowAppearanceLabels[nextState.effectiveMode] ?? nextState.effectiveMode;
-      onToast?.(nextState.effectiveMode === mode
-        ? `Window appearance switched to ${nextLabel}`
-        : `Windows automatically fell back to ${nextLabel}`);
+      const nextIsPreview = nextState.simulation === true ||
+        nextState.provenance?.kind === "browser-preview";
+      onToast?.(nextIsPreview
+        ? `Window appearance preview set to ${windowAppearanceLabels[mode] ?? mode} · Windows unchanged`
+        : nextState.effectiveMode === mode
+          ? `Window appearance switched to ${nextLabel}`
+          : `Windows automatically fell back to ${nextLabel}`);
     } catch {
       // The shared appearance store exposes the bridge error inline.
     } finally {
@@ -2266,9 +2276,13 @@ function WindowAppearanceSettings({ onToast }) {
     setRuleInputError(null);
     setPendingRule(true);
     try {
-      await setWindowAppearanceRule(processName, action);
+      const nextState = await setWindowAppearanceRule(processName, action);
       if (clearInput) setProcessInput("");
-      onToast?.(`${processName} is now ${action === "allow" ? "allowed" : "blocked"} for takeover`);
+      const nextIsPreview = nextState.simulation === true ||
+        nextState.provenance?.kind === "browser-preview";
+      onToast?.(nextIsPreview
+        ? `${processName} preview rule saved locally · Windows unchanged`
+        : `${processName} is now ${action === "allow" ? "allowed" : "blocked"} for takeover`);
     } catch {
       // The shared appearance store exposes native validation errors inline.
     } finally {
@@ -2281,8 +2295,12 @@ function WindowAppearanceSettings({ onToast }) {
     setRuleInputError(null);
     setPendingRule(true);
     try {
-      await removeWindowAppearanceRule(processName);
-      onToast?.(`${processName} restored to automatic compatibility`);
+      const nextState = await removeWindowAppearanceRule(processName);
+      const nextIsPreview = nextState.simulation === true ||
+        nextState.provenance?.kind === "browser-preview";
+      onToast?.(nextIsPreview
+        ? `${processName} preview rule removed · Windows unchanged`
+        : `${processName} restored to automatic compatibility`);
     } catch {
       // The shared appearance store exposes bridge errors inline.
     } finally {
@@ -2305,10 +2323,12 @@ function WindowAppearanceSettings({ onToast }) {
         <span className="window-appearance-icon"><WindowAppsRegular /></span>
         <span>
           <strong id="window-appearance-title">原生窗口外观</strong>
-          <small>WINDOW APPEARANCE · 分层接管，异常时自动回退</small>
+          <small>{isBrowserPreview
+            ? "BROWSER PREVIEW · 仅保存本地预览选择"
+            : "WINDOW APPEARANCE · 分层接管，异常时自动回退"}</small>
         </span>
-        <code className={appearance.windows11 ? "is-compatible" : ""}>
-          {windowsReleaseLabel}
+        <code className={!isBrowserPreview && appearance.windows11 ? "is-compatible" : ""}>
+          {isBrowserPreview ? "PREVIEW" : windowsReleaseLabel}
         </code>
       </header>
 
@@ -2344,31 +2364,54 @@ function WindowAppearanceSettings({ onToast }) {
       </fieldset>
 
       <div className="window-appearance-telemetry" role="status" aria-live="polite">
-        <span><small>实际层级 · EFFECTIVE</small><strong>{busy ? "APPLYING" : effectiveLabel}</strong></span>
-        <span><small>增强窗口 · STYLED</small><strong>{appearance.styledWindowCount}</strong></span>
-        <span><small>系统构建 · OS BUILD</small><strong>{appearance.osBuild ?? "—"}</strong></span>
+        {isBrowserPreview ? (
+          <>
+            <span><small>预览选择 · PREVIEW</small><strong>{busy ? "SAVING" : selectedLabel}</strong></span>
+            <span><small>WINDOWS</small><strong>NOT INSPECTED</strong></span>
+            <span><small>NATIVE CHANGE</small><strong>NONE</strong></span>
+          </>
+        ) : (
+          <>
+            <span><small>实际层级 · EFFECTIVE</small><strong>{busy ? "APPLYING" : effectiveLabel}</strong></span>
+            <span><small>增强窗口 · STYLED</small><strong>{appearance.styledWindowCount}</strong></span>
+            <span><small>系统构建 · OS BUILD</small><strong>{appearance.osBuild ?? "—"}</strong></span>
+          </>
+        )}
       </div>
 
       <div className="window-appearance-guards" aria-label="窗口接管安全状态">
-        <span className={appearance.effectiveMode === "off" || appearance.hooksReady ? "is-ready" : "is-warning"}>
-          <i />EVENTS {appearance.effectiveMode === "off" ? "IDLE" : appearance.hooksReady ? "READY" : "OFFLINE"}
-        </span>
-        <span className={appearance.hostIntegrityVerified ? "is-ready" : "is-warning"}>
-          <i />INTEGRITY {appearance.hostIntegrityVerified ? "VERIFIED" : "BLOCKED"}
-        </span>
-        <span className={appearance.safetyHotkeyRegistered ? "is-ready" : "is-warning"}>
-          <i />SAFE EXIT {appearance.safetyHotkeyRegistered ? "ARMED" : "LOCAL ONLY"}
-        </span>
-        <span className={appearance.recoveryArmed ? "is-ready" : "is-warning"}>
-          <i />RECOVERY {appearance.recoveryArmed ? "ARMED" : "PENDING"}
-        </span>
+        {isBrowserPreview ? (
+          <>
+            <span className="is-warning"><i />EVENTS NOT INSPECTED</span>
+            <span className="is-warning"><i />INTEGRITY NOT INSPECTED</span>
+            <span className="is-warning"><i />SAFE EXIT NOT INSPECTED</span>
+            <span className="is-warning"><i />RECOVERY NOT INSPECTED</span>
+          </>
+        ) : (
+          <>
+            <span className={appearance.effectiveMode === "off" || appearance.hooksReady ? "is-ready" : "is-warning"}>
+              <i />EVENTS {appearance.effectiveMode === "off" ? "IDLE" : appearance.hooksReady ? "READY" : "OFFLINE"}
+            </span>
+            <span className={appearance.hostIntegrityVerified ? "is-ready" : "is-warning"}>
+              <i />INTEGRITY {appearance.hostIntegrityVerified ? "VERIFIED" : "BLOCKED"}
+            </span>
+            <span className={appearance.safetyHotkeyRegistered ? "is-ready" : "is-warning"}>
+              <i />SAFE EXIT {appearance.safetyHotkeyRegistered ? "ARMED" : "LOCAL ONLY"}
+            </span>
+            <span className={appearance.recoveryArmed ? "is-ready" : "is-warning"}>
+              <i />RECOVERY {appearance.recoveryArmed ? "ARMED" : "PENDING"}
+            </span>
+          </>
+        )}
       </div>
 
       <section className="window-rule-editor" aria-labelledby="window-rule-title">
         <header>
           <span>
             <strong id="window-rule-title">应用规则</strong>
-            <small>APP RULES · 系统保护项不可覆盖 · {appearance.rules.length}/64</small>
+            <small>{isBrowserPreview
+              ? `PREVIEW RULES · LOCAL ONLY · ${appearance.rules.length}/64`
+              : `APP RULES · 系统保护项不可覆盖 · ${appearance.rules.length}/64`}</small>
           </span>
         </header>
         <form onSubmit={submitRule}>
@@ -2454,7 +2497,9 @@ function WindowAppearanceSettings({ onToast }) {
         <header>
           <span>
             <strong id="window-compatibility-title">当前窗口兼容矩阵</strong>
-            <small>VISIBLE TOP-LEVEL WINDOWS · 按进程聚合</small>
+            <small>{isBrowserPreview
+              ? "BROWSER FIXTURE · WINDOWS NOT INSPECTED"
+              : "VISIBLE TOP-LEVEL WINDOWS · 按进程聚合"}</small>
           </span>
           <b>{appearance.compatibilityMatrix.length}</b>
         </header>
@@ -2492,13 +2537,17 @@ function WindowAppearanceSettings({ onToast }) {
 
       <p className="window-appearance-safety-note">
         <ShieldRegular />
-        <span>UAC、安全桌面和全屏独占窗口始终不接管；正常退出或异常终止后自动恢复。</span>
+        <span>{isBrowserPreview
+          ? "浏览器预览不会读取或更改 Windows；选择与规则仅保存在本地预览数据中。"
+          : "UAC、安全桌面和全屏独占窗口始终不接管；正常退出或异常终止后自动恢复。"}</span>
       </p>
 
       {appearance.fallbackReason ? (
         <p className="window-appearance-feedback is-fallback" role="status">
           <AlertRegular />
-          <span>当前已回退至 {effectiveLabel}：{appearance.fallbackReason}</span>
+          <span>{isBrowserPreview
+            ? `PREVIEW ONLY：${appearance.fallbackReason}`
+            : `当前已回退至 ${effectiveLabel}：${appearance.fallbackReason}`}</span>
         </p>
       ) : null}
       {appearance.error ? (

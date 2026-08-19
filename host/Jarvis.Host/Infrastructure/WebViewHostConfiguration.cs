@@ -23,9 +23,13 @@ internal static class WebViewHostConfiguration
 
         core.Settings.AreDefaultContextMenusEnabled = false;
         core.Settings.AreDefaultScriptDialogsEnabled = false;
+        core.Settings.AreHostObjectsAllowed = false;
         core.Settings.IsBuiltInErrorPageEnabled = false;
         core.Settings.IsStatusBarEnabled = false;
         core.Settings.IsZoomControlEnabled = false;
+        core.Settings.IsWebMessageEnabled = !surfaceName.Equals(
+            "window-switcher",
+            StringComparison.Ordinal);
         core.Settings.AreDevToolsEnabled = Debugger.IsAttached ||
                                             Environment.GetEnvironmentVariable("JARVIS_WEBVIEW2_DEVTOOLS") == "1";
 

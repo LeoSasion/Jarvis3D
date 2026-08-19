@@ -52,10 +52,15 @@ try {
     $startInfo.FileName = $resolvedHost
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
-    $startInfo.ArgumentList.Add('--renderer-smoke')
-    $startInfo.ArgumentList.Add("--renderer-smoke-data-root=$dataRoot")
-    $startInfo.ArgumentList.Add("--renderer-smoke-receipt=$receiptPath")
-    $startInfo.ArgumentList.Add("--renderer-smoke-nonce=$nonce")
+    # Windows PowerShell 5.1 exposes the .NET Framework ProcessStartInfo shape,
+    # which does not have ArgumentList. These generated paths cannot contain a
+    # quote, so quoting each value keeps the command line safe on both 5.1 and 7.
+    $startInfo.Arguments = @(
+        '--renderer-smoke'
+        "--renderer-smoke-data-root=`"$dataRoot`""
+        "--renderer-smoke-receipt=`"$receiptPath`""
+        "--renderer-smoke-nonce=$nonce"
+    ) -join ' '
 
     $process = [System.Diagnostics.Process]::Start($startInfo)
     if ($null -eq $process) {

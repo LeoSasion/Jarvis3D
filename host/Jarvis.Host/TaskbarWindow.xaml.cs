@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using Jarvis.Host.Agents;
 using Jarvis.Host.Bridge;
 using Jarvis.Host.Infrastructure;
 using Jarvis.Host.Services;
@@ -36,6 +37,7 @@ public partial class TaskbarWindow : Window
     private readonly TaskbarModeService _taskbarModeService;
     private readonly TrayStatusService _trayStatusService;
     private readonly SystemFeedService _systemFeedService;
+    private readonly AgentCoordinator _agentCoordinator;
 
     private WebBridge? _bridge;
     private TaskbarEdgeOverlayWindow? _edgeOverlayWindow;
@@ -65,6 +67,7 @@ public partial class TaskbarWindow : Window
         TaskbarModeService taskbarModeService,
         TrayStatusService trayStatusService,
         SystemFeedService systemFeedService,
+        AgentCoordinator agentCoordinator,
         Action surfaceReady,
         Action surfaceFailed,
         Action requestExit,
@@ -82,6 +85,7 @@ public partial class TaskbarWindow : Window
         _taskbarModeService = taskbarModeService;
         _trayStatusService = trayStatusService;
         _systemFeedService = systemFeedService;
+        _agentCoordinator = agentCoordinator;
         _surfaceReady = surfaceReady;
         _surfaceFailed = surfaceFailed;
         _requestExit = requestExit;
@@ -337,7 +341,8 @@ public partial class TaskbarWindow : Window
             _showDesktop,
             ShowTaskbarFlyout,
             HideTaskbarFlyout,
-            terminalEnabled: false);
+            agentCoordinator: _agentCoordinator,
+            surface: WebBridgeSurface.Taskbar);
         _bridge.Attach();
 
         WebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;

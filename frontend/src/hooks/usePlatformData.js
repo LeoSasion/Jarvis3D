@@ -37,6 +37,19 @@ const WINDOW_APPEARANCE_MODES = new Set(["off", "conservative", "enhanced", "imm
 const TASKBAR_MODES = new Set(["native", "hybrid", "full"]);
 const TASKBAR_TRANSITION_STATUSES = new Set(["settled", "applying", "fallback", "cooldown"]);
 
+function normalizePlatformProvenance(rawProvenance) {
+  return rawProvenance && typeof rawProvenance === "object"
+    ? {
+        kind: String(rawProvenance.kind ?? rawProvenance.Kind ?? ""),
+        dataClass: String(rawProvenance.dataClass ?? rawProvenance.DataClass ?? ""),
+        simulated: Boolean(rawProvenance.simulated ?? rawProvenance.Simulated),
+        nativeHostConnected: Boolean(
+          rawProvenance.nativeHostConnected ?? rawProvenance.NativeHostConnected,
+        ),
+      }
+    : null;
+}
+
 export function normalizeTaskbarModeState(rawState = {}) {
   const reportedRequestedMode = rawState.requestedMode ?? rawState.RequestedMode;
   const requestedMode = TASKBAR_MODES.has(reportedRequestedMode)
@@ -63,6 +76,12 @@ export function normalizeTaskbarModeState(rawState = {}) {
   );
   const retryAfterValue = rawState.retryAfterUtc ?? rawState.RetryAfterUtc;
   const retryAfterTimestamp = retryAfterValue ? Date.parse(retryAfterValue) : Number.NaN;
+  const provenance = normalizePlatformProvenance(
+    rawState.provenance ?? rawState.Provenance,
+  );
+  const simulation = Boolean(
+    rawState.simulation ?? rawState.Simulation ?? provenance?.simulated,
+  );
   return {
     requestedMode,
     effectiveMode,
@@ -83,6 +102,8 @@ export function normalizeTaskbarModeState(rawState = {}) {
     retryAfterUtc: Number.isFinite(retryAfterTimestamp)
       ? new Date(retryAfterTimestamp).toISOString()
       : null,
+    simulation,
+    provenance,
     loading: false,
     error: null,
   };
@@ -100,6 +121,11 @@ function taskbarModeStatesEqual(left, right) {
     left.retryAllowed === right.retryAllowed &&
     left.recoveryFailureCount === right.recoveryFailureCount &&
     left.retryAfterUtc === right.retryAfterUtc &&
+    left.simulation === right.simulation &&
+    left.provenance?.kind === right.provenance?.kind &&
+    left.provenance?.dataClass === right.provenance?.dataClass &&
+    left.provenance?.simulated === right.provenance?.simulated &&
+    left.provenance?.nativeHostConnected === right.provenance?.nativeHostConnected &&
     left.loading === right.loading &&
     left.error === right.error;
 }
@@ -217,6 +243,12 @@ export function normalizeWindowAppearanceState(rawState = {}) {
     : mode;
   const styledWindowCount = Number(rawState.styledWindowCount ?? rawState.StyledWindowCount ?? 0);
   const fallbackReason = rawState.fallbackReason ?? rawState.FallbackReason;
+  const provenance = normalizePlatformProvenance(
+    rawState.provenance ?? rawState.Provenance,
+  );
+  const simulation = Boolean(
+    rawState.simulation ?? rawState.Simulation ?? provenance?.simulated,
+  );
 
   return {
     mode,
@@ -233,6 +265,8 @@ export function normalizeWindowAppearanceState(rawState = {}) {
       rawState.safetyHotkeyRegistered ?? rawState.SafetyHotkeyRegistered,
     ),
     recoveryArmed: Boolean(rawState.recoveryArmed ?? rawState.RecoveryArmed),
+    simulation,
+    provenance,
     rules: normalizeWindowAppearanceRules(rawState.rules ?? rawState.Rules),
     compatibilityMatrix: normalizeWindowCompatibilityMatrix(
       rawState.compatibilityMatrix ?? rawState.CompatibilityMatrix,
@@ -253,6 +287,11 @@ function windowAppearanceStatesEqual(left, right) {
     left.hostIntegrityVerified === right.hostIntegrityVerified &&
     left.safetyHotkeyRegistered === right.safetyHotkeyRegistered &&
     left.recoveryArmed === right.recoveryArmed &&
+    left.simulation === right.simulation &&
+    left.provenance?.kind === right.provenance?.kind &&
+    left.provenance?.dataClass === right.provenance?.dataClass &&
+    left.provenance?.simulated === right.provenance?.simulated &&
+    left.provenance?.nativeHostConnected === right.provenance?.nativeHostConnected &&
     windowAppearanceRulesEqual(left.rules, right.rules) &&
     windowCompatibilityMatricesEqual(left.compatibilityMatrix, right.compatibilityMatrix) &&
     left.loading === right.loading &&
@@ -515,6 +554,12 @@ const windowAppearanceStore = createStore({
   windows11: false,
   styledWindowCount: 0,
   fallbackReason: null,
+  hooksReady: false,
+  hostIntegrityVerified: false,
+  safetyHotkeyRegistered: false,
+  recoveryArmed: false,
+  simulation: !platform.isNative,
+  provenance: normalizePlatformProvenance(platform.provenance),
   rules: [],
   compatibilityMatrix: [],
   loading: true,
@@ -532,6 +577,8 @@ const taskbarModeStore = createStore({
   retryAllowed: false,
   recoveryFailureCount: 0,
   retryAfterUtc: null,
+  simulation: !platform.isNative,
+  provenance: platform.provenance ?? null,
   loading: true,
   error: null,
 });

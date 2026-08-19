@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using Jarvis.Host.Agents;
 using Jarvis.Host.Infrastructure;
@@ -20,12 +19,6 @@ internal sealed class WebBridge : IDisposable
             "detail",
             "actionId"
         };
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DictionaryKeyPolicy = JsonNamingPolicy.CamelCase
-    };
-
     private readonly CoreWebView2 _webView;
     private readonly Dispatcher _dispatcher;
     private readonly RuntimeSnapshotFeed _snapshotFeed;
@@ -49,15 +42,13 @@ internal sealed class WebBridge : IDisposable
     private readonly Action<string?> _showDesktop;
     private readonly Action<TaskbarFlyoutRequest>? _showTaskbarFlyout;
     private readonly Action? _hideTaskbarFlyout;
-    private readonly bool _terminalEnabled;
+    private readonly WebBridgeSurface _surface;
+    private readonly WebBridgeRequestGate _requestGate = new();
     private readonly CancellationTokenSource _shutdown = new();
-    private readonly object _terminalOutputGate = new();
-    private readonly Dictionary<string, PendingTerminalOutput> _pendingTerminalOutput =
-        new(StringComparer.Ordinal);
+    private readonly PendingTerminalOutputBuffer _pendingTerminalOutput = new();
 
     private bool _attached;
     private bool _telemetryAttached;
-    private bool _terminalOutputFlushScheduled;
     private bool _disposed;
 
     public WebBridge(
@@ -78,9 +69,9 @@ internal sealed class WebBridge : IDisposable
         Action<string?> showDesktop,
         Action<TaskbarFlyoutRequest>? showTaskbarFlyout = null,
         Action? hideTaskbarFlyout = null,
-        bool terminalEnabled = true,
         SystemSessionActionService? systemSessionActionService = null,
-        AgentCoordinator? agentCoordinator = null)
+        AgentCoordinator? agentCoordinator = null,
+        WebBridgeSurface surface = WebBridgeSurface.Desktop)
     {
         _webView = webView;
         _dispatcher = dispatcher;
@@ -101,7 +92,7 @@ internal sealed class WebBridge : IDisposable
         _showDesktop = showDesktop;
         _showTaskbarFlyout = showTaskbarFlyout;
         _hideTaskbarFlyout = hideTaskbarFlyout;
-        _terminalEnabled = terminalEnabled;
+        _surface = surface;
     }
 
     public void Attach()
@@ -113,19 +104,46 @@ internal sealed class WebBridge : IDisposable
         }
 
         _webView.WebMessageReceived += OnWebMessageReceived;
-        _shellService.ApplicationCatalogChanged += OnApplicationCatalogChanged;
-        _desktopService.EntriesChanged += OnDesktopEntriesChanged;
-        _windowAppearanceService.StateChanged += OnWindowAppearanceChanged;
-        _taskbarModeService.StateChanged += OnTaskbarModeChanged;
-        _trayStatusService.SnapshotChanged += OnTraySnapshotChanged;
-        _systemFeedService.SnapshotChanged += OnSystemFeedChanged;
-        _fileTransferCoordinator.TransferChanged += OnFileTransferChanged;
+        if (AllowsEvent("shell.applicationsChanged"))
+        {
+            _shellService.ApplicationCatalogChanged += OnApplicationCatalogChanged;
+        }
+        if (AllowsEvent("desktop.entriesChanged"))
+        {
+            _desktopService.EntriesChanged += OnDesktopEntriesChanged;
+        }
+        if (AllowsEvent("windowAppearance.changed"))
+        {
+            _windowAppearanceService.StateChanged += OnWindowAppearanceChanged;
+        }
+        if (AllowsEvent("taskbarMode.changed"))
+        {
+            _taskbarModeService.StateChanged += OnTaskbarModeChanged;
+        }
+        if (AllowsEvent("tray.snapshot"))
+        {
+            _trayStatusService.SnapshotChanged += OnTraySnapshotChanged;
+        }
+        if (AllowsEvent("feed.snapshot"))
+        {
+            _systemFeedService.SnapshotChanged += OnSystemFeedChanged;
+        }
+        if (AllowsEvent("explorer.transferChanged"))
+        {
+            _fileTransferCoordinator.TransferChanged += OnFileTransferChanged;
+        }
         if (_agentCoordinator is not null)
         {
-            _agentCoordinator.StateChanged += OnAgentStateChanged;
-            _agentCoordinator.EventReceived += OnAgentEventReceived;
+            if (AllowsEvent("agent.stateChanged"))
+            {
+                _agentCoordinator.StateChanged += OnAgentStateChanged;
+            }
+            if (AllowsEvent("agent.event"))
+            {
+                _agentCoordinator.EventReceived += OnAgentEventReceived;
+            }
         }
-        if (_terminalEnabled)
+        if (AllowsEvent("terminal.output"))
         {
             _terminalSessionService.OutputReceived += OnTerminalOutputReceived;
             _terminalSessionService.SessionExited += OnTerminalSessionExited;
@@ -145,38 +163,29 @@ internal sealed class WebBridge : IDisposable
             _systemFeedService.Start();
         }
 
-        Post(new
+        if (AllowsEvent("windowAppearance.changed"))
         {
-            @event = "windowAppearance.changed",
-            data = _windowAppearanceService.GetState()
-        });
-        Post(new
+            PostEvent("windowAppearance.changed", _windowAppearanceService.GetState());
+        }
+        if (AllowsEvent("taskbarMode.changed"))
         {
-            @event = "taskbarMode.changed",
-            data = _taskbarModeService.GetState()
-        });
-        Post(new
+            PostEvent("taskbarMode.changed", _taskbarModeService.GetState());
+        }
+        if (AllowsEvent("tray.snapshot"))
         {
-            @event = "tray.snapshot",
-            data = _trayStatusService.GetSnapshot()
-        });
-        Post(new
+            PostEvent("tray.snapshot", _trayStatusService.GetSnapshot());
+        }
+        if (AllowsEvent("feed.snapshot"))
         {
-            @event = "feed.snapshot",
-            data = _systemFeedService.GetSnapshot()
-        });
-        Post(new
+            PostEvent("feed.snapshot", _systemFeedService.GetSnapshot());
+        }
+        if (AllowsEvent("desktop.entriesChanged"))
         {
-            @event = "desktop.entriesChanged",
-            data = _desktopService.ListEntries()
-        });
-        if (_agentCoordinator is not null)
+            PostEvent("desktop.entriesChanged", _desktopService.ListEntries());
+        }
+        if (_agentCoordinator is not null && AllowsEvent("agent.stateChanged"))
         {
-            Post(new
-            {
-                @event = "agent.stateChanged",
-                data = _agentCoordinator.GetStateSnapshot()
-            });
+            PostEvent("agent.stateChanged", _agentCoordinator.GetStateSnapshot());
         }
 
         return Task.CompletedTask;
@@ -185,6 +194,7 @@ internal sealed class WebBridge : IDisposable
     private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         JsonElement requestId = default;
+        IDisposable? requestLease = null;
 
         try
         {
@@ -194,7 +204,7 @@ internal sealed class WebBridge : IDisposable
                 return;
             }
 
-            using var document = JsonDocument.Parse(e.WebMessageAsJson);
+            using var document = WebBridgeRequestPolicy.Parse(e.WebMessageAsJson);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
             {
@@ -215,12 +225,31 @@ internal sealed class WebBridge : IDisposable
             }
 
             var method = methodElement.GetString()!;
+            if (!WebBridgeSurfacePolicy.IsKnownMethod(method))
+            {
+                throw new BridgeFaultException(
+                    "METHOD_NOT_FOUND",
+                    $"Unknown bridge method: {method}");
+            }
+            if (!WebBridgeSurfacePolicy.AllowsMethod(_surface, method))
+            {
+                throw new BridgeFaultException(
+                    "METHOD_NOT_AVAILABLE",
+                    $"Bridge method {method} is unavailable on the {_surface.ToString().ToLowerInvariant()} surface.");
+            }
+            if (!_requestGate.TryEnter(out requestLease))
+            {
+                throw new BridgeFaultException(
+                    "TOO_MANY_REQUESTS",
+                    "The renderer has too many bridge requests in progress.");
+            }
+
             var parameters = root.TryGetProperty("params", out var paramsElement)
                 ? paramsElement.Clone()
                 : EmptyObject();
             var result = await DispatchAsync(method, parameters, _shutdown.Token);
 
-            Post(new { id = requestId, ok = true, result });
+            PostSuccess(requestId, result);
 
             if (method.Equals("lifecycle.exitToWindows", StringComparison.Ordinal))
             {
@@ -245,6 +274,10 @@ internal sealed class WebBridge : IDisposable
             HostLog.Error("Bridge request failed.", ex);
             PostFailure(requestId, "HOST_ERROR", "The native host could not complete the request.");
         }
+        finally
+        {
+            requestLease?.Dispose();
+        }
     }
 
     private async Task<object> DispatchAsync(
@@ -255,13 +288,6 @@ internal sealed class WebBridge : IDisposable
         if (method.StartsWith("agent.", StringComparison.Ordinal))
         {
             return await DispatchAgentAsync(method, parameters, cancellationToken);
-        }
-
-        if (!_terminalEnabled && method.StartsWith("terminal.", StringComparison.Ordinal))
-        {
-            throw new BridgeFaultException(
-                "METHOD_NOT_AVAILABLE",
-                "Terminal sessions are available only on the JARVIS desktop surface.");
         }
 
         return method switch
@@ -537,14 +563,14 @@ internal sealed class WebBridge : IDisposable
                 {
                     if (!_disposed)
                     {
-                        if (snapshot.SystemChanged)
+                        if (snapshot.SystemChanged && AllowsEvent("system.snapshot"))
                         {
-                            Post(new { @event = "system.snapshot", data = snapshot.System });
+                            PostEvent("system.snapshot", snapshot.System);
                         }
 
-                        if (snapshot.TaskbarChanged)
+                        if (snapshot.TaskbarChanged && AllowsEvent("taskbar.snapshot"))
                         {
-                            Post(new { @event = "taskbar.snapshot", data = snapshot.Taskbar });
+                            PostEvent("taskbar.snapshot", snapshot.Taskbar);
                         }
                     }
                 },
@@ -581,7 +607,7 @@ internal sealed class WebBridge : IDisposable
                 {
                     if (!_disposed)
                     {
-                        Post(new { @event = "windowAppearance.changed", data = state });
+                        PostEvent("windowAppearance.changed", state);
                     }
                 },
                 DispatcherPriority.Background);
@@ -606,7 +632,7 @@ internal sealed class WebBridge : IDisposable
                 {
                     if (!_disposed)
                     {
-                        Post(new { @event = "taskbarMode.changed", data = state });
+                        PostEvent("taskbarMode.changed", state);
                     }
                 },
                 DispatcherPriority.Background);
@@ -631,7 +657,7 @@ internal sealed class WebBridge : IDisposable
                 {
                     if (!_disposed)
                     {
-                        Post(new { @event = "tray.snapshot", data = snapshot });
+                        PostEvent("tray.snapshot", snapshot);
                     }
                 },
                 DispatcherPriority.Background);
@@ -656,7 +682,7 @@ internal sealed class WebBridge : IDisposable
                 {
                     if (!_disposed)
                     {
-                        Post(new { @event = "feed.snapshot", data = snapshot });
+                        PostEvent("feed.snapshot", snapshot);
                     }
                 },
                 DispatcherPriority.Background);
@@ -682,7 +708,7 @@ internal sealed class WebBridge : IDisposable
                 {
                     if (!_disposed)
                     {
-                        Post(new { @event = "display.changed", data = topology });
+                        PostEvent("display.changed", topology);
                     }
                 },
                 DispatcherPriority.Background);
@@ -707,11 +733,9 @@ internal sealed class WebBridge : IDisposable
                 {
                     if (!_disposed)
                     {
-                        Post(new
-                        {
-                            @event = "desktop.externalDrop",
-                            data = new { paths, source = "windows", clientX, clientY }
-                        });
+                        PostEvent(
+                            "desktop.externalDrop",
+                            new { paths, source = "windows", clientX, clientY });
                     }
                 },
                 DispatcherPriority.Background);
@@ -738,7 +762,7 @@ internal sealed class WebBridge : IDisposable
                 {
                     if (!_disposed)
                     {
-                        Post(new { @event = "shell.applicationsChanged", data = catalog });
+                        PostEvent("shell.applicationsChanged", catalog);
                     }
                 },
                 DispatcherPriority.Background);
@@ -763,7 +787,7 @@ internal sealed class WebBridge : IDisposable
                 {
                     if (!_disposed)
                     {
-                        Post(new { @event = "desktop.entriesChanged", data = snapshot });
+                        PostEvent("desktop.entriesChanged", snapshot);
                     }
                 },
                 DispatcherPriority.Background);
@@ -811,7 +835,7 @@ internal sealed class WebBridge : IDisposable
                 {
                     if (!_disposed)
                     {
-                        Post(new { @event = "explorer.transferChanged", data = snapshot });
+                        PostEvent("explorer.transferChanged", snapshot);
                     }
                 },
                 DispatcherPriority.Background);
@@ -846,7 +870,7 @@ internal sealed class WebBridge : IDisposable
                 {
                     if (!_disposed)
                     {
-                        Post(new { @event = eventName, data });
+                        PostEvent(eventName, data);
                     }
                 },
                 DispatcherPriority.Background);
@@ -864,25 +888,10 @@ internal sealed class WebBridge : IDisposable
             return;
         }
 
-        lock (_terminalOutputGate)
+        if (_pendingTerminalOutput.Enqueue(chunk))
         {
-            if (!_pendingTerminalOutput.TryGetValue(chunk.SessionId, out var pending))
-            {
-                pending = new PendingTerminalOutput();
-                _pendingTerminalOutput.Add(chunk.SessionId, pending);
-            }
-
-            pending.Sequence = Math.Max(pending.Sequence, chunk.Sequence);
-            pending.Data.Append(chunk.Data);
-            if (_terminalOutputFlushScheduled)
-            {
-                return;
-            }
-
-            _terminalOutputFlushScheduled = true;
+            _ = ScheduleTerminalOutputFlushAsync();
         }
-
-        _ = ScheduleTerminalOutputFlushAsync();
     }
 
     private async Task ScheduleTerminalOutputFlushAsync()
@@ -929,7 +938,7 @@ internal sealed class WebBridge : IDisposable
                     FlushTerminalOutput();
                     if (!_disposed)
                     {
-                        Post(new { @event = "terminal.exited", data = exit });
+                        PostEvent("terminal.exited", exit);
                     }
                 },
                 DispatcherPriority.Background);
@@ -942,16 +951,7 @@ internal sealed class WebBridge : IDisposable
 
     private void FlushTerminalOutput()
     {
-        TerminalOutputChunk[] chunks;
-        lock (_terminalOutputGate)
-        {
-            chunks = _pendingTerminalOutput.Select(pair => new TerminalOutputChunk(
-                pair.Key,
-                pair.Value.Sequence,
-                pair.Value.Data.ToString())).ToArray();
-            _pendingTerminalOutput.Clear();
-            _terminalOutputFlushScheduled = false;
-        }
+        var chunks = _pendingTerminalOutput.Drain();
 
         if (_disposed)
         {
@@ -960,7 +960,7 @@ internal sealed class WebBridge : IDisposable
 
         foreach (var chunk in chunks)
         {
-            Post(new { @event = "terminal.output", data = chunk });
+            PostEvent("terminal.output", chunk);
         }
     }
 
@@ -1687,6 +1687,9 @@ internal sealed class WebBridge : IDisposable
                uri.AbsoluteUri.StartsWith(TrustedOrigin, StringComparison.OrdinalIgnoreCase);
     }
 
+    private bool AllowsEvent(string eventName) =>
+        WebBridgeSurfacePolicy.AllowsEvent(_surface, eventName);
+
     private static JsonElement EmptyObject()
     {
         using var document = JsonDocument.Parse("{}");
@@ -1695,30 +1698,101 @@ internal sealed class WebBridge : IDisposable
 
     private void PostFailure(JsonElement requestId, string code, string message)
     {
-        if (requestId.ValueKind is JsonValueKind.Undefined)
+        try
         {
-            Post(new { id = (object?)null, ok = false, error = new { code, message } });
+            var payload = requestId.ValueKind is JsonValueKind.Undefined
+                ? new { id = (object?)null, ok = false, error = new { code, message } }
+                : (object)new { id = requestId, ok = false, error = new { code, message } };
+
+            _ = PostBounded(
+                payload,
+                WebBridgePayloadPolicy.MaximumResponseBytes,
+                "bridge failure");
+        }
+        catch (Exception exception) when (!WebBridgeMessageDelivery.IsFatal(exception))
+        {
+            // A failure response is a best-effort notification. It must never
+            // escape into an async WebView2 callback when the document is gone.
+            HostLog.Warning(
+                $"Dropped bridge failure after an unexpected {exception.GetType().Name}.");
+        }
+    }
+
+    private void PostSuccess(JsonElement requestId, object result)
+    {
+        var delivery = PostBounded(
+            new { id = requestId, ok = true, result },
+            WebBridgePayloadPolicy.MaximumResponseBytes,
+            "bridge response");
+        if (delivery.Delivered ||
+            delivery.Failure is not WebBridgeDeliveryFailure.PayloadTooLarge)
+        {
             return;
         }
 
-        Post(new { id = requestId, ok = false, error = new { code, message } });
+        PostFailure(
+            requestId,
+            "RESPONSE_TOO_LARGE",
+            "The native result exceeded the bounded renderer response limit.");
     }
 
-    private void Post(object payload)
+    private void PostEvent(string eventName, object data)
+    {
+        if (AllowsEvent(eventName))
+        {
+            _ = PostBounded(
+                new { @event = eventName, data },
+                WebBridgePayloadPolicy.MaximumEventBytes,
+                $"bridge event {eventName}");
+        }
+    }
+
+    private WebBridgeDeliveryResult PostBounded(
+        object payload,
+        int maximumBytes,
+        string description)
     {
         if (_disposed)
         {
-            return;
+            return new WebBridgeDeliveryResult(
+                false,
+                WebBridgeDeliveryFailure.TransportUnavailable,
+                nameof(ObjectDisposedException));
         }
 
-        try
+        var delivery = WebBridgeMessageDelivery.TryPost(
+            payload,
+            maximumBytes,
+            _webView.PostWebMessageAsJson);
+        switch (delivery.Failure)
         {
-            _webView.PostWebMessageAsJson(JsonSerializer.Serialize(payload, JsonOptions));
+            case WebBridgeDeliveryFailure.None:
+                break;
+            case WebBridgeDeliveryFailure.PayloadTooLarge:
+                HostLog.Warning(
+                    $"Dropped {description} because it exceeded {maximumBytes} UTF-8 bytes.");
+                break;
+            case WebBridgeDeliveryFailure.Serialization:
+                HostLog.Warning(
+                    $"Dropped {description} because it could not be serialized: " +
+                    delivery.ExceptionType);
+                break;
+            case WebBridgeDeliveryFailure.TransportUnavailable:
+                HostLog.Warning(
+                    $"Dropped {description} because the renderer transport was unavailable: " +
+                    delivery.ExceptionType);
+                break;
+            case WebBridgeDeliveryFailure.Delivery:
+                HostLog.Warning(
+                    $"Dropped {description} because delivery failed: " +
+                    delivery.ExceptionType);
+                break;
+            default:
+                HostLog.Warning($"Dropped {description} for an unknown delivery reason.");
+                break;
         }
-        catch (InvalidOperationException) when (_shutdown.IsCancellationRequested)
-        {
-            // WebView disposal can race the final telemetry tick.
-        }
+
+        return delivery;
     }
 
     public void Dispose()
@@ -1730,11 +1804,7 @@ internal sealed class WebBridge : IDisposable
 
         _disposed = true;
         _shutdown.Cancel();
-        lock (_terminalOutputGate)
-        {
-            _pendingTerminalOutput.Clear();
-            _terminalOutputFlushScheduled = false;
-        }
+        _pendingTerminalOutput.Clear();
         if (_telemetryAttached)
         {
             _snapshotFeed.SnapshotAvailable -= OnSnapshotAvailable;
@@ -1756,23 +1826,13 @@ internal sealed class WebBridge : IDisposable
                 _agentCoordinator.StateChanged -= OnAgentStateChanged;
                 _agentCoordinator.EventReceived -= OnAgentEventReceived;
             }
-            if (_terminalEnabled)
-            {
-                _terminalSessionService.OutputReceived -= OnTerminalOutputReceived;
-                _terminalSessionService.SessionExited -= OnTerminalSessionExited;
-            }
+            _terminalSessionService.OutputReceived -= OnTerminalOutputReceived;
+            _terminalSessionService.SessionExited -= OnTerminalSessionExited;
         }
 
         _fileTransferCoordinator.Dispose();
         _shutdown.Dispose();
     }
-}
-
-internal sealed class PendingTerminalOutput
-{
-    public StringBuilder Data { get; } = new();
-
-    public long Sequence { get; set; }
 }
 
 internal sealed record TaskbarFlyoutRequest(

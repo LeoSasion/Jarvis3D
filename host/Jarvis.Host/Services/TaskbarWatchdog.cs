@@ -249,11 +249,24 @@ internal static class TaskbarWatchdog
                     $"Taskbar watchdog left {appearanceRecovery.PendingWindows} native window appearance target(s) pending.");
             }
 
-            NativeTaskbarController.HideReplacementWindow(
-                new IntPtr(target.ReplacementWindowHandle),
-                target.ProcessId);
             HostLog.Info("Taskbar watchdog restoring the primary Windows taskbar.");
-            NativeTaskbarController.RestorePrimary();
+            var receipt = NativeTaskbarController.RestorePrimaryForWatchdog();
+            if (receipt.Verified)
+            {
+                // Keep the JARVIS taskbar available until Explorer has recreated
+                // a valid, visible primary bottom taskbar. This ordering prevents
+                // a restore race from leaving the user with neither surface.
+                NativeTaskbarController.HideReplacementWindow(
+                    new IntPtr(target.ReplacementWindowHandle),
+                    target.ProcessId);
+            }
+            else
+            {
+                HostLog.Error(
+                    "Taskbar watchdog exhausted its bounded Explorer recovery window without " +
+                    "a verified native taskbar. The JARVIS replacement was deliberately left visible. " +
+                    receipt.FailureReason);
+            }
         }
     }
 

@@ -82,20 +82,41 @@ test("mock taskbar mode reports applying before its settled outcome", async () =
   unsubscribe();
 
   assert.equal(events.at(-1).transitionStatus, "settled");
-  assert.equal(events.at(-1).effectiveMode, "full");
+  assert.equal(events.at(-1).requestedMode, "full");
+  assert.equal(events.at(-1).effectiveMode, "native");
+  assert.equal(events.at(-1).simulation, true);
+  assert.equal(events.at(-1).provenance.nativeHostConnected, false);
   assert.equal(
     events.at(-1).transitionGeneration,
     applying.transitionGeneration,
   );
 });
 
-test("mock retry rejects an already settled requested mode", async () => {
+test("mock retry never claims it can repeat a native Windows transition", async () => {
   const mock = createMockPlatform();
 
   await assert.rejects(
     () => mock.taskbarMode.retry(),
-    /already active/u,
+    /browser preview cannot retry/iu,
   );
+});
+
+test("taskbar mode normalization preserves browser-preview provenance", () => {
+  const state = normalizeTaskbarModeState({
+    requestedMode: "hybrid",
+    effectiveMode: "native",
+    simulation: true,
+    provenance: {
+      kind: "browser-preview",
+      dataClass: "simulated-fixture",
+      simulated: true,
+      nativeHostConnected: false,
+    },
+  });
+
+  assert.equal(state.simulation, true);
+  assert.equal(state.provenance.kind, "browser-preview");
+  assert.equal(state.provenance.nativeHostConnected, false);
 });
 
 test("taskbar state ordering rejects older generations and terminal regression", () => {
@@ -161,6 +182,22 @@ test("taskbar transition feedback waits for the owned terminal outcome", () => {
   assert.match(getTaskbarTransitionToast(previous, settled).title, /FULL/u);
   assert.equal(getTaskbarTransitionToast(previous, settled).severity, "ok");
   assert.equal(getTaskbarTransitionToast(previous, currentFallback).severity, "warning");
+});
+
+test("taskbar transition feedback names a simulated selection without claiming Windows changed", () => {
+  const toast = getTaskbarTransitionToast(
+    { status: "applying", generation: 5 },
+    normalizeTaskbarModeState({
+      requestedMode: "full",
+      effectiveMode: "native",
+      transitionStatus: "settled",
+      transitionGeneration: 5,
+      simulation: true,
+    }),
+  );
+
+  assert.match(toast.title, /Preview selection saved: FULL/u);
+  assert.match(toast.detail, /Windows taskbar was not changed/u);
 });
 
 test("taskbar retry becomes eligible when local cooldown reaches zero", () => {

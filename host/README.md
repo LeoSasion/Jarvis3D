@@ -47,13 +47,20 @@ hide the surface correctly.
 
 The native taskbar is restored on normal exit, WebView failure, UI-thread crash,
 watchdog failure, UI hang, and forced host-process termination. On recovery the
-watchdog first hides the verified JARVIS taskbar HWND from outside the host, so a
-hung topmost window cannot block the restored Windows taskbar. If the host UI is
-continuously unresponsive, the watchdog terminates only the start-time-validated
-JARVIS host process, waits for its windows to be destroyed, and then restores the
-native taskbar. Secondary-monitor
-taskbars are intentionally untouched in this milestone. Non-bottom, unavailable,
-or already-hidden primary taskbars fall back to the native Windows taskbar.
+watchdog restores and verifies an Explorer-owned, visible, bottom-aligned primary
+taskbar before it hides the validated JARVIS replacement HWND. If Explorer is
+restarting, the watchdog waits through a longer bounded, low-frequency recovery
+window. A failed confirmation deliberately leaves the JARVIS surface visible and
+keeps the Host recovery lease armed; the Host reports recovery/fallback state and
+continues an initial bounded background retry instead of exposing an empty shell edge. If
+the host UI is continuously unresponsive, the watchdog terminates only the
+start-time-validated JARVIS host process and performs the same verified restore.
+The normal Exit to Windows path is deliberately two-phase: if Explorer recovery
+is not yet verified, WPF cancellation keeps the JARVIS taskbar and recovery lease
+alive; after the initial recovery window it continues low-frequency verification,
+and the window closes only after a verified receipt arrives. Forced process or
+Windows-session termination continues to rely on the independent watchdog.
+Secondary-monitor taskbars are intentionally untouched in this milestone.
 
 Windows 11 native-window styling is independently configurable in four levels:
 `off`, `conservative`, `enhanced`, and experimental `immersive`. Conservative
@@ -100,6 +107,16 @@ native taskbar stayed visible.
 Set `JARVIS_KEEP_NATIVE_TASKBAR=1` before launch to run the full-screen desktop
 host without hiding or overlaying the native taskbar. Native-window hooks and
 styling are also disabled. This is the recovery and development-safe mode.
+
+The same safe mode can be requested for one launch with `--safe-mode` or by
+holding Shift while JARVIS starts. The production Host keeps a per-Windows-session
+startup health ledger under `%LOCALAPPDATA%\JARVIS\State`; if the previous Host
+run did not reach a verified clean exit, the next launch is automatically
+quarantined in safe mode. A clean safe-mode exit clears the quarantine. Renderer
+smoke and lifecycle-probe processes use isolated paths and never participate in
+the production ledger. Ledger commits use a same-directory durable temporary file,
+flush it to disk, atomically replace the previous record, and accept success only
+after a bounded read-back exactly matches the expected health transaction.
 
 For development recovery only, if the host and its watchdog have both exited
 but `Shell_TrayWnd` remains hidden, run
@@ -190,10 +207,16 @@ packaged apps are activated through `IApplicationActivationManager` with no
 arguments. Arbitrary shortcut paths, AppUserModelIDs, and command-line arguments
 are never accepted from WebView2.
 
-The center taskbar control opens the embedded Pi Agent conversation window; it
-does not replace JARVIS quick search. V1 is deliberately chat-only: the host
-starts Pi lazily on the first prompt with tools, extensions, skills, and project
-context disabled, and rejects tool-call events if a provider emits them. It does
+The persistent taskbar control immediately after Start opens the provider-neutral
+Agent conversation window; it occupies the former search-box slot without taking
+space from running applications, and it does not replace JARVIS quick search.
+The Host owns an explicit provider
+registry and capability contract. Pi is the first supported adapter; future
+adapters can join without changing the desktop/Bridge contract, but no provider
+is presented as available until its adapter is installed and configured. V1 is
+deliberately chat-only: the host starts Pi lazily on the first prompt with tools,
+extensions, skills, and project context disabled, and rejects tool-call events
+if a provider emits them. It does
 not download Pi or collect credentials at application runtime. Release builds
 stage the complete pinned Pi distribution under `AgentRuntime` and retain its
 directory structure, trust manifest, provenance, and MIT license. The bundled
@@ -207,6 +230,15 @@ payload characters so
 repeated cumulative snapshots cannot create unbounded parse or allocation work.
 The host keeps the prompt command reservation until its matching RPC response
 arrives, preventing a cancelled older request from terminating a newer turn.
+Provider state exposes a stable ID, display label, health, and declared
+capabilities. Undeclared operations fail closed before the provider process is
+started. Because the current desktop contract consumes incremental output, a
+provider that declares chat must also declare streaming; invalid provider events
+are contained inside the gateway and terminate only that provider run. Turn
+timeouts use the provider's abort command only when abort is declared, otherwise
+the child is terminated directly. The taskbar surface receives only read-only
+Agent state; prompts, history, abort, and session controls remain restricted to
+the desktop surface.
 
 An unpackaged developer may opt into an external native executable only by
 setting `JARVIS_ALLOW_EXTERNAL_PI_RUNTIME=1`, `JARVIS_PI_EXECUTABLE` to an
@@ -327,6 +359,14 @@ It also emits a `system.snapshot` event every second:
 {"event":"system.snapshot","data":{}}
 ```
 
+Every renderer request is limited to 256 KiB of UTF-8 JSON, 24 nesting levels,
+and 32 concurrent requests. Responses are serialized through an 8 MiB bounded
+writer and unsolicited events through a 1 MiB bounded writer, so an oversized
+native result is rejected or dropped before it can create an unbounded WebView2
+allocation. Desktop, taskbar, and switcher renderers also have separate method
+and event allowlists: the taskbar can observe Agent state only, while the
+switcher has no WebMessage channel.
+
 File copy and move use a non-blocking transfer protocol. The host emits
 `explorer.transferChanged` snapshots while scanning and transferring; cancellation
 removes JARVIS-created partial destinations. Cross-volume move copies and verifies
@@ -393,7 +433,9 @@ Terminal sessions use the Windows pseudoconsole API introduced in Windows 10
 version 1809. The renderer cannot provide executable paths, arguments, or a
 working directory. Terminal output and process exit are emitted as
 `terminal.output` and `terminal.exited` events; every session is closed when its
-tab, renderer, or native host is closed.
+tab, renderer, or native host is closed. Output waiting for the renderer is
+limited to 64 KiB per session and 32 sessions; overflow is discarded with an
+explicit terminal marker before it can become unbounded Host memory.
 
 Bridge messages are accepted only from the local `https://jarvis.local/` virtual
 origin. `shell.open` never accepts command-line arguments, elevation verbs,

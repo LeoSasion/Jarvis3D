@@ -1,18 +1,175 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  AGENT_CAPABILITIES,
+  agentSupportsCapability,
+  canUseAgentChat,
   agentSessionReducer,
+  createAgentCapabilityError,
   createAgentSessionModel,
   getAgentTranscriptAnnouncement,
   normalizeAgentMessage,
+  normalizeAgentState,
 } from "../src/agent-session-model.js";
 import { createAgentSessionGate } from "../src/agent-session-gate.js";
-import { runAgentSessionTransition } from "../src/hooks/useAgentSession.js";
+import {
+  hydrateAgentSession,
+  runAgentAbort,
+  runAgentPrompt,
+  runAgentSessionTransition,
+} from "../src/hooks/useAgentSession.js";
 import { createMockPlatform } from "../src/platform/mock-platform.js";
 
 function reduce(model, event) {
   return agentSessionReducer(model, { type: "event", event });
 }
+
+test("normalizes provider identity, capabilities, and health from the modern contract", () => {
+  const state = normalizeAgentState({
+    Available: true,
+    Configured: true,
+    Connected: false,
+    Status: "ready",
+    Provider: "compat-provider",
+    ProviderId: "provider-v2",
+    ProviderLabel: "Provider V2",
+    Capabilities: ["CHAT", "chat", "new-session", "bad capability", ""],
+    Health: {
+      Status: "ready",
+      Healthy: true,
+      Detail: "configuration verified",
+    },
+  });
+
+  assert.equal(state.provider, "compat-provider");
+  assert.equal(state.providerId, "provider-v2");
+  assert.equal(state.providerLabel, "Provider V2");
+  assert.deepEqual(state.capabilities, ["chat", "new-session"]);
+  assert.deepEqual(state.health, {
+    status: "ready",
+    healthy: true,
+    detail: "configuration verified",
+  });
+  assert.equal(agentSupportsCapability(state, AGENT_CAPABILITIES.chat), true);
+  assert.equal(agentSupportsCapability(state, AGENT_CAPABILITIES.abort), false);
+});
+
+test("keeps legacy Host sessions operational but treats explicit capability lists as authoritative", () => {
+  const legacy = normalizeAgentState({
+    available: true,
+    configured: true,
+    connected: true,
+    status: "ready",
+    provider: "pi",
+  });
+  assert.equal(agentSupportsCapability(legacy, AGENT_CAPABILITIES.messageHistory), true);
+  assert.equal(canUseAgentChat(legacy), true);
+  assert.equal(legacy.health.status, "connected");
+
+  const modernStatusOnly = normalizeAgentState({
+    available: true,
+    configured: true,
+    status: "ready",
+    providerId: "status-only",
+    providerLabel: "Status Only",
+    capabilities: [],
+  });
+  assert.deepEqual(modernStatusOnly.capabilities, []);
+  assert.equal(agentSupportsCapability(modernStatusOnly, AGENT_CAPABILITIES.chat), false);
+  assert.equal(canUseAgentChat(modernStatusOnly), false);
+  const partialUpdate = normalizeAgentState({ status: "running" }, modernStatusOnly);
+  assert.deepEqual(partialUpdate.capabilities, []);
+
+  assert.equal(canUseAgentChat({
+    available: true,
+    configured: false,
+    capabilities: [AGENT_CAPABILITIES.chat],
+  }), false);
+  assert.equal(canUseAgentChat({
+    available: false,
+    configured: true,
+    capabilities: [AGENT_CAPABILITIES.chat],
+  }), false);
+
+  const error = createAgentCapabilityError(AGENT_CAPABILITIES.chat);
+  assert.equal(error.code, "CAPABILITY_UNAVAILABLE");
+  assert.equal(error.retryable, false);
+});
+
+test("hydration skips message history when the Provider does not advertise it", async () => {
+  let model = createAgentSessionModel();
+  const gate = createAgentSessionGate((action) => {
+    model = agentSessionReducer(model, action);
+  });
+  const hydration = gate.captureHydration();
+  let messageRequests = 0;
+  const result = await hydrateAgentSession({
+    async getState() {
+      return {
+        available: true,
+        configured: true,
+        connected: true,
+        status: "ready",
+        providerId: "status-only",
+        providerLabel: "Status Only",
+        capabilities: ["chat"],
+      };
+    },
+    async getMessages() {
+      messageRequests += 1;
+      return [{ id: "must-not-load", role: "assistant", text: "unsafe" }];
+    },
+  }, gate, hydration);
+
+  assert.equal(result.messagesRequested, false);
+  assert.equal(messageRequests, 0);
+  assert.deepEqual(model.messages, []);
+  assert.deepEqual(model.state.capabilities, ["chat"]);
+  assert.equal(model.historyError, null);
+});
+
+test("new-session transition fails closed before calling an unsupported Provider", async () => {
+  let newSessionCalls = 0;
+  const gate = createAgentSessionGate(() => {});
+  await assert.rejects(
+    runAgentSessionTransition({
+      async newSession() {
+        newSessionCalls += 1;
+        return { success: true };
+      },
+    }, gate, {
+      capabilities: ["chat"],
+    }),
+    (error) => error.code === "CAPABILITY_UNAVAILABLE",
+  );
+  assert.equal(newSessionCalls, 0);
+  assert.equal(gate.isTransitioning(), false);
+});
+
+test("chat and abort commands fail closed before crossing the Provider boundary", async () => {
+  const calls = [];
+  const agent = {
+    prompt() {
+      calls.push("prompt");
+      return Promise.resolve({ accepted: true });
+    },
+    abort() {
+      calls.push("abort");
+      return Promise.resolve({ success: true });
+    },
+  };
+  const state = { capabilities: ["message-history"] };
+
+  assert.throws(
+    () => runAgentPrompt(agent, state, "hello", "client-1"),
+    (error) => error.code === "CAPABILITY_UNAVAILABLE",
+  );
+  assert.throws(
+    () => runAgentAbort(agent, state),
+    (error) => error.code === "CAPABILITY_UNAVAILABLE",
+  );
+  assert.deepEqual(calls, []);
+});
 
 test("merges text deltas into one plain-text assistant message", () => {
   let model = createAgentSessionModel({
@@ -386,6 +543,20 @@ test("mock Agent streams an explicitly local browser-preview response", async ()
   const state = await mock.agent.getState();
   const messages = await mock.agent.getMessages();
   assert.equal(state.status, "ready");
+  assert.equal(state.providerId, "browser-preview");
+  assert.equal(state.providerLabel, "Browser Preview");
+  assert.deepEqual(state.capabilities, [
+    "abort",
+    "chat",
+    "message-history",
+    "new-session",
+    "streaming",
+  ]);
+  assert.deepEqual(state.health, {
+    status: "connected",
+    healthy: true,
+    detail: null,
+  });
   assert.equal(messages.length, 2);
   assert.equal(messages[0].runId, accepted.runId);
   assert.equal(messages[1].runId, accepted.runId);

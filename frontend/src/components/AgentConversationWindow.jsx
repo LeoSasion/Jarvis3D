@@ -13,7 +13,12 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getLatestAgentRelationMessage } from "../agent-context-model.js";
 import { getAgentProviderLabel } from "../agent-provider-model.js";
-import { getAgentTranscriptAnnouncement } from "../agent-session-model.js";
+import {
+  AGENT_CAPABILITIES,
+  agentSupportsCapability,
+  canUseAgentChat,
+  getAgentTranscriptAnnouncement,
+} from "../agent-session-model.js";
 import { SystemNotice } from "./SystemNotice.jsx";
 
 const STATUS_COPY = Object.freeze({
@@ -98,6 +103,7 @@ function LinkedContextEvent({
   context,
   phase,
   selectionItems,
+  chatAvailable = true,
   onLinkSelection,
   onClear,
 }) {
@@ -112,7 +118,14 @@ function LinkedContextEvent({
           <strong>{selectionItems.length === 1 ? selectionItems[0].name : `${selectionItems.length} ITEMS SELECTED`}</strong>
           <p>Link the visible selection as metadata-only context. File contents stay outside this chat channel.</p>
         </span>
-        <button type="button" onClick={() => onLinkSelection?.(selectionItems)}>LINK TO DIRECTIVE</button>
+        <button
+          type="button"
+          onClick={() => onLinkSelection?.(selectionItems)}
+          disabled={!chatAvailable}
+          title={chatAvailable ? undefined : "The active Provider does not support chat"}
+        >
+          {chatAvailable ? "LINK TO DIRECTIVE" : "CHAT UNAVAILABLE"}
+        </button>
       </section>
     );
   }
@@ -178,7 +191,16 @@ export function AgentConversationWindow({
     ?? (status === "ready" && state?.connected ? "CHANNEL CONNECTED" : STATUS_COPY[status])
     ?? "STANDBY";
   const isRunning = status === "running" || status === "starting";
-  const channelReady = Boolean(state?.available) && status === "ready" && !sessionTransitioning;
+  const supportsChat = canUseAgentChat(state);
+  const supportsAbort = agentSupportsCapability(state, AGENT_CAPABILITIES.abort);
+  const supportsNewSession = agentSupportsCapability(
+    state,
+    AGENT_CAPABILITIES.newSession,
+  );
+  const channelReady = Boolean(state?.available)
+    && supportsChat
+    && status === "ready"
+    && !sessionTransitioning;
   const canSend = channelReady
     && draft.trim().length > 0;
   const connectionCopy = useMemo(() => {
@@ -205,6 +227,13 @@ export function AgentConversationWindow({
         detail: errorView.guidance,
       };
     }
+    if (!supportsChat) {
+      return {
+        eyebrow: "CHAT CAPABILITY UNAVAILABLE",
+        heading: "This Provider is status-only here",
+        detail: "Choose a Provider that declares chat capability before sending a directive.",
+      };
+    }
     if (!state?.connected) {
       return {
         eyebrow: "SECURE RUNTIME VERIFIED",
@@ -217,7 +246,7 @@ export function AgentConversationWindow({
       heading: "What should we work on?",
       detail: "Messages stream through the Windows host. System tools remain disabled in this integration.",
     };
-  }, [errorView, state?.available, state?.connected, state?.error?.message]);
+  }, [errorView, state?.available, state?.connected, state?.error?.message, supportsChat]);
 
   useEffect(() => {
     const transcript = transcriptRef.current;
@@ -281,9 +310,16 @@ export function AgentConversationWindow({
             type="button"
             data-no-window-drag
             onClick={() => { void onNewSession().catch(() => {}); }}
-            disabled={isRunning || sessionTransitioning || !state?.available}
+            disabled={
+              isRunning
+              || sessionTransitioning
+              || !state?.available
+              || !supportsNewSession
+            }
             aria-label="Start new Agent session"
-            title="New session"
+            title={supportsNewSession
+              ? "New session"
+              : "This Provider does not support new sessions"}
           >
             <AddRegular />
           </button>
@@ -308,7 +344,10 @@ export function AgentConversationWindow({
         </header>
 
         <div className="agent-context-strip">
-          <span><ShieldRegular />CHAT ONLY · TOOLS DISABLED</span>
+          <span>
+            <ShieldRegular />
+            {supportsChat ? "CHAT ONLY · TOOLS DISABLED" : "STATUS ONLY · CHAT UNAVAILABLE"}
+          </span>
           <code>{connectionCopy}</code>
           <small>{state?.sessionId ? `SESSION ${String(state.sessionId).slice(0, 8)}` : "EPHEMERAL SESSION"}</small>
         </div>
@@ -324,6 +363,7 @@ export function AgentConversationWindow({
             context={linkedContext}
             phase={linkedFlowPhase}
             selectionItems={explorerSelection}
+            chatAvailable={supportsChat}
             onLinkSelection={onLinkExplorerSelection}
             onClear={onClearLinkedContext}
           />
@@ -413,6 +453,8 @@ export function AgentConversationWindow({
               ? "Agent response in progress…"
               : channelReady
                 ? errorView?.guidance ?? "Ask the Agent…"
+                : state?.available && !supportsChat
+                  ? "This Provider does not support chat in JARVIS"
                 : state?.available
                   ? "Wait for the Agent channel to become ready"
                   : "Connect a verified Provider to enable Agent chat"}
@@ -423,7 +465,7 @@ export function AgentConversationWindow({
               if (canSend) void onSend().catch(() => {});
             }}
           />
-          {isRunning ? (
+          {isRunning && supportsAbort ? (
             <button
               type="button"
               className="is-stop"
@@ -431,6 +473,16 @@ export function AgentConversationWindow({
               aria-label="Stop Agent response"
             >
               <DismissRegular /><span>STOP</span>
+            </button>
+          ) : isRunning ? (
+            <button
+              type="button"
+              className="is-stop"
+              disabled
+              aria-label="This Provider does not support stopping the active response"
+              title="This Provider does not support abort"
+            >
+              <DismissRegular /><span>NO STOP</span>
             </button>
           ) : (
             <button type="submit" className="is-send" disabled={!canSend} aria-label="Send to Agent">
@@ -441,7 +493,9 @@ export function AgentConversationWindow({
 
         <footer className="agent-footer">
           <span><i className={`is-${visualStatus}`} />{active ? "FOCUSED CHANNEL" : "BACKGROUND CHANNEL"}</span>
-          <small>ENTER TO SEND · SHIFT+ENTER FOR NEW LINE</small>
+          <small>{supportsChat
+            ? "ENTER TO SEND · SHIFT+ENTER FOR NEW LINE"
+            : "CHAT NOT SUPPORTED BY ACTIVE PROVIDER"}</small>
           <code>NO SHELL · NO FILE WRITE · NO SYSTEM CONTROL</code>
         </footer>
       </section>

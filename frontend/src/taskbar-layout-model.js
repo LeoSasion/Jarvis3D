@@ -26,22 +26,13 @@ function sumWidths(items, key) {
 
 /**
  * Plans taskbar density without clipping labels or splitting application groups.
- * Full labels are preferred, recognizable icons compact next, and a stable prefix
- * is retained when an overflow control is required.
+ * Icon slots are the stable default, so contextual labels can be revealed without
+ * moving adjacent applications. Items without a usable icon retain their full
+ * label width, and overflow always preserves the original atomic prefix.
  */
 export function getTaskbarLayoutPlan(items = [], containerWidth) {
   const prepared = items.map(prepareItem).filter((item) => item.id);
   const availableWidth = normalizeWidth(containerWidth, DEFAULT_SLOT_WIDTH * MINIMUM_VISIBLE_SLOTS);
-  const fullWidth = sumWidths(prepared, "fullWidth");
-
-  if (fullWidth <= availableWidth) {
-    return {
-      mode: "full",
-      visible: prepared.map((item) => ({ id: item.id, density: "full", width: item.fullWidth })),
-      overflowIds: [],
-    };
-  }
-
   const compactWidth = sumWidths(prepared, "compactWidth");
   if (compactWidth <= availableWidth) {
     return {

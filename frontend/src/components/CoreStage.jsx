@@ -6,7 +6,9 @@ import {
 } from "@fluentui/react-icons";
 import { useEffect, useMemo, useRef } from "react";
 import { getKnowledgeGraphPresentation } from "../knowledge-graph-model.js";
+import { usePlatformKind } from "../hooks/usePlatformData.js";
 import { useReducedMotion } from "../hooks/useReducedMotion.js";
+import { KnowledgeGraphWorkspace } from "./KnowledgeGraphWorkspace.jsx";
 import { KnowledgeGraphField } from "./VectorMarks.jsx";
 
 const actionIcons = Object.freeze({
@@ -14,12 +16,17 @@ const actionIcons = Object.freeze({
   "open-files": FolderRegular,
   "desktop-only": DesktopRegular,
 });
+const EMPTY_GRAPH_SELECTION = Object.freeze([]);
 
 export function CoreStage({
   graphState = null,
+  graphSource = null,
+  graphSelection = EMPTY_GRAPH_SELECTION,
   desktopOnly = false,
   onOpenSearch,
   onOpenFiles,
+  onOpenGraphPath,
+  onLinkGraphNode,
   onKeepDesktop,
   onRestoreLaunchpad,
 }) {
@@ -28,18 +35,24 @@ export function CoreStage({
   const pointerRef = useRef(null);
   const frameRef = useRef(0);
   const motionReduced = useReducedMotion();
-  const presentation = getKnowledgeGraphPresentation(graphState);
+  const platformKind = usePlatformKind();
+  const activeGraphSource = graphSource ?? graphState;
+  const presentation = getKnowledgeGraphPresentation(activeGraphSource);
   const actionHandlers = useMemo(() => ({
     "search-local": onOpenSearch,
     "open-files": onOpenFiles,
     "desktop-only": onKeepDesktop,
   }), [onKeepDesktop, onOpenFiles, onOpenSearch]);
+  const graphSelectionPaths = useMemo(
+    () => graphSelection.map((entry) => entry.path).filter(Boolean),
+    [graphSelection],
+  );
 
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return undefined;
 
-    if (motionReduced) {
+    if (motionReduced || presentation.connected) {
       rectRef.current = null;
       pointerRef.current = null;
       cancelAnimationFrame(frameRef.current);
@@ -60,7 +73,7 @@ export function CoreStage({
       observer.disconnect();
       cancelAnimationFrame(frameRef.current);
     };
-  }, [motionReduced]);
+  }, [motionReduced, presentation.connected]);
 
   const applyPointer = () => {
     frameRef.current = 0;
@@ -94,23 +107,35 @@ export function CoreStage({
     <section
       ref={stageRef}
       className={`core-stage is-${presentation.status} ${desktopOnly ? "is-desktop-only" : ""}`}
-      onPointerEnter={motionReduced ? undefined : () => {
+      onPointerEnter={motionReduced || presentation.connected ? undefined : () => {
         rectRef.current = stageRef.current?.getBoundingClientRect() ?? null;
       }}
-      onPointerMove={motionReduced ? undefined : handlePointerMove}
-      onPointerLeave={motionReduced ? undefined : resetPointer}
+      onPointerMove={motionReduced || presentation.connected ? undefined : handlePointerMove}
+      onPointerLeave={motionReduced || presentation.connected ? undefined : resetPointer}
       aria-label="JARVIS knowledge graph workspace"
     >
       <p className="sr-only">{presentation.announcement}</p>
-      <div className="core-stage__media" aria-hidden="true">
-        <KnowledgeGraphField connected={presentation.connected} />
-        <div className="core-stage__readout">
-          <span>LOCAL KNOWLEDGE GRAPH</span>
-          <strong>{presentation.title}</strong>
-          <small>{presentation.detail}</small>
-          <small>{presentation.meta}</small>
+      {presentation.connected ? (
+        <div className="core-stage__media is-interactive">
+          <KnowledgeGraphWorkspace
+            source={activeGraphSource}
+            selectionPaths={graphSelectionPaths}
+            platformKind={platformKind}
+            onOpenPath={onOpenGraphPath}
+            onLinkNodeToAgent={onLinkGraphNode}
+          />
         </div>
-      </div>
+      ) : (
+        <div className="core-stage__media" aria-hidden="true">
+          <KnowledgeGraphField connected={false} />
+          <div className="core-stage__readout">
+            <span>LOCAL KNOWLEDGE GRAPH</span>
+            <strong>{presentation.title}</strong>
+            <small>{presentation.detail}</small>
+            <small>{presentation.meta}</small>
+          </div>
+        </div>
+      )}
       {!presentation.connected && !desktopOnly ? (
         <nav className="core-stage__launchpad" aria-label="Start a local JARVIS task">
           <header><span>NO VERIFIED SOURCE</span><strong>CHOOSE A LOCAL START</strong></header>

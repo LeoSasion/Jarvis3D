@@ -12,21 +12,24 @@ test("motion stylesheet is loaded after the geometry and visual layers", async (
   const entry = await readSource("main.jsx");
   const geometryIndex = entry.indexOf('import "./styles.css"');
   const visualIndex = entry.indexOf('import "./vector-shell.css"');
+  const operatorIndex = entry.indexOf('import "./operator-workspace.css"');
   const motionIndex = entry.indexOf('import "./motion.css"');
 
   assert.ok(geometryIndex >= 0);
   assert.ok(visualIndex > geometryIndex);
-  assert.ok(motionIndex > visualIndex);
+  assert.ok(operatorIndex > visualIndex);
+  assert.ok(motionIndex > operatorIndex);
 });
 
 test("motion.css is the sole CSS owner of reduced-motion behavior", async () => {
-  const [legacy, visual, motion] = await Promise.all([
+  const [legacy, visual, operator, motion] = await Promise.all([
     readSource("styles.css"),
     readSource("vector-shell.css"),
+    readSource("operator-workspace.css"),
     readSource("motion.css"),
   ]);
 
-  for (const source of [legacy, visual]) {
+  for (const source of [legacy, visual, operator]) {
     assert.doesNotMatch(source, /prefers-reduced-motion/u);
     assert.doesNotMatch(source, /data-motion=["']reduced["']/u);
   }
@@ -34,7 +37,7 @@ test("motion.css is the sole CSS owner of reduced-motion behavior", async () => 
   assert.match(motion, /@media \(prefers-reduced-motion: reduce\)/u);
   assert.match(motion, /:root:not\(\[data-motion="full"\]\)/u);
   assert.match(motion, /:root\[data-motion="reduced"\]/u);
-  assert.doesNotMatch(`${legacy}\n${visual}\n${motion}`, /0\.01ms/u);
+  assert.doesNotMatch(`${legacy}\n${visual}\n${operator}\n${motion}`, /0\.01ms/u);
   assert.doesNotMatch(motion, /data-motion="reduced"\]\s+\*/u);
 });
 

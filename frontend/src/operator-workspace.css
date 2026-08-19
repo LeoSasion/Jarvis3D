@@ -1,0 +1,718 @@
+/* Functional evolution layer: interactive graph, quiet taskbar, adaptive linked rail, and DPI legibility. */
+
+:root {
+  --linked-system-collapsed-width: 116px;
+  --operator-hit-size: 34px;
+}
+
+.taskbar {
+  z-index: 96;
+}
+
+/* Connected local knowledge graph ------------------------------------------------ */
+
+.core-stage__media.is-interactive {
+  pointer-events: auto;
+  transform: none;
+  transition: none;
+}
+
+.knowledge-workspace {
+  position: absolute;
+  inset: 0;
+  isolation: isolate;
+  overflow: hidden;
+  color: var(--ink-1);
+  background:
+    linear-gradient(90deg, transparent 49.94%, rgb(245 241 233 / 12%) 50%, transparent 50.06%),
+    linear-gradient(transparent 49.94%, rgb(245 241 233 / 12%) 50%, transparent 50.06%),
+    var(--surface-canvas);
+}
+
+.knowledge-workspace__toolbar {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  left: 0;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 0 12px;
+  border-bottom: var(--stroke) solid var(--structure);
+  background: rgb(0 0 0 / 92%);
+}
+
+.knowledge-workspace__toolbar > label {
+  min-width: 0;
+  height: var(--operator-hit-size);
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border-bottom: var(--accent-stroke) solid var(--structure-strong);
+  color: var(--ink-2);
+}
+
+.knowledge-workspace__toolbar > label:focus-within {
+  border-color: var(--signal-hot);
+  color: var(--signal-hot);
+  box-shadow: 0 -1px 0 var(--signal-dim) inset;
+}
+
+.knowledge-workspace__toolbar svg {
+  width: 17px;
+  height: 17px;
+}
+
+.knowledge-workspace__toolbar input {
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: var(--ink-1);
+  background: transparent;
+  font: 11px/1 var(--font-data);
+  letter-spacing: 0.06em;
+}
+
+.knowledge-workspace__toolbar input::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
+}
+
+.knowledge-workspace__facts {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--ink-2);
+  font: 10px/1 var(--font-data);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.knowledge-workspace__facts strong {
+  max-width: 210px;
+  overflow: hidden;
+  color: var(--ink-1);
+  text-overflow: ellipsis;
+}
+
+.knowledge-workspace__facts span + span {
+  padding-left: 12px;
+  border-left: var(--stroke) solid var(--structure);
+}
+
+.knowledge-workspace__facts span:last-child {
+  color: var(--signal-pale);
+}
+
+.knowledge-workspace__zoom {
+  height: var(--operator-hit-size);
+  display: grid;
+  grid-template-columns: repeat(4, var(--operator-hit-size));
+  align-items: stretch;
+  border-inline: var(--stroke) solid var(--structure);
+}
+
+.knowledge-workspace__zoom button,
+.knowledge-workspace__zoom output {
+  min-width: var(--operator-hit-size);
+  min-height: var(--operator-hit-size);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-right: var(--stroke) solid var(--structure);
+  color: var(--ink-2);
+  background: transparent;
+  font: 10px/1 var(--font-data);
+}
+
+.knowledge-workspace__zoom button:last-child {
+  border-right: 0;
+}
+
+.knowledge-workspace__zoom button:hover,
+.knowledge-workspace__zoom button:focus-visible {
+  color: var(--signal-hot);
+  background: var(--signal-fill-strong);
+}
+
+.knowledge-workspace__canvas {
+  position: absolute;
+  inset: 44px 0 0;
+  width: 100%;
+  height: calc(100% - 44px);
+  overflow: visible;
+  touch-action: none;
+  shape-rendering: geometricPrecision;
+}
+
+.knowledge-workspace__dot {
+  fill: var(--ink-2);
+  opacity: 0.4;
+}
+
+.knowledge-workspace__field {
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.knowledge-workspace__edges path {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 0.9;
+  opacity: 0.82;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.knowledge-workspace__edges path.is-active {
+  stroke: var(--signal-hot);
+  stroke-width: 1.25;
+  opacity: 1;
+  filter: drop-shadow(var(--glow-status));
+}
+
+.knowledge-node {
+  cursor: grab;
+  outline: none;
+  pointer-events: bounding-box;
+}
+
+.knowledge-node:active {
+  cursor: grabbing;
+}
+
+.knowledge-node > :where(rect, path:not(.knowledge-node__state)) {
+  fill: var(--surface-canvas);
+  stroke: var(--ink-2);
+  stroke-width: 1.25;
+  vector-effect: non-scaling-stroke;
+}
+
+.knowledge-node__orbit {
+  fill: none;
+  stroke: var(--structure-strong);
+  stroke-width: 0.75;
+  stroke-dasharray: 3 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.knowledge-node.is-entry > rect {
+  fill: var(--ink-1);
+  stroke: none;
+}
+
+.knowledge-node.is-source > path {
+  fill: var(--void);
+  stroke: var(--signal-hot);
+  stroke-width: 1.5;
+  filter: drop-shadow(var(--glow-status));
+}
+
+.knowledge-node.is-group > rect {
+  fill: var(--surface-1);
+  stroke: var(--ink-1);
+  stroke-width: 1.5;
+}
+
+.knowledge-node.is-group.is-collapsed > rect {
+  stroke: var(--ink-3);
+}
+
+.knowledge-node__state {
+  fill: none;
+  stroke: var(--signal-hot);
+  stroke-width: 1;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.knowledge-node > text {
+  fill: var(--ink-1);
+  font: 600 10px/1 var(--font-data);
+  letter-spacing: 0.06em;
+  paint-order: stroke fill;
+  stroke: var(--void);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  user-select: none;
+}
+
+.knowledge-node > text.knowledge-node__meta {
+  fill: var(--ink-2);
+  font-size: 8.5px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.knowledge-node.is-entry > text {
+  display: none;
+}
+
+.knowledge-workspace[data-node-density="expanded"] .knowledge-node.is-entry > text {
+  display: block;
+}
+
+.knowledge-workspace[data-node-density="expanded"] .knowledge-node.is-entry > text.knowledge-node__meta {
+  fill: var(--ink-3);
+}
+
+.knowledge-workspace[data-node-density="balanced"] .knowledge-node.is-entry:nth-child(-n + 13) > text {
+  display: block;
+}
+
+.knowledge-node.is-entry:hover > text,
+.knowledge-node.is-entry:focus-visible > text,
+.knowledge-node.is-entry.is-selected > text,
+.knowledge-node.is-entry.is-explorer-selected > text {
+  display: block;
+}
+
+.knowledge-node:hover > :where(rect, path:not(.knowledge-node__state)),
+.knowledge-node:focus-visible > :where(rect, path:not(.knowledge-node__state)),
+.knowledge-node.is-selected > :where(rect, path:not(.knowledge-node__state)),
+.knowledge-node.is-explorer-selected > :where(rect, path:not(.knowledge-node__state)) {
+  fill: var(--signal-hot);
+  stroke: var(--signal-pale);
+  filter: drop-shadow(var(--glow-status));
+}
+
+.knowledge-node:focus-visible > :where(rect, path:not(.knowledge-node__state)) {
+  stroke-width: 2;
+}
+
+.knowledge-workspace__hint,
+.knowledge-workspace__limit,
+.knowledge-workspace__empty {
+  position: absolute;
+  z-index: 2;
+  margin: 0;
+  color: var(--ink-2);
+  font: 10px/1 var(--font-data);
+  letter-spacing: 0.08em;
+}
+
+.knowledge-workspace__hint {
+  right: 18px;
+  bottom: 18px;
+}
+
+.knowledge-workspace__limit {
+  left: 18px;
+  bottom: 18px;
+  color: var(--signal-pale);
+}
+
+.knowledge-workspace__empty {
+  top: 50%;
+  left: 50%;
+  color: var(--ink-2);
+  transform: translate(-50%, -50%);
+}
+
+.knowledge-workspace__inspector {
+  position: absolute;
+  z-index: 4;
+  right: 18px;
+  bottom: 18px;
+  width: min(360px, calc(100% - 36px));
+  display: grid;
+  gap: 10px;
+  padding: 12px 0 0;
+  border-block: var(--stroke) solid var(--structure-strong);
+  color: var(--ink-2);
+  background: rgb(0 0 0 / 94%);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 48%);
+}
+
+.knowledge-workspace__inspector > header,
+.knowledge-workspace__inspector dl,
+.knowledge-workspace__inspector > footer {
+  padding-inline: 12px;
+}
+
+.knowledge-workspace__inspector > header {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.knowledge-workspace__inspector > header span,
+.knowledge-workspace__inspector dt {
+  color: var(--ink-3);
+  font: 10px/1 var(--font-data);
+  letter-spacing: 0.08em;
+}
+
+.knowledge-workspace__inspector > header strong {
+  overflow: hidden;
+  color: var(--ink-1);
+  font: 600 15px/1.15 var(--font-display);
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knowledge-workspace__inspector dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.knowledge-workspace__inspector dl > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.knowledge-workspace__inspector dd {
+  overflow: hidden;
+  margin: 0;
+  color: var(--ink-2);
+  font: 10px/1.25 var(--font-data);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knowledge-workspace__inspector > footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 0;
+  border-top: var(--stroke) solid var(--structure);
+}
+
+.knowledge-workspace__inspector > footer button {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-right: var(--stroke) solid var(--structure);
+  color: var(--ink-2);
+  background: transparent;
+  font: 600 10px/1 var(--font-data);
+  letter-spacing: 0.06em;
+}
+
+.knowledge-workspace__inspector > footer button:last-child {
+  border-right: 0;
+}
+
+.knowledge-workspace__inspector > footer button:hover,
+.knowledge-workspace__inspector > footer button:focus-visible {
+  color: var(--ink-1);
+  background: var(--signal-fill-strong);
+  box-shadow: 0 -1px 0 var(--signal-hot) inset;
+}
+
+.knowledge-workspace__inspector > footer svg {
+  width: 16px;
+  height: 16px;
+  color: var(--signal-hot);
+}
+
+/* Quiet application rail ------------------------------------------------------- */
+
+.taskbar-apps,
+.jarvis-taskbar-surface .taskbar-apps {
+  overflow: visible;
+}
+
+.taskbar-app-fallback-mark {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  flex: 0 0 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: var(--stroke) solid var(--structure-strong);
+  color: var(--ink-2);
+  background: transparent;
+  font: 650 9px/1 var(--font-data);
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.taskbar-apps > button[data-density] > .taskbar-app-fallback-mark,
+.jarvis-taskbar-surface .taskbar-apps > button[data-density] > .taskbar-app-fallback-mark {
+  display: grid;
+  max-width: 22px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.taskbar-apps > button:where(:hover, :focus-visible, .is-active) > .taskbar-app-fallback-mark,
+.jarvis-taskbar-surface .taskbar-apps > button:where(:hover, :focus-visible, .is-active) > .taskbar-app-fallback-mark,
+.taskbar-flyout-grid article:where(:hover, .is-active, .is-keyboard-active) .taskbar-app-fallback-mark {
+  border-color: var(--signal-dim);
+  color: var(--signal-hot);
+}
+
+.taskbar-apps .taskbar-app-label,
+.jarvis-taskbar-surface .taskbar-apps .taskbar-app-label {
+  z-index: 6;
+}
+
+.taskbar-apps > button[data-label-mode="contextual"] > .taskbar-app-label,
+.jarvis-taskbar-surface .taskbar-apps > button[data-label-mode="contextual"] > .taskbar-app-label {
+  position: absolute;
+  bottom: 1px;
+  left: 50%;
+  width: max-content;
+  max-width: 240px;
+  display: none;
+  overflow: hidden;
+  padding: 2px 6px;
+  border: var(--stroke) solid var(--structure-strong);
+  color: var(--ink-1);
+  background: var(--void);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 76%);
+  text-overflow: ellipsis;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.taskbar-apps > button[data-label-mode="contextual"]:where(:hover, :focus-visible) > .taskbar-app-label,
+.jarvis-taskbar-surface .taskbar-apps > button[data-label-mode="contextual"]:where(:hover, :focus-visible) > .taskbar-app-label {
+  display: block;
+}
+
+.taskbar-apps > button[data-label-mode="persistent"] > .taskbar-app-label,
+.jarvis-taskbar-surface .taskbar-apps > button[data-label-mode="persistent"] > .taskbar-app-label {
+  display: block;
+}
+
+/* Adaptive linked system rail -------------------------------------------------- */
+
+.linked-system-rail > header {
+  gap: 8px;
+}
+
+.linked-system-rail-heading {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.linked-system-rail-heading small {
+  color: var(--ink-3);
+  font: 9px/1 var(--font-data);
+  letter-spacing: 0.07em;
+}
+
+.linked-system-rail.has-warning-status .linked-system-rail-heading small,
+.linked-system-rail.has-error-status .linked-system-rail-heading small {
+  color: var(--signal-pale);
+}
+
+.linked-system-rail-toggle {
+  min-width: var(--operator-hit-size);
+  min-height: var(--operator-hit-size);
+  padding: 0 8px;
+  border: var(--stroke) solid var(--structure);
+  color: var(--ink-2);
+  background: transparent;
+  font: 9px/1 var(--font-data);
+  letter-spacing: 0.05em;
+}
+
+.linked-system-rail-toggle:hover,
+.linked-system-rail-toggle:focus-visible {
+  border-color: var(--signal-hot);
+  color: var(--ink-1);
+  background: var(--signal-fill-strong);
+}
+
+.linked-system-rail-summary[hidden],
+.linked-system-rail > section[hidden] {
+  display: none;
+}
+
+.linked-system-rail-priority {
+  display: grid;
+  gap: 5px;
+  margin: 12px 0 0;
+  color: var(--ink-2);
+  font: 9px/1.25 var(--font-data);
+  letter-spacing: 0.04em;
+}
+
+.linked-system-rail-priority small {
+  color: var(--ink-3);
+}
+
+.linked-system-notification.is-compact {
+  margin-top: 12px;
+}
+
+.jarvis-shell.is-linked-three-pane:has(.linked-system-rail.is-collapsed) .linked-system-rail {
+  left: calc(
+    var(--workspace-left-inset, 12px)
+    + var(--workspace-available-width, calc(100vw - 24px))
+    - var(--linked-system-collapsed-width)
+  );
+  width: var(--linked-system-collapsed-width);
+}
+
+.jarvis-shell.is-linked-three-pane:has(.linked-system-rail.is-collapsed) .workspace-window.is-agent {
+  left: calc(
+    var(--workspace-left-inset, 12px)
+    + var(--workspace-available-width, calc(100vw - 24px)) * 0.532
+  ) !important;
+  width: calc(
+    var(--workspace-available-width, calc(100vw - 24px)) * 0.468
+    - var(--linked-system-collapsed-width)
+  ) !important;
+}
+
+.jarvis-shell.is-linked-three-pane:has(.linked-system-rail.is-collapsed) .linked-workspace-frame > i:last-child {
+  left: calc(100% - var(--linked-system-collapsed-width));
+}
+
+.linked-system-rail.is-collapsed > header {
+  height: auto;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 8px;
+}
+
+.linked-system-rail.is-collapsed > header > i {
+  display: none;
+}
+
+.linked-system-rail.is-collapsed .linked-system-rail-toggle {
+  width: 26px;
+  min-width: 26px;
+  padding: 0;
+  overflow: hidden;
+  color: transparent;
+}
+
+.linked-system-rail.is-collapsed .linked-system-rail-toggle::before {
+  content: ">";
+  color: var(--signal-hot);
+}
+
+.linked-system-rail.is-collapsed > section {
+  margin-inline: 8px;
+  padding-block: 12px;
+}
+
+.linked-system-rail.is-collapsed dl {
+  gap: 12px;
+}
+
+.linked-system-rail.is-collapsed dl > div {
+  grid-template-columns: 1fr;
+  gap: 3px;
+}
+
+.linked-system-rail.is-collapsed dd {
+  text-align: left;
+}
+
+.linked-system-rail.is-collapsed .linked-system-notification {
+  padding: 8px 0;
+}
+
+/* DPI-specific legibility. CSS pixels already follow Windows scaling; these
+   adjustments protect the smallest telemetry roles on dense panels. */
+
+@media (min-resolution: 144dpi) {
+  :root {
+    --operator-hit-size: 36px;
+  }
+
+  .knowledge-workspace__toolbar input,
+  .knowledge-workspace__facts,
+  .knowledge-workspace__zoom :where(button, output),
+  .knowledge-workspace__hint,
+  .knowledge-workspace__limit,
+  .knowledge-workspace__inspector :where(dt, dd, header span, footer button),
+  .linked-system-rail :where(h2, dt, dd, button, small) {
+    font-size: 11px;
+  }
+
+  .knowledge-node > text {
+    font-size: 11px;
+  }
+
+  .knowledge-node > text.knowledge-node__meta {
+    font-size: 9px;
+  }
+}
+
+@media (min-resolution: 192dpi) {
+  .knowledge-workspace__toolbar {
+    min-height: 48px;
+  }
+
+  .knowledge-workspace__canvas {
+    inset-block-start: 48px;
+    height: calc(100% - 48px);
+  }
+
+  .knowledge-workspace__toolbar input,
+  .knowledge-workspace__facts,
+  .knowledge-workspace__zoom :where(button, output),
+  .knowledge-workspace__inspector :where(dt, dd, header span, footer button),
+  .linked-system-rail :where(h2, dt, dd, button, small) {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 1180px), (max-height: 720px) {
+  .knowledge-workspace__toolbar {
+    grid-template-columns: minmax(180px, 1fr) auto;
+  }
+
+  .knowledge-workspace__facts {
+    display: none;
+  }
+}
+
+@media (max-width: 820px) {
+  .knowledge-workspace__toolbar {
+    gap: 8px;
+    padding-inline: 8px;
+  }
+
+  .knowledge-workspace__zoom {
+    grid-template-columns: repeat(3, var(--operator-hit-size));
+  }
+
+  .knowledge-workspace__zoom output {
+    display: none;
+  }
+
+  .knowledge-workspace__inspector {
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+  }
+}
+
+@media (forced-colors: active) {
+  .knowledge-workspace__edges path,
+  .knowledge-node > :where(rect, path),
+  .knowledge-workspace__toolbar,
+  .knowledge-workspace__inspector,
+  .linked-system-rail-toggle,
+  .taskbar-app-label {
+    forced-color-adjust: auto;
+  }
+}

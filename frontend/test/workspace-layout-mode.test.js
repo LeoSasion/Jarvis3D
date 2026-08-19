@@ -133,7 +133,19 @@ test("notices avoid taskbar-adjacent controls whenever a workspace surface is ac
     linkedVariant: LINKED_WORKSPACE_VARIANTS.SINGLE_PANE,
     activeId: "explorer",
     noticeSource: "agent",
-  }), "workspace-top-end");
+  }), "shell-top");
+  assert.equal(getSystemNoticePlacement({
+    workspaceMode: WORKSPACE_LAYOUT_MODES.EXPLORER_AGENT_LINKED,
+    linkedVariant: LINKED_WORKSPACE_VARIANTS.DRAWER,
+    activeId: "explorer",
+    noticeSource: "agent",
+  }), "shell-top");
+  assert.equal(getSystemNoticePlacement({
+    workspaceMode: WORKSPACE_LAYOUT_MODES.EXPLORER_AGENT_LINKED,
+    linkedVariant: LINKED_WORKSPACE_VARIANTS.DRAWER,
+    activeId: "agent",
+    noticeSource: "explorer",
+  }), "workspace-top-start");
   assert.equal(getSystemNoticePlacement({
     workspaceMode: WORKSPACE_LAYOUT_MODES.FLOATING,
     shellPanel: "settings",

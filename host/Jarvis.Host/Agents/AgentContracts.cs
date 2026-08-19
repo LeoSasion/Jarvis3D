@@ -18,7 +18,30 @@ internal sealed record AgentStateSnapshot(
     string Status,
     string? SessionId,
     string? ActiveRunId,
-    AgentError? Error);
+    AgentError? Error,
+    string ProviderLabel = "Agent Provider",
+    IReadOnlyList<string>? Capabilities = null)
+{
+    public string? ProviderId => Provider;
+
+    public AgentProviderHealth Health => new(
+        Status: !Available || !Configured
+            ? "unavailable"
+            : Error is not null
+                ? "degraded"
+                : Running
+                    ? "busy"
+                    : Connected
+                        ? "connected"
+                        : "ready",
+        Healthy: Available && Configured && Error is null,
+        Detail: Error?.Code);
+}
+
+internal sealed record AgentProviderHealth(
+    string Status,
+    bool Healthy,
+    string? Detail);
 
 internal sealed record AgentMessageSnapshot(
     string Id,

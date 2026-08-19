@@ -144,6 +144,13 @@ export function getSystemNoticePlacement({
     const sourcePane = noticeSource === "agent" || noticeSource === "explorer"
       ? noticeSource
       : activeId;
+    if (sourcePane && isLinkedWindowSuppressed(
+      sourcePane,
+      linkedVariant,
+      sourcePane === activeId,
+    )) {
+      return "shell-top";
+    }
     if (sourcePane === "explorer") return "workspace-top-start";
     if (sourcePane === "agent") return "workspace-top-end";
     return isCompactLinkedVariant(linkedVariant) ? "workspace-top-end" : "workspace-top-start";

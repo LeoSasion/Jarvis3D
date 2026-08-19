@@ -98,7 +98,23 @@ components:
     typography: "{typography.label}"
     rounded: "{rounded.square}"
     padding: "0 14px"
+    width: "clamp(156px, 13vw, 208px)"
     height: "56px"
+  taskbar-application:
+    backgroundColor: "{colors.blackbox-black}"
+    textColor: "{colors.ink-secondary}"
+    typography: "{typography.label}"
+    rounded: "{rounded.square}"
+    padding: "0px"
+    width: "48px"
+    height: "56px"
+  system-rail-collapsed:
+    backgroundColor: "{colors.blackbox-black}"
+    textColor: "{colors.ink-secondary}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.square}"
+    padding: "8px"
+    width: "116px"
 ---
 
 # Design System: JARVIS Operator Blackbox
@@ -132,6 +148,7 @@ or live system state.
 - Square vector marks, hairline dividers, and tabular data alignment.
 - Motion reserved for transitions, active routes, and truthful live state.
 - Tactical, direct controls with visible keyboard and recovery affordances.
+- Explicit provenance whenever a surface is simulated rather than Host-backed.
 
 ## Colors
 
@@ -232,14 +249,22 @@ data steps down through size, weight, and ink before another accent is introduce
 JARVIS owns the full desktop viewport. The standard shell uses a compact 48px top
 rail and a 56px bottom taskbar, with the operational workspace touching their
 inner edges. The desktop grid reserves a fixed left region for shortcuts, a
-flexible center for the passive knowledge graph or managed windows, and a bounded
-right rail for telemetry.
+flexible center for the interactive local knowledge graph or managed windows,
+and a bounded right rail for telemetry.
 
 The default desktop columns are approximately 176–220px on the left, a flexible
 center, and 260–340px on the right. Desktop icons occupy fixed grid slots; label
 length never changes icon coordinates. The taskbar reserves Start and the single
 persistent Agent slot first, gives all remaining width to pinned and running
-applications, and keeps the system tray at the far edge.
+applications, and keeps the system tray at the far edge. Application icons use
+stable 48px slots by default; contextual labels appear above hover, focus, or the
+active app without changing rail geometry. Overflow preserves application order.
+
+In the linked three-pane workspace, a nominal system rail may collapse to 116px
+and return the released width to the Agent. A new warning or error may expand it,
+but manually dismissing the same attention state must not create an expansion
+loop. Compact mode retains only Host, Agent, attention count, and the highest
+priority truthful status.
 
 Maximized and docked managed windows touch the rails without an inherited floating
 gutter, outline, or shadow. Explorer uses navigation, content, and inspector
@@ -250,22 +275,28 @@ the currently related source and message.
 Responsive behavior is desktop-first. The top rail compresses around 1380px and
 1080px. Linked workspaces move through three-pane, two-pane, drawer, and
 single-pane states at available widths of 1440px, 1180px, and 920px. Explorer
-container queries remove its inspector at 1039px, its navigation at 819px, and
-taskbar labels yield at the 520px application-container threshold. Height
-compression begins at 820px, with the shortest linked composition at 720px.
+container queries remove its inspector at 1039px; at 819px its navigation narrows
+to 124px while command labels and keyboard hints step away. The taskbar remains
+icon-first at the 520px application-container threshold. Height compression
+begins at 820px; at 720px and below the taskbar contracts from 56px to 52px and
+the linked workspace uses its shortest composition.
+At 144dpi and 192dpi, the smallest graph, telemetry, and control roles step up in
+size while CSS-pixel geometry remains stable under Windows scaling.
 
 Spacing follows the observed 4px base rhythm: 4, 8, 12, 16, and 24px. Dense
-regions may use ledger lines instead of extra padding, but operational text does
-not fall below 11px and persistent interactive hit areas do not fall below 24px.
+regions may use ledger lines instead of extra padding. Body copy and persistent
+action text do not fall below 11px; compact telemetry and graph metadata may use
+8–10px at 96dpi, then step up at 144dpi and 192dpi. Persistent interactive hit
+areas do not fall below 24px.
 
 ## Elevation & Depth
 
 The system is flat by default. Resting surfaces do not float above Blackbox Black;
 they are distinguished by structural hairlines, tonal steps close to black, and
 the priority of their content. Persistent shadows are not part of ordinary
-window, panel, or taskbar geometry. Transient context menus, notices, drawers,
-and task-focused overlays may use one bounded black shadow to separate an
-actionable layer from live content.
+window, panel, menu, or taskbar geometry. Transient notices, drawers, contextual
+taskbar labels, and the selected graph inspector may use one bounded black shadow
+to separate an actionable layer from live content.
 
 Depth appears as a response to state. A small local orange emission may mark an
 active node, live route, focused control, or ready system channel. Stronger
@@ -280,8 +311,12 @@ must not imply nonexistent activity or blur the underlying vector geometry.
   currently working state; never a panel-wide ambient fog.
 - **Focus inset** (`0 0 0 1px rgb(255 106 0 / 28%) inset`): Reinforces an active
   field or command without lifting it from the surface.
-- **Transient overlay** (`0 12px 36px rgb(0 0 0 / 48%)`): Notices, menus, and
-  temporary drawers only; never a resting card treatment.
+- **Context label** (`0 8px 18px rgb(0 0 0 / 72%)`): The taskbar's contextual
+  application label, positioned above a stable icon slot.
+- **Transient overlay** (`0 12px 36px rgb(0 0 0 / 48%)`): Actionable notices and
+  the selected graph-node inspector; never a resting card treatment.
+- **Linked drawer** (`-18px 0 44px rgb(0 0 0 / 82%)`): Narrow linked-workspace
+  separation when the Agent becomes a drawer.
 
 ### Named Rules
 
@@ -296,7 +331,8 @@ control that owns the state; it does not wash across unrelated content.
 The core form language is square and instrument-like. Ordinary controls and
 surfaces use zero-radius corners; the shared micro-radius is 1px where browser or
 native rendering benefits from a stable edge. Structural rails use 0.5px CSS
-hairlines on high-density displays, while active orange markers remain 1px.
+hairlines on high-density displays. State and relationship strokes use 1–1.5px,
+while a keyboard focus boundary may reach 2px when legibility requires it.
 
 Vector icons use square line caps, miter joins, deterministic SVG or Canvas
 geometry, and no bitmap-dependent ornamental frame. Full rectangular boundaries
@@ -309,6 +345,12 @@ real ports. Knowledge-graph geometry uses points, orthogonal or angular relation
 small square nodes, and sparse type or region labels. Decorative circular or
 chamfered forms may be introduced when a specific mode needs them; they are not
 the default silhouette.
+
+### Named Rules
+
+**The Legible Stroke Rule.** Structural lines remain 0.5px; state and relation
+lines use 1–1.5px; a keyboard focus boundary may reach 2px without changing the
+control's geometry.
 
 ## Components
 
@@ -356,14 +398,19 @@ The taskbar is a 56px command rail, not a floating dock. Start is followed by th
 single persistent Agent launcher, then pinned and running applications, then the
 system tray. Inactive applications have no orange underline. A running but
 inactive application may use a small neutral point; the active application owns
-the orange marker.
+the orange marker. Icon slots remain fixed at 48px whenever an application has a
+recognizable icon. Full accessible names remain available even when visible
+labels become contextual overlays; hover, focus, and active state never trigger
+a width recalculation.
 
 ### Context Menus
 
 Desktop, Explorer, and taskbar menus use Blackbox Black, a neutral hairline,
 Instrument White commands, muted disabled text, square geometry, and orange only
 for focus, selection, checked state, or destructive confirmation. Headers and
-keyboard shortcuts remain compact and monospaced.
+keyboard shortcuts remain compact and monospaced. Menus remain flat; they do not
+borrow the shadows reserved for notices, drawers, inspectors, or contextual
+taskbar labels.
 
 ### Explorer Rows
 
@@ -380,14 +427,32 @@ reserved for accepted file context, completed linked results, editable directive
 and errors requiring action. Only the latest genuinely related message receives
 a route anchor.
 
+### Linked System Rail
+
+The rail is a disclosure surface rather than a wall of permanent telemetry.
+Nominal state starts collapsed; new warning or error attention expands it once,
+severity escalation or a genuinely reappearing event may expand it again, and a
+manual collapse remains respected for the same event. The toggle is a real
+button with `aria-expanded` and stable controlled content. Collapsed state keeps
+only Host, Agent, attention count, and the priority item; expanded state reveals
+performance, connections, notifications, and tasks without inventing values.
+
 ### Knowledge Graph
 
-The desktop center is a deterministic vector field. Low-contrast edges and
-labels provide structure; a small subset of nodes and routes receive Command
-Orange. When no verified source exists, an open three-command ledger may offer
-local search, Explorer, or a desktop-only session; it never claims that choosing
-a file has already connected the graph. It has no generic Agent call-to-action.
-Ambient motion remains restrained and has a reduced-motion fallback.
+The desktop center is a bounded, deterministic vector workspace driven by the
+latest Explorer metadata snapshot. It groups up to 42 unique local entries,
+supports filtering, temporary search expansion of collapsed groups, node
+selection, drag repositioning, proportional wheel zoom from 72% to 220%, reset,
+an inspector, Show in Explorer, and metadata-only Agent linkage. Low-contrast orthogonal edges
+and labels provide structure; only the selected source, node, or real relation
+receives Command Orange.
+
+When no verified source exists, an open three-command ledger may offer local
+search, Explorer, or a desktop-only session; it never claims that choosing a
+file has already connected the graph. Browser fixtures remain visibly labeled
+as simulated and never become a verified local graph by presentation alone. The
+center has no generic Agent call-to-action. Reduced Motion keeps graph geometry
+and a deterministic static state while removing nonessential animation.
 
 ## Do's and Don'ts
 
@@ -402,6 +467,8 @@ Ambient motion remains restrained and has a reduced-motion fallback.
   relationships.
 - **Do** attach animation and emission to real transitions or live state, and
   provide reduced-motion and forced-color behavior.
+- **Do** expose whether system, Explorer, graph, and taskbar state is Host-backed,
+  simulated, unavailable, or not inspected.
 - **Do** allow glass, gradients, rings, glow, scanning, or cool accents when a
   scoped mode genuinely benefits from them and the command hierarchy remains
   intact.
@@ -411,7 +478,8 @@ Ambient motion remains restrained and has a reduced-motion fallback.
 - **Don't** use orange everywhere; it loses command authority when every label or
   border competes for it.
 - **Don't** create false telemetry, false Agent capability, false file access, or
-  decorative activity that reads as real system state.
+  decorative activity that reads as real system state; browser preview choices
+  must never be labeled as effective Windows changes.
 - **Don't** turn every region into an equally weighted framed card or reintroduce
   floating-window gutters around maximized work.
 - **Don't** duplicate the persistent Agent launcher in the top rail or desktop

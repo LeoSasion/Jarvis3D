@@ -15,8 +15,8 @@ internal sealed class AgentCoordinator : IDisposable
     private const long MaximumTurnPayloadCharacters = 32L * 1024 * 1024;
     private const int MaximumRememberedTerminalRuns = 128;
 
-    private readonly PiAgentOptions _options;
-    private readonly Func<IAgentRpcClient> _clientFactory;
+    private readonly IAgentProvider _provider;
+    private readonly Func<IAgentProviderClient> _clientFactory;
     private readonly object _gate = new();
     private readonly object _eventGate = new();
     private readonly SemaphoreSlim _clientStartGate = new(1, 1);
@@ -30,7 +30,8 @@ internal sealed class AgentCoordinator : IDisposable
     private readonly HashSet<string> _terminalRuns = new(StringComparer.Ordinal);
     private readonly Queue<string> _terminalRunOrder = new();
 
-    private IAgentRpcClient? _client;
+    private IAgentProviderClient? _client;
+    private IAgentProviderClient? _terminatingClient;
     private ActiveRun? _activeRun;
     private TaskCompletionSource<AgentPromptResult>? _promptReservationOwner;
     private AgentStateSnapshot _state;
@@ -41,33 +42,48 @@ internal sealed class AgentCoordinator : IDisposable
     private bool _disposed;
 
     public AgentCoordinator(PiAgentOptions options)
-        : this(options, () => new PiAgentRpcClient(options))
+        : this(AgentProviderRegistry.CreateDefault(options).GetRequiredProvider("pi"))
     {
     }
 
     internal AgentCoordinator(
         PiAgentOptions options,
-        Func<IAgentRpcClient> clientFactory)
+        Func<IAgentProviderClient> clientFactory)
+        : this(new PiAgentProvider(options), clientFactory)
     {
-        _options = options;
-        _clientFactory = clientFactory;
-        var configurationError = options.IsConfigured
+    }
+
+    internal AgentCoordinator(IAgentProvider provider)
+        : this(provider, provider.CreateClient)
+    {
+    }
+
+    internal AgentCoordinator(
+        IAgentProvider provider,
+        Func<IAgentProviderClient> clientFactory)
+    {
+        _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
+        var descriptor = provider.Descriptor;
+        var configurationError = provider.IsConfigured
             ? null
             : new AgentError(
                 "PROVIDER_NOT_CONFIGURED",
-                options.ConfigurationIssue ?? "Pi Agent is not configured.");
+                provider.ConfigurationIssue ?? $"{descriptor.Label} is not configured.");
         _state = new AgentStateSnapshot(
-            Provider: "pi",
+            Provider: descriptor.Id,
             Model: null,
-            PermissionMode: options.PermissionMode,
-            Available: options.IsConfigured,
-            Configured: options.IsConfigured,
+            PermissionMode: descriptor.PermissionMode,
+            Available: provider.IsConfigured,
+            Configured: provider.IsConfigured,
             Connected: false,
             Running: false,
-            Status: options.IsConfigured ? "ready" : "unavailable",
+            Status: provider.IsConfigured ? "ready" : "unavailable",
             SessionId: null,
             ActiveRunId: null,
-            Error: configurationError);
+            Error: configurationError,
+            ProviderLabel: descriptor.Label,
+            Capabilities: descriptor.Capabilities);
     }
 
     public event Action<AgentStateSnapshot>? StateChanged;
@@ -100,11 +116,11 @@ internal sealed class AgentCoordinator : IDisposable
                 response.Data is JsonElement data &&
                 data.ValueKind == JsonValueKind.Object)
             {
-                ApplyPiState(data);
+                ApplyProviderState(data);
             }
             else if (!response.Success)
             {
-                PublishProviderError(MapResponseError(response.Error));
+                PublishProviderError(MapProviderResponseError(response.Error));
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -122,6 +138,12 @@ internal sealed class AgentCoordinator : IDisposable
     public async Task<IReadOnlyList<AgentMessageSnapshot>> GetMessagesAsync(
         CancellationToken cancellationToken)
     {
+        if (!SupportsCapability(AgentProviderCapabilities.MessageHistory))
+        {
+            PublishProviderError(CreateCapabilityError(AgentProviderCapabilities.MessageHistory));
+            return GetMessageSnapshot();
+        }
+
         var client = GetConnectedClient();
         if (client is null)
         {
@@ -139,7 +161,7 @@ internal sealed class AgentCoordinator : IDisposable
                 data.ValueKind != JsonValueKind.Object ||
                 !data.TryGetProperty("messages", out var messages))
             {
-                var error = MapResponseError(response.Error);
+                var error = MapProviderResponseError(response.Error);
                 PublishProviderError(error);
                 return GetMessageSnapshot();
             }
@@ -178,9 +200,21 @@ internal sealed class AgentCoordinator : IDisposable
             {
                 duplicateTask = pending.Task;
             }
-            else if (!_options.IsConfigured)
+            else if (!_provider.IsConfigured)
             {
                 return UnavailablePromptResult(clientMessageId);
+            }
+            else if (!SupportsCapability(AgentProviderCapabilities.Chat))
+            {
+                var capabilityError = CreateCapabilityError(AgentProviderCapabilities.Chat);
+                var capabilityResult = new AgentPromptResult(
+                    Accepted: false,
+                    clientMessageId,
+                    RunId: null,
+                    _state,
+                    capabilityError);
+                RememberPromptResultLocked(clientMessageId, capabilityResult);
+                return capabilityResult;
             }
             else if (ShouldRejectPrompt(
                          _activeRun is not null,
@@ -210,7 +244,7 @@ internal sealed class AgentCoordinator : IDisposable
         }
 
         var ownedReservation = reservation!;
-        IAgentRpcClient? client = null;
+        IAgentProviderClient? client = null;
         ActiveRun? run = null;
         try
         {
@@ -237,7 +271,7 @@ internal sealed class AgentCoordinator : IDisposable
                 {
                     var busyError = new AgentError(
                         "AGENT_BUSY",
-                        "Pi Agent is already processing a request.",
+                        $"{_provider.Descriptor.Label} is already processing a request.",
                         Retryable: true);
                     busyResult = new AgentPromptResult(
                         Accepted: false,
@@ -274,7 +308,7 @@ internal sealed class AgentCoordinator : IDisposable
             }
 
             var activeRun = run ?? throw new InvalidOperationException(
-                "Pi Agent prompt reservation did not create a run.");
+                $"{_provider.Descriptor.Label} prompt reservation did not create a run.");
             PublishState(changedState);
             PublishEvent(new AgentUiEvent("run-start", RunId: activeRun.RunId));
             PublishUserMessage(activeRun);
@@ -289,7 +323,7 @@ internal sealed class AgentCoordinator : IDisposable
                 cancellationToken).ConfigureAwait(false);
             if (!response.Success)
             {
-                var error = MapResponseError(response.Error);
+                var error = MapProviderResponseError(response.Error);
                 CompleteRun(activeRun, "failed", error);
                 var rejected = new AgentPromptResult(
                     Accepted: false,
@@ -297,6 +331,25 @@ internal sealed class AgentCoordinator : IDisposable
                     activeRun.RunId,
                     GetStateSnapshot(),
                     error);
+                return CompletePromptReservation(
+                    clientMessageId,
+                    ownedReservation,
+                    rejected);
+            }
+
+            AgentError? terminalEventError;
+            lock (_gate)
+            {
+                terminalEventError = activeRun.Error;
+            }
+            if (terminalEventError is not null)
+            {
+                var rejected = new AgentPromptResult(
+                    Accepted: false,
+                    clientMessageId,
+                    activeRun.RunId,
+                    GetStateSnapshot(),
+                    terminalEventError);
                 return CompletePromptReservation(
                     clientMessageId,
                     ownedReservation,
@@ -319,9 +372,9 @@ internal sealed class AgentCoordinator : IDisposable
             if (run is not null && client is not null)
             {
                 MarkAbortRequested(run);
-                client.Terminate(new PiRpcFailure(
+                TerminateAndFaultClient(client, new AgentProviderFailure(
                     "CANCELLED",
-                    "The Pi Agent request was cancelled."));
+                    $"The {_provider.Descriptor.Label} request was cancelled."));
             }
             CancelPromptReservation(clientMessageId, ownedReservation, cancellationToken);
             throw;
@@ -331,7 +384,7 @@ internal sealed class AgentCoordinator : IDisposable
             var error = client is null
                 ? new AgentError(
                     "PROVIDER_UNAVAILABLE",
-                    "Pi Agent is unavailable.",
+                    $"{_provider.Descriptor.Label} is unavailable.",
                     Retryable: true)
                 : HandleCommandFailure(client, exception);
             if (run is not null)
@@ -354,11 +407,16 @@ internal sealed class AgentCoordinator : IDisposable
     public async Task<AgentCommandResult> AbortAsync(CancellationToken cancellationToken)
     {
         ActiveRun? run;
-        IAgentRpcClient? client;
+        IAgentProviderClient? client;
         AgentStateSnapshot? changedState = null;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!SupportsCapability(AgentProviderCapabilities.Abort))
+            {
+                var capabilityError = CreateCapabilityError(AgentProviderCapabilities.Abort);
+                return new AgentCommandResult(false, _state, capabilityError);
+            }
             run = _activeRun;
             client = _client;
             if (run is null || client is null || !client.IsConnected)
@@ -384,31 +442,31 @@ internal sealed class AgentCoordinator : IDisposable
                 cancellationToken).ConfigureAwait(false);
             if (!response.Success)
             {
-                client.Terminate(new PiRpcFailure(
+                TerminateAndFaultClient(client, new AgentProviderFailure(
                     "CANCELLED",
-                    "Pi Agent did not acknowledge cancellation."));
+                    $"{_provider.Descriptor.Label} did not acknowledge cancellation."));
             }
 
             try
             {
                 await run.Settled.Task
-                    .WaitAsync(_options.AbortTimeout, cancellationToken)
+                    .WaitAsync(_provider.AbortTimeout, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (TimeoutException)
             {
-                client.Terminate(new PiRpcFailure(
+                TerminateAndFaultClient(client, new AgentProviderFailure(
                     "CANCELLED",
-                    "Pi Agent cancellation exceeded its shutdown deadline."));
+                    $"{_provider.Descriptor.Label} cancellation exceeded its shutdown deadline."));
             }
 
             return new AgentCommandResult(true, GetStateSnapshot());
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            client.Terminate(new PiRpcFailure(
+            TerminateAndFaultClient(client, new AgentProviderFailure(
                 "CANCELLED",
-                "Pi Agent cancellation was interrupted by host shutdown."));
+                $"{_provider.Descriptor.Label} cancellation was interrupted by host shutdown."));
             throw;
         }
         catch (Exception exception)
@@ -430,9 +488,14 @@ internal sealed class AgentCoordinator : IDisposable
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!_options.IsConfigured)
+            if (!_provider.IsConfigured)
             {
                 return new AgentCommandResult(false, _state, _state.Error);
+            }
+            if (!SupportsCapability(AgentProviderCapabilities.NewSession))
+            {
+                var capabilityError = CreateCapabilityError(AgentProviderCapabilities.NewSession);
+                return new AgentCommandResult(false, _state, capabilityError);
             }
             if (_activeRun is not null ||
                 _sessionChanging ||
@@ -441,7 +504,7 @@ internal sealed class AgentCoordinator : IDisposable
             {
                 var busyError = new AgentError(
                     "AGENT_BUSY",
-                    "Wait for the current Pi Agent operation to finish.",
+                    $"Wait for the current {_provider.Descriptor.Label} operation to finish.",
                     Retryable: true);
                 return new AgentCommandResult(false, _state, busyError);
             }
@@ -477,7 +540,7 @@ internal sealed class AgentCoordinator : IDisposable
                 cancellationToken).ConfigureAwait(false);
             if (!response.Success || IsCancelledSessionResponse(response.Data))
             {
-                var error = MapResponseError(response.Error);
+                var error = MapProviderResponseError(response.Error);
                 PublishProviderError(error);
                 return new AgentCommandResult(false, GetStateSnapshot(), error);
             }
@@ -496,7 +559,10 @@ internal sealed class AgentCoordinator : IDisposable
         {
             var client = GetConnectedClient();
             var error = client is null
-                ? new AgentError("PROVIDER_UNAVAILABLE", "Pi Agent is unavailable.", true)
+                ? new AgentError(
+                    "PROVIDER_UNAVAILABLE",
+                    $"{_provider.Descriptor.Label} is unavailable.",
+                    true)
                 : HandleCommandFailure(client, exception);
             return new AgentCommandResult(false, GetStateSnapshot(), error);
         }
@@ -509,11 +575,11 @@ internal sealed class AgentCoordinator : IDisposable
         }
     }
 
-    private async Task EnforceTurnTimeoutAsync(ActiveRun run, IAgentRpcClient client)
+    private async Task EnforceTurnTimeoutAsync(ActiveRun run, IAgentProviderClient client)
     {
         try
         {
-            await Task.Delay(_options.TurnTimeout, run.Deadline.Token).ConfigureAwait(false);
+            await Task.Delay(_provider.TurnTimeout, run.Deadline.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (run.Deadline.IsCancellationRequested)
         {
@@ -522,7 +588,7 @@ internal sealed class AgentCoordinator : IDisposable
 
         var error = new AgentError(
             "TURN_TIMEOUT",
-            "Pi Agent exceeded the turn deadline.",
+            $"{_provider.Descriptor.Label} exceeded the turn deadline.",
             Retryable: true);
         lock (_gate)
         {
@@ -537,36 +603,42 @@ internal sealed class AgentCoordinator : IDisposable
             run.Error = error;
         }
 
-        var failure = new PiRpcFailure(error.Code, error.Message, error.Retryable);
+        var failure = new AgentProviderFailure(error.Code, error.Message, error.Retryable);
         try
         {
-            using var abortDeadline = new CancellationTokenSource(_options.AbortTimeout);
+            if (!SupportsCapability(AgentProviderCapabilities.Abort))
+            {
+                TerminateAndFaultClient(client, failure);
+                return;
+            }
+
+            using var abortDeadline = new CancellationTokenSource(_provider.AbortTimeout);
             var response = await client.SendAsync(
                 "abort",
                 arguments: null,
                 abortDeadline.Token).ConfigureAwait(false);
             if (!response.Success)
             {
-                client.Terminate(failure);
+                TerminateAndFaultClient(client, failure);
                 return;
             }
 
             try
             {
                 await run.Settled.Task
-                    .WaitAsync(_options.AbortTimeout)
+                    .WaitAsync(_provider.AbortTimeout)
                     .ConfigureAwait(false);
             }
             catch (TimeoutException)
             {
-                client.Terminate(failure);
+                TerminateAndFaultClient(client, failure);
             }
         }
         catch (Exception exception) when (!IsFatalAgentException(exception))
         {
             HostLog.Warning(
-                $"Pi Agent turn-timeout recovery failed closed after {exception.GetType().Name}.");
-            client.Terminate(failure);
+                $"{_provider.Descriptor.Label} turn-timeout recovery failed closed after {exception.GetType().Name}.");
+            TerminateAndFaultClient(client, failure);
         }
         finally
         {
@@ -580,7 +652,7 @@ internal sealed class AgentCoordinator : IDisposable
     internal static bool IsFatalAgentException(Exception exception) =>
         exception is OutOfMemoryException or StackOverflowException or AccessViolationException;
 
-    private async Task<IAgentRpcClient?> EnsureClientAsync(CancellationToken cancellationToken)
+    private async Task<IAgentProviderClient?> EnsureClientAsync(CancellationToken cancellationToken)
     {
         var current = GetConnectedClient();
         if (current is not null)
@@ -588,7 +660,7 @@ internal sealed class AgentCoordinator : IDisposable
             return current;
         }
 
-        if (!_options.IsConfigured)
+        if (!_provider.IsConfigured)
         {
             return null;
         }
@@ -603,13 +675,13 @@ internal sealed class AgentCoordinator : IDisposable
             }
 
             var client = _clientFactory();
-            client.EventReceived += OnPiEvent;
+            client.EventReceived += OnProviderEvent;
             client.Faulted += OnClientFaulted;
             lock (_gate)
             {
                 if (_disposed)
                 {
-                    client.Dispose();
+                    DisposeClientSafely(client, "after coordinator disposal during startup");
                     return null;
                 }
                 _client = client;
@@ -621,10 +693,11 @@ internal sealed class AgentCoordinator : IDisposable
             }
             catch (Exception exception)
             {
-                HostLog.Warning($"Pi Agent could not start: {exception.GetType().Name}.");
-                client.EventReceived -= OnPiEvent;
+                HostLog.Warning(
+                    $"{_provider.Descriptor.Label} could not start: {exception.GetType().Name}.");
+                client.EventReceived -= OnProviderEvent;
                 client.Faulted -= OnClientFaulted;
-                client.Dispose();
+                DisposeClientSafely(client, "after provider startup failure");
                 AgentStateSnapshot? changed;
                 lock (_gate)
                 {
@@ -640,7 +713,7 @@ internal sealed class AgentCoordinator : IDisposable
                         ActiveRunId = null,
                         Error = new AgentError(
                             "PROVIDER_UNAVAILABLE",
-                            "Pi Agent could not be started.",
+                            $"{_provider.Descriptor.Label} could not be started.",
                             Retryable: true)
                     });
                 }
@@ -671,7 +744,7 @@ internal sealed class AgentCoordinator : IDisposable
         }
     }
 
-    private void ApplyPiState(JsonElement data)
+    private void ApplyProviderState(JsonElement data)
     {
         var sessionId = data.TryGetProperty("sessionId", out var sessionElement) &&
                         sessionElement.ValueKind == JsonValueKind.String
@@ -701,15 +774,54 @@ internal sealed class AgentCoordinator : IDisposable
         PublishState(changed);
     }
 
-    private void OnPiEvent(IAgentRpcClient client, PiRpcEvent piEvent)
+    private void OnProviderEvent(IAgentProviderClient client, AgentProviderEvent providerEvent)
     {
-        var root = piEvent.Payload;
+        try
+        {
+            ProcessProviderEvent(client, providerEvent);
+        }
+        catch (Exception exception) when (!IsFatalAgentException(exception))
+        {
+            var failure = exception switch
+            {
+                PiRpcOutputLimitException => new AgentProviderFailure(
+                    "OUTPUT_LIMIT_EXCEEDED",
+                    $"{_provider.Descriptor.Label} exceeded the output limit for one turn.",
+                    Retryable: true),
+                PiRpcProtocolException => new AgentProviderFailure(
+                    "PROTOCOL_ERROR",
+                    $"{_provider.Descriptor.Label} returned an invalid chat-only stream."),
+                _ => new AgentProviderFailure(
+                    "PROVIDER_ERROR",
+                    $"{_provider.Descriptor.Label} emitted an invalid provider event.",
+                    Retryable: true)
+            };
+            var error = MapFailure(failure);
+            RecordRunError(error);
+            HostLog.Warning(
+                $"{_provider.Descriptor.Label} event was rejected without escaping the provider callback: " +
+                exception.GetType().Name);
+            TerminateAndFaultClient(client, failure);
+        }
+    }
+
+    private void ProcessProviderEvent(
+        IAgentProviderClient client,
+        AgentProviderEvent providerEvent)
+    {
+        var root = providerEvent.Payload;
         lock (_gate)
         {
             if (_disposed || !ReferenceEquals(_client, client))
             {
                 return;
             }
+        }
+
+        if (!SupportsCapability(AgentProviderCapabilities.Streaming))
+        {
+            throw new PiRpcProtocolException(
+                $"{_provider.Descriptor.Label} emitted a stream without declaring the streaming capability.");
         }
 
         PiRpcEventPolicy.ValidateChatOnlyEvent(root);
@@ -723,9 +835,9 @@ internal sealed class AgentCoordinator : IDisposable
             if (ShouldRejectEventWithoutActiveRun(eventType, _activeRun is not null))
             {
                 throw new PiRpcProtocolException(
-                    $"Pi RPC emitted run-bound event '{eventType}' without an active run.");
+                    $"{_provider.Descriptor.Label} emitted run-bound event '{eventType}' without an active run.");
             }
-            _activeRun?.TurnGuard.Observe(root, piEvent.PayloadCharacters);
+            _activeRun?.TurnGuard.Observe(root, providerEvent.PayloadCharacters);
         }
 
         switch (eventType)
@@ -742,7 +854,7 @@ internal sealed class AgentCoordinator : IDisposable
             case "extension_error":
                 RecordRunError(new AgentError(
                     "PROVIDER_ERROR",
-                    "Pi Agent reported an extension failure."));
+                    $"{_provider.Descriptor.Label} reported an extension failure."));
                 break;
             case "agent_settled":
                 CompleteSettledRun();
@@ -892,7 +1004,7 @@ internal sealed class AgentCoordinator : IDisposable
             changedState = SetStateLocked(_state with
             {
                 Running = false,
-                Status = _options.IsConfigured ? "ready" : "unavailable",
+                Status = _provider.IsConfigured ? "ready" : "unavailable",
                 ActiveRunId = null,
                 Error = error
             });
@@ -907,12 +1019,72 @@ internal sealed class AgentCoordinator : IDisposable
         PublishState(changedState);
     }
 
-    private void OnClientFaulted(IAgentRpcClient client, PiRpcFailure failure)
+    private void TerminateAndFaultClient(
+        IAgentProviderClient client,
+        AgentProviderFailure failure)
+    {
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_client, client) ||
+                ReferenceEquals(_terminatingClient, client))
+            {
+                return;
+            }
+            _terminatingClient = client;
+        }
+
+        try
+        {
+            client.Terminate(failure);
+        }
+        catch (Exception exception) when (!IsFatalAgentException(exception))
+        {
+            HostLog.Warning(
+                $"{_provider.Descriptor.Label} did not terminate cleanly after " +
+                $"'{failure.Code}': {exception.GetType().Name}.");
+        }
+        finally
+        {
+            try
+            {
+                OnClientFaulted(client, failure);
+            }
+            finally
+            {
+                lock (_gate)
+                {
+                    if (ReferenceEquals(_terminatingClient, client))
+                    {
+                        _terminatingClient = null;
+                    }
+                }
+            }
+        }
+    }
+
+    private void DisposeClientSafely(IAgentProviderClient client, string context)
+    {
+        try
+        {
+            client.Dispose();
+        }
+        catch (Exception exception) when (!IsFatalAgentException(exception))
+        {
+            HostLog.Warning(
+                $"{_provider.Descriptor.Label} client disposal failed {context}: " +
+                $"{exception.GetType().Name}.");
+        }
+    }
+
+    private void OnClientFaulted(
+        IAgentProviderClient client,
+        AgentProviderFailure failure)
     {
         ActiveRun? run;
         AgentStateSnapshot? changedState;
         AgentError error;
         AgentError? sessionResetError;
+        KeyValuePair<string, TaskCompletionSource<AgentPromptResult>>[] pendingPrompts;
         lock (_gate)
         {
             if (!ReferenceEquals(_client, client))
@@ -927,16 +1099,25 @@ internal sealed class AgentCoordinator : IDisposable
             {
                 error = run.Error ?? new AgentError(
                     "TURN_TIMEOUT",
-                    "Pi Agent exceeded the turn deadline.",
+                    $"{_provider.Descriptor.Label} exceeded the turn deadline.",
                     Retryable: true);
             }
             else if (run?.AbortRequested == true)
             {
-                error = new AgentError("CANCELLED", "The Pi Agent request was cancelled.");
+                error = new AgentError(
+                    "CANCELLED",
+                    $"The {_provider.Descriptor.Label} request was cancelled.");
+            }
+            if (run is not null)
+            {
+                run.Error ??= error;
             }
             sessionResetError = run?.AbortRequested == true && run?.TimedOut != true
                 ? null
                 : error;
+            pendingPrompts = _pendingPrompts.ToArray();
+            _pendingPrompts.Clear();
+            _promptReservationOwner = null;
             ClearMessageHistoryLocked();
             changedState = SetStateLocked(CreateClientFaultState(
                 _state,
@@ -961,32 +1142,48 @@ internal sealed class AgentCoordinator : IDisposable
             Status: sessionResetError is null ? "cancelled" : "failed",
             Error: sessionResetError));
 
-        client.EventReceived -= OnPiEvent;
+        foreach (var pendingPrompt in pendingPrompts)
+        {
+            var result = new AgentPromptResult(
+                Accepted: false,
+                pendingPrompt.Key,
+                run?.ClientMessageId.Equals(pendingPrompt.Key, StringComparison.Ordinal) == true
+                    ? run.RunId
+                    : null,
+                GetStateSnapshot(),
+                error);
+            RememberPromptResult(pendingPrompt.Key, result);
+            pendingPrompt.Value.TrySetResult(result);
+        }
+
+        client.EventReceived -= OnProviderEvent;
         client.Faulted -= OnClientFaulted;
-        client.Dispose();
+        DisposeClientSafely(client, "after provider fault");
     }
 
-    private AgentError HandleCommandFailure(IAgentRpcClient client, Exception exception)
+    private AgentError HandleCommandFailure(
+        IAgentProviderClient client,
+        Exception exception)
     {
         var failure = exception switch
         {
-            PiRpcCommandException commandException => new PiRpcFailure(
+            PiRpcCommandException commandException => new AgentProviderFailure(
                 commandException.Code,
                 commandException.Message,
                 commandException.Retryable),
-            PiRpcOutputLimitException => new PiRpcFailure(
+            PiRpcOutputLimitException => new AgentProviderFailure(
                 "OUTPUT_LIMIT_EXCEEDED",
-                "Pi Agent exceeded the output limit for one turn.",
+                $"{_provider.Descriptor.Label} exceeded the output limit for one turn.",
                 Retryable: true),
-            PiRpcProtocolException => new PiRpcFailure(
+            PiRpcProtocolException => new AgentProviderFailure(
                 "PROTOCOL_ERROR",
-                "Pi Agent returned an invalid chat-only RPC stream."),
-            _ => new PiRpcFailure(
+                $"{_provider.Descriptor.Label} returned an invalid chat-only stream."),
+            _ => new AgentProviderFailure(
                 "PROVIDER_UNAVAILABLE",
-                "Pi Agent command failed.",
+                $"{_provider.Descriptor.Label} command failed.",
                 Retryable: true)
         };
-        client.Terminate(failure);
+        TerminateAndFaultClient(client, failure);
         return MapFailure(failure);
     }
 
@@ -1049,7 +1246,7 @@ internal sealed class AgentCoordinator : IDisposable
         var state = GetStateSnapshot();
         var error = state.Error ?? new AgentError(
             "PROVIDER_UNAVAILABLE",
-            "Pi Agent is unavailable.",
+            $"{_provider.Descriptor.Label} is unavailable.",
             Retryable: true);
         return new AgentPromptResult(
             Accepted: false,
@@ -1063,7 +1260,7 @@ internal sealed class AgentCoordinator : IDisposable
     {
         var error = new AgentError(
             "AGENT_BUSY",
-            "Pi Agent is already processing a request.",
+            $"{_provider.Descriptor.Label} is already processing a request.",
             Retryable: true);
         return new AgentPromptResult(
             Accepted: false,
@@ -1307,7 +1504,7 @@ internal sealed class AgentCoordinator : IDisposable
             if (part.Length > MaximumMessageCharacters - text.Length)
             {
                 throw new PiRpcOutputLimitException(
-                    "Pi RPC emitted a message larger than the chat history limit.");
+                    "Agent provider emitted a message larger than the chat history limit.");
             }
             text.Append(part);
         }
@@ -1320,7 +1517,7 @@ internal sealed class AgentCoordinator : IDisposable
         if (text.Length > MaximumMessageCharacters)
         {
             throw new PiRpcOutputLimitException(
-                "Pi RPC emitted a message larger than the chat history limit.");
+                "Agent provider emitted a message larger than the chat history limit.");
         }
         return text;
     }
@@ -1384,7 +1581,7 @@ internal sealed class AgentCoordinator : IDisposable
         return null;
     }
 
-    private IAgentRpcClient? GetConnectedClient()
+    private IAgentProviderClient? GetConnectedClient()
     {
         lock (_gate)
         {
@@ -1393,6 +1590,13 @@ internal sealed class AgentCoordinator : IDisposable
                 : null;
         }
     }
+
+    private bool SupportsCapability(string capability) =>
+        _provider.Descriptor.Supports(capability);
+
+    private AgentError CreateCapabilityError(string capability) => new(
+        "CAPABILITY_UNAVAILABLE",
+        $"{_provider.Descriptor.Label} does not declare the '{capability}' capability.");
 
     private AgentStateSnapshot? SetStateLocked(AgentStateSnapshot state)
     {
@@ -1581,17 +1785,26 @@ internal sealed class AgentCoordinator : IDisposable
         return "completed";
     }
 
-    private static AgentError MapMessageError(JsonElement message)
+    private AgentError MapMessageError(JsonElement message)
     {
         var detail = message.TryGetProperty("errorMessage", out var errorElement) &&
                      errorElement.ValueKind == JsonValueKind.String
             ? errorElement.GetString()
             : null;
-        return MapResponseError(detail);
+        return MapProviderResponseError(detail);
     }
 
-    internal static AgentError MapResponseError(string? detail)
+    private AgentError MapProviderResponseError(string? detail) =>
+        MapResponseError(detail, _provider.Descriptor.Label);
+
+    internal static AgentError MapResponseError(string? detail) =>
+        MapResponseError(detail, "Pi Agent");
+
+    internal static AgentError MapResponseError(string? detail, string providerLabel)
     {
+        var safeProviderLabel = string.IsNullOrWhiteSpace(providerLabel)
+            ? "Agent provider"
+            : providerLabel.Trim();
         var normalized = detail?.ToLowerInvariant() ?? string.Empty;
         if (normalized.Contains("api key", StringComparison.Ordinal) ||
             normalized.Contains("unauthorized", StringComparison.Ordinal) ||
@@ -1603,14 +1816,14 @@ internal sealed class AgentCoordinator : IDisposable
         {
             return new AgentError(
                 "AUTH_REQUIRED",
-                "Pi Agent authentication is required.");
+                $"{safeProviderLabel} authentication is required.");
         }
         if (normalized.Contains("rate limit", StringComparison.Ordinal) ||
             normalized.Contains("too many requests", StringComparison.Ordinal))
         {
             return new AgentError(
                 "RATE_LIMITED",
-                "Pi Agent is currently rate limited.",
+                $"{safeProviderLabel} is currently rate limited.",
                 Retryable: true);
         }
         if (normalized.Contains("model not found", StringComparison.Ordinal) ||
@@ -1620,7 +1833,7 @@ internal sealed class AgentCoordinator : IDisposable
         {
             return new AgentError(
                 "MODEL_REQUIRED",
-                "Pi Agent requires a supported model configuration.");
+                $"{safeProviderLabel} requires a supported model configuration.");
         }
         if (normalized.Contains("network", StringComparison.Ordinal) ||
             normalized.Contains("fetch failed", StringComparison.Ordinal) ||
@@ -1631,7 +1844,7 @@ internal sealed class AgentCoordinator : IDisposable
         {
             return new AgentError(
                 "NETWORK_UNAVAILABLE",
-                "Pi Agent could not reach its model provider.",
+                $"{safeProviderLabel} could not reach its model provider.",
                 Retryable: true);
         }
         if (normalized.Contains("quota", StringComparison.Ordinal) ||
@@ -1639,24 +1852,24 @@ internal sealed class AgentCoordinator : IDisposable
         {
             return new AgentError(
                 "QUOTA_EXCEEDED",
-                "Pi Agent provider quota is exhausted.");
+                $"{safeProviderLabel} provider quota is exhausted.");
         }
         if (normalized.Contains("streaming", StringComparison.Ordinal) ||
             normalized.Contains("already running", StringComparison.Ordinal))
         {
             return new AgentError(
                 "AGENT_BUSY",
-                "Pi Agent is already processing a request.",
+                $"{safeProviderLabel} is already processing a request.",
                 Retryable: true);
         }
 
         return new AgentError(
             "PROVIDER_ERROR",
-            "Pi Agent could not complete the request.",
+            $"{safeProviderLabel} could not complete the request.",
             Retryable: true);
     }
 
-    private static AgentError MapFailure(PiRpcFailure failure) =>
+    private static AgentError MapFailure(AgentProviderFailure failure) =>
         new(failure.Code, failure.Message, failure.Retryable);
 
     private static bool IsCancelledSessionResponse(JsonElement? data) =>
@@ -1667,7 +1880,7 @@ internal sealed class AgentCoordinator : IDisposable
 
     public void Dispose()
     {
-        IAgentRpcClient? client;
+        IAgentProviderClient? client;
         ActiveRun? run;
         TaskCompletionSource<AgentPromptResult>[] pendingPrompts;
         lock (_gate)
@@ -1689,9 +1902,9 @@ internal sealed class AgentCoordinator : IDisposable
 
         if (client is not null)
         {
-            client.EventReceived -= OnPiEvent;
+            client.EventReceived -= OnProviderEvent;
             client.Faulted -= OnClientFaulted;
-            client.Dispose();
+            DisposeClientSafely(client, "while disposing the coordinator");
         }
         run?.Deadline.Cancel();
         run?.Settled.TrySetResult("cancelled");
@@ -1735,63 +1948,4 @@ internal sealed class AgentCoordinator : IDisposable
 
         public bool TimedOut { get; set; }
     }
-}
-
-internal interface IAgentRpcClient : IDisposable
-{
-    event Action<IAgentRpcClient, PiRpcEvent>? EventReceived;
-
-    event Action<IAgentRpcClient, PiRpcFailure>? Faulted;
-
-    bool IsConnected { get; }
-
-    void Start();
-
-    Task<PiRpcResponse> SendAsync(
-        string command,
-        IReadOnlyDictionary<string, object?>? arguments,
-        CancellationToken cancellationToken);
-
-    void Terminate(PiRpcFailure failure);
-}
-
-internal sealed class PiAgentRpcClient : IAgentRpcClient
-{
-    private readonly PiRpcClient _inner;
-
-    public PiAgentRpcClient(PiAgentOptions options)
-    {
-        _inner = new PiRpcClient(options);
-        _inner.EventReceived += OnEventReceived;
-        _inner.Faulted += OnFaulted;
-    }
-
-    public event Action<IAgentRpcClient, PiRpcEvent>? EventReceived;
-
-    public event Action<IAgentRpcClient, PiRpcFailure>? Faulted;
-
-    public bool IsConnected => _inner.IsConnected;
-
-    public void Start() => _inner.Start();
-
-    public Task<PiRpcResponse> SendAsync(
-        string command,
-        IReadOnlyDictionary<string, object?>? arguments,
-        CancellationToken cancellationToken) =>
-        _inner.SendAsync(command, arguments, cancellationToken);
-
-    public void Terminate(PiRpcFailure failure) => _inner.Terminate(failure);
-
-    public void Dispose()
-    {
-        _inner.EventReceived -= OnEventReceived;
-        _inner.Faulted -= OnFaulted;
-        _inner.Dispose();
-    }
-
-    private void OnEventReceived(PiRpcClient _, PiRpcEvent value) =>
-        EventReceived?.Invoke(this, value);
-
-    private void OnFaulted(PiRpcClient _, PiRpcFailure failure) =>
-        Faulted?.Invoke(this, failure);
 }

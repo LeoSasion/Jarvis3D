@@ -139,11 +139,26 @@ function normalizeSnapshot(result) {
   const locations = read(result, "locations", "Locations") ?? [];
   const drives = read(result, "drives", "Drives") ?? [];
   const breadcrumbs = read(result, "breadcrumbs", "Breadcrumbs") ?? [];
+  const rawProvenance = read(result, "provenance", "Provenance");
+  const provenance = rawProvenance && typeof rawProvenance === "object"
+    ? {
+        kind: String(read(rawProvenance, "kind", "Kind") ?? ""),
+        dataClass: String(read(rawProvenance, "dataClass", "DataClass") ?? ""),
+        simulated: Boolean(read(rawProvenance, "simulated", "Simulated")),
+        nativeHostConnected: Boolean(
+          read(rawProvenance, "nativeHostConnected", "NativeHostConnected"),
+        ),
+      }
+    : null;
 
   return {
     currentPath: String(read(result, "currentPath", "CurrentPath") ?? ""),
     parentPath: read(result, "parentPath", "ParentPath") ?? null,
     warning: read(result, "warning", "Warning") ?? null,
+    simulation: Boolean(
+      read(result, "simulation", "Simulation") ?? provenance?.simulated,
+    ),
+    provenance,
     entries: entries.map((entry) => ({
       name: String(read(entry, "name", "Name") ?? "Unnamed item"),
       path: String(read(entry, "path", "Path") ?? ""),
@@ -428,9 +443,11 @@ export function FileExplorerWindow({
   canMaximize = true,
   linkedContext = null,
   linkedFlowPhase = "empty",
+  canUseAgentChat = false,
   notice = null,
   onDismissNotice,
   onSelectionChange,
+  onGraphSourceChange,
   onAddToAgentContext,
   onClose,
   onMinimize,
@@ -736,6 +753,11 @@ export function FileExplorerWindow({
   useEffect(() => {
     onSelectionChange?.(agentContextSelection);
   }, [agentContextSelection, onSelectionChange]);
+
+  useEffect(() => {
+    if (!snapshot.currentPath) return;
+    onGraphSourceChange?.(snapshot);
+  }, [onGraphSourceChange, snapshot]);
   const transferActive = Boolean(transfer && !isTransferTerminal(transfer.status));
   const canPaste = Boolean(
     clipboard?.paths.length &&
@@ -1851,7 +1873,14 @@ export function FileExplorerWindow({
                   <div><dt>LOCATION</dt><dd title={snapshot.currentPath}>{snapshot.currentPath}</dd></div>
                 </dl>
                 <div className="explorer-inspector-actions">
-                  <button type="button" onClick={() => onAddToAgentContext?.(agentContextSelection)}><LinkRegular />ASK AGENT ABOUT SELECTION</button>
+                  <button
+                    type="button"
+                    disabled={!canUseAgentChat}
+                    title={canUseAgentChat ? undefined : "The active Agent Provider does not support chat"}
+                    onClick={() => onAddToAgentContext?.(agentContextSelection)}
+                  >
+                    <LinkRegular />{canUseAgentChat ? "ASK AGENT ABOUT SELECTION" : "AGENT CHAT UNAVAILABLE"}
+                  </button>
                   <button type="button" onClick={() => copySelection("copy")}><CopyRegular />COPY SELECTION</button>
                   <button type="button" onClick={() => copySelection("move")}><CutRegular />CUT SELECTION</button>
                   <button type="button" className="is-danger" onClick={openRecycleDialog}><DeleteRegular />MOVE TO RECYCLE BIN</button>
@@ -1869,7 +1898,14 @@ export function FileExplorerWindow({
                   <div><dt>LINKED</dt><dd>{selectedEntry.isLinked ? "YES" : "NO"}</dd></div>
                 </dl>
                 <div className="explorer-inspector-actions">
-                  <button type="button" onClick={() => onAddToAgentContext?.(agentContextSelection)}><LinkRegular />ASK AGENT ABOUT THIS</button>
+                  <button
+                    type="button"
+                    disabled={!canUseAgentChat}
+                    title={canUseAgentChat ? undefined : "The active Agent Provider does not support chat"}
+                    onClick={() => onAddToAgentContext?.(agentContextSelection)}
+                  >
+                    <LinkRegular />{canUseAgentChat ? "ASK AGENT ABOUT THIS" : "AGENT CHAT UNAVAILABLE"}
+                  </button>
                   <button type="button" onClick={() => openEntry(selectedEntry)}><OpenRegular />{selectedEntry.isDirectory ? "OPEN FOLDER" : "OPEN FILE"}</button>
                   <button type="button" onClick={openRenameDialog}><RenameRegular />RENAME</button>
                   <button type="button" onClick={() => openInWindows(selectedEntry.path)}><FolderRegular />OPEN IN WINDOWS</button>
@@ -1907,7 +1943,8 @@ export function FileExplorerWindow({
           <button
             type="button"
             className="explorer-link-agent-action"
-            disabled={agentContextSelection.length === 0}
+            disabled={!canUseAgentChat || agentContextSelection.length === 0}
+            title={canUseAgentChat ? undefined : "The active Agent Provider does not support chat"}
             onClick={() => onAddToAgentContext?.(agentContextSelection)}
           >
             {linkedRelationId ? (
@@ -1918,12 +1955,16 @@ export function FileExplorerWindow({
               />
             ) : null}
             <LinkRegular />
-            <span>{linkedContext?.items?.length ? "RELINK AGENT" : "ASK AGENT"}</span>
-            <small>{linkedOriginLabel
-              ? `LINKED · ${linkedOriginLabel}`
-              : agentContextSelection.length
-                ? `${agentContextSelection.length} SOURCE${agentContextSelection.length === 1 ? "" : "S"}`
-                : "SELECT ITEM"}</small>
+            <span>{canUseAgentChat
+              ? linkedContext?.items?.length ? "RELINK AGENT" : "ASK AGENT"
+              : "CHAT UNAVAILABLE"}</span>
+            <small>{canUseAgentChat
+              ? linkedOriginLabel
+                ? `LINKED · ${linkedOriginLabel}`
+                : agentContextSelection.length
+                  ? `${agentContextSelection.length} SOURCE${agentContextSelection.length === 1 ? "" : "S"}`
+                  : "SELECT ITEM"
+              : "STATUS ONLY PROVIDER"}</small>
           </button>
         </section>
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   normalizeWindowAppearanceProcessName,
@@ -7,6 +8,11 @@ import {
 } from "../src/window-appearance-model.js";
 import { normalizeWindowAppearanceState } from "../src/hooks/usePlatformData.js";
 import { createMockPlatform } from "../src/platform/mock-platform.js";
+
+const shellPanelsSource = readFileSync(
+  new URL("../src/components/ShellPanels.jsx", import.meta.url),
+  "utf8",
+);
 
 test("normalizes process filenames without accepting paths or wildcards", () => {
   assert.equal(normalizeWindowAppearanceProcessName(" Code.EXE "), "Code");
@@ -78,4 +84,29 @@ test("mock platform applies and removes window appearance rules", async () => {
     () => mock.windowAppearance.setRule("SearchHost", "allow"),
     /protected/u,
   );
+});
+
+test("browser preview provenance survives window appearance normalization", async () => {
+  const mock = createMockPlatform();
+  const state = normalizeWindowAppearanceState(
+    await mock.windowAppearance.setMode("immersive"),
+  );
+
+  assert.equal(state.mode, "immersive");
+  assert.equal(state.effectiveMode, "off");
+  assert.equal(state.styledWindowCount, 0);
+  assert.equal(state.simulation, true);
+  assert.deepEqual(state.provenance, {
+    kind: "browser-preview",
+    dataClass: "simulated-fixture",
+    simulated: true,
+    nativeHostConnected: false,
+  });
+});
+
+test("window appearance preview copy cannot imply a native change", () => {
+  assert.match(shellPanelsSource, /预览选择 · PREVIEW/u);
+  assert.match(shellPanelsSource, /<small>WINDOWS<\/small><strong>NOT INSPECTED<\/strong>/u);
+  assert.match(shellPanelsSource, /<small>NATIVE CHANGE<\/small><strong>NONE<\/strong>/u);
+  assert.match(shellPanelsSource, /Windows unchanged/u);
 });

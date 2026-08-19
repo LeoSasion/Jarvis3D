@@ -161,6 +161,49 @@ test("mock tray rejects out-of-range volume and emits real snapshots", async () 
   assert.equal(changed.simulation, true);
 });
 
+test("browser preview data never claims a native Host verification", async () => {
+  const mock = createMockPlatform();
+  const snapshot = await mock.system.getSnapshot();
+  const details = await mock.system.getDetails();
+  const runtime = await mock.lifecycle.getRuntimeInfo();
+  const diagnostics = await mock.lifecycle.runDiagnostics();
+  const appearance = await mock.windowAppearance.getState();
+  const taskbarMode = await mock.taskbarMode.getState();
+
+  assert.equal(mock.isNative, false);
+  assert.equal(mock.provenance.kind, "browser-preview");
+  assert.equal(snapshot.simulation, true);
+  assert.equal(snapshot.provenance.nativeHostConnected, false);
+  assert.match(snapshot.os.description, /^SIMULATED/u);
+  assert.equal(details.simulation, true);
+  assert.equal(runtime.buildConfiguration, "BROWSER PREVIEW");
+  assert.equal(runtime.nativeHostConnected, false);
+  assert.equal(runtime.recoveryReady, false);
+  assert.equal(runtime.executablePath, null);
+  assert.equal(diagnostics.overallStatus, "ATTENTION");
+  assert.equal(diagnostics.verifiedFiles, 0);
+  assert.equal(diagnostics.checks.every((check) => check.status === "ATTENTION"), true);
+  assert.equal(appearance.effectiveMode, "off");
+  assert.equal(appearance.hooksReady, false);
+  assert.equal(appearance.hostIntegrityVerified, false);
+  assert.equal(taskbarMode.simulation, true);
+  assert.equal(taskbarMode.effectiveMode, "native");
+  assert.equal(taskbarMode.provenance.nativeHostConnected, false);
+});
+
+test("mock taskbar interactions preserve browser-preview provenance", async () => {
+  const mock = createMockPlatform();
+  const initial = await mock.taskbar.getSnapshot();
+  const targetId = initial.windows[0].windowId;
+
+  await mock.taskbar.activateWindow(targetId);
+  assert.equal((await mock.taskbar.getSnapshot()).provenance.kind, "browser-preview");
+  await mock.taskbar.toggleWindow(targetId);
+  assert.equal((await mock.taskbar.getSnapshot()).simulation, true);
+  await mock.taskbar.closeWindow(targetId);
+  assert.equal((await mock.taskbar.getSnapshot()).provenance.nativeHostConnected, false);
+});
+
 test("mock Show Desktop restores only the windows from the active session", async () => {
   const mock = createMockPlatform();
   const before = await mock.taskbar.getSnapshot();

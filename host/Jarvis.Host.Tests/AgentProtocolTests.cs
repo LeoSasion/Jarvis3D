@@ -481,24 +481,24 @@ public sealed class AgentProtocolTests
             ConfigurationIssue: null);
     }
 
-    private sealed class ControllableAgentRpcClient : IAgentRpcClient
+    private sealed class ControllableAgentRpcClient : IAgentProviderClient
     {
         private readonly TaskCompletionSource _promptStarted = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _startEntered = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource<PiRpcResponse> _promptResponse = new(
+        private readonly TaskCompletionSource<AgentProviderResponse> _promptResponse = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly ManualResetEventSlim _startRelease = new(initialState: false);
         private int _promptCount;
 
-        public event Action<IAgentRpcClient, PiRpcEvent>? EventReceived
+        public event Action<IAgentProviderClient, AgentProviderEvent>? EventReceived
         {
             add { }
             remove { }
         }
 
-        public event Action<IAgentRpcClient, PiRpcFailure>? Faulted
+        public event Action<IAgentProviderClient, AgentProviderFailure>? Faulted
         {
             add { }
             remove { }
@@ -524,7 +524,7 @@ public sealed class AgentProtocolTests
 
         public void ReleaseStart() => _startRelease.Set();
 
-        public Task<PiRpcResponse> SendAsync(
+        public Task<AgentProviderResponse> SendAsync(
             string command,
             IReadOnlyDictionary<string, object?>? arguments,
             CancellationToken cancellationToken)
@@ -538,9 +538,9 @@ public sealed class AgentProtocolTests
         }
 
         public void CompletePrompt() => _promptResponse.TrySetResult(
-            new PiRpcResponse("prompt", Success: true, Data: null, Error: null));
+            new AgentProviderResponse("prompt", Success: true, Data: null, Error: null));
 
-        public void Terminate(PiRpcFailure failure) => IsConnected = false;
+        public void Terminate(AgentProviderFailure failure) => IsConnected = false;
 
         public void Dispose()
         {

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Jarvis.Host.Infrastructure;
 
@@ -9,6 +10,8 @@ internal static class NativeTaskbarController
     private const int SwShowNoActivate = 8;
     private const uint MonitorDefaultToNull = 0;
     private const uint MonitorInfoPrimary = 1;
+    private const int WatchdogRestoreMaximumAttempts = 24;
+    private static readonly TimeSpan WatchdogRestoreVerificationDelay = TimeSpan.FromMilliseconds(500);
     private static int _ownsVisibilityLease;
 
     public static bool OwnsVisibilityLease => Volatile.Read(ref _ownsVisibilityLease) == 1;
@@ -25,28 +28,15 @@ internal static class NativeTaskbarController
 
     public static bool TryGetVisiblePrimary(out IntPtr taskbar, out PixelRect bounds)
     {
-        taskbar = FindPrimaryTaskbar();
-        if (taskbar == IntPtr.Zero || !IsWindowVisible(taskbar) || !GetWindowRect(taskbar, out var rect))
-        {
-            bounds = default;
-            return false;
-        }
-
-        bounds = new PixelRect(rect.Left, rect.Top, rect.Right, rect.Bottom);
-        return NativeDisplay.TryGetPrimaryMonitorBounds(out var monitorBounds) &&
-               IsSupportedHorizontalTaskbar(bounds, monitorBounds);
+        return InspectPrimaryTaskbar(out taskbar, out bounds) == TaskbarVisibilityState.Visible;
     }
 
-    public static bool IsPrimaryVisible()
-    {
-        var taskbar = FindPrimaryTaskbar();
-        return taskbar != IntPtr.Zero && IsWindowVisible(taskbar);
-    }
+    public static bool IsPrimaryVisible() =>
+        InspectPrimaryTaskbar(out _, out _) == TaskbarVisibilityState.Visible;
 
     public static bool HidePrimary()
     {
-        var taskbar = FindPrimaryTaskbar();
-        if (taskbar == IntPtr.Zero || !IsWindowVisible(taskbar))
+        if (InspectPrimaryTaskbar(out var taskbar, out _) != TaskbarVisibilityState.Visible)
         {
             return false;
         }
@@ -69,49 +59,159 @@ internal static class NativeTaskbarController
         }
     }
 
-    public static void RestorePrimary()
+    public static TaskbarRestoreReceipt RestorePrimary() => RestorePrimary(
+        TaskbarRestorePolicy.DefaultMaximumAttempts,
+        TaskbarRestorePolicy.DefaultVerificationDelay,
+        "host");
+
+    public static TaskbarRestoreReceipt RestorePrimaryForWatchdog() => RestorePrimary(
+        WatchdogRestoreMaximumAttempts,
+        WatchdogRestoreVerificationDelay,
+        "watchdog");
+
+    private static TaskbarRestoreReceipt RestorePrimary(
+        int maximumAttempts,
+        TimeSpan verificationDelay,
+        string recoveryOwner)
     {
         try
         {
-            var taskbar = FindPrimaryTaskbar();
-            if (taskbar != IntPtr.Zero && !IsWindowVisible(taskbar))
+            var receipt = TaskbarRestorePolicy.Restore(
+                InspectPrimaryVisibility,
+                RequestPrimaryShow,
+                Thread.Sleep,
+                maximumAttempts,
+                verificationDelay);
+            if (receipt.Verified)
             {
-                _ = ShowWindowAsync(taskbar, SwShowNoActivate);
+                HostLog.Info(
+                    receipt.Requested
+                        ? $"Primary Windows taskbar restore verified by {recoveryOwner} after {receipt.Attempts} attempt(s)."
+                        : $"Primary Windows taskbar was already visible; {recoveryOwner} recovery verified.");
             }
+            else
+            {
+                HostLog.Warning(
+                    $"Primary Windows taskbar restore by {recoveryOwner} was not verified after " +
+                    $"{receipt.Attempts} attempt(s). " +
+                    receipt.FailureReason);
+            }
+
+            return receipt;
         }
         catch (Exception ex)
         {
             HostLog.Error("Failed to restore the primary Windows taskbar.", ex);
+            return new TaskbarRestoreReceipt(
+                Requested: false,
+                Verified: false,
+                Attempts: 0,
+                FailureReason: ex.Message);
         }
     }
 
-    public static void RestoreOwnedPrimary()
+    public static TaskbarRestoreReceipt RestoreOwnedPrimary()
     {
-        if (Interlocked.Exchange(ref _ownsVisibilityLease, 0) == 1)
+        if (!OwnsVisibilityLease)
         {
-            RestorePrimary();
+            return TaskbarRestoreReceipt.NotRequired;
+        }
+
+        var receipt = RestorePrimary();
+        if (receipt.Verified)
+        {
+            _ = Interlocked.CompareExchange(ref _ownsVisibilityLease, 0, 1);
+        }
+
+        return receipt;
+    }
+
+    private static TaskbarVisibilityState InspectPrimaryVisibility()
+        => InspectPrimaryTaskbar(out _, out _);
+
+    private static void RequestPrimaryShow()
+    {
+        if (InspectPrimaryTaskbar(out var taskbar, out _) == TaskbarVisibilityState.Hidden)
+        {
+            _ = ShowWindowAsync(taskbar, SwShowNoActivate);
         }
     }
 
-    private static IntPtr FindPrimaryTaskbar()
+    private static TaskbarVisibilityState InspectPrimaryTaskbar(
+        out IntPtr taskbar,
+        out PixelRect bounds)
     {
-        var taskbar = FindWindow("Shell_TrayWnd", null);
+        taskbar = FindWindow("Shell_TrayWnd", null);
+        bounds = default;
         if (taskbar == IntPtr.Zero)
         {
-            return IntPtr.Zero;
+            return TaskbarVisibilityState.Missing;
+        }
+
+        if (!IsWindow(taskbar) || !TryGetOwnerProcessName(taskbar, out var ownerProcessName))
+        {
+            return TaskbarVisibilityState.Invalid;
         }
 
         var monitor = MonitorFromWindow(taskbar, MonitorDefaultToNull);
         if (monitor == IntPtr.Zero)
         {
-            return IntPtr.Zero;
+            return TaskbarVisibilityState.Invalid;
         }
 
         var monitorInfo = MonitorInfo.Create();
-        return GetMonitorInfo(monitor, ref monitorInfo) &&
-               (monitorInfo.Flags & MonitorInfoPrimary) != 0
-            ? taskbar
-            : IntPtr.Zero;
+        if (!GetMonitorInfo(monitor, ref monitorInfo) ||
+            (monitorInfo.Flags & MonitorInfoPrimary) == 0 ||
+            !GetWindowRect(taskbar, out var rect) ||
+            !NativeDisplay.TryGetPrimaryMonitorBounds(out var monitorBounds))
+        {
+            return TaskbarVisibilityState.Invalid;
+        }
+
+        bounds = new PixelRect(rect.Left, rect.Top, rect.Right, rect.Bottom);
+        if (!IsVerifiedTaskbarCandidate(ownerProcessName, bounds, monitorBounds))
+        {
+            return TaskbarVisibilityState.Invalid;
+        }
+
+        return IsWindowVisible(taskbar)
+            ? TaskbarVisibilityState.Visible
+            : TaskbarVisibilityState.Hidden;
+    }
+
+    internal static bool IsVerifiedTaskbarCandidate(
+        string? ownerProcessName,
+        PixelRect bounds,
+        PixelRect monitorBounds) =>
+        string.Equals(ownerProcessName, "explorer", StringComparison.OrdinalIgnoreCase) &&
+        IsSupportedHorizontalTaskbar(bounds, monitorBounds);
+
+    private static bool TryGetOwnerProcessName(IntPtr window, out string? processName)
+    {
+        processName = null;
+        _ = GetWindowThreadProcessId(window, out var processId);
+        var shellWindow = GetShellWindow();
+        _ = GetWindowThreadProcessId(shellWindow, out var shellProcessId);
+        if (processId == 0 ||
+            processId > int.MaxValue ||
+            shellWindow == IntPtr.Zero ||
+            shellProcessId != processId)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById((int)processId);
+            processName = process.ProcessName;
+            return !string.IsNullOrWhiteSpace(processName);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException or
+                System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return false;
+        }
     }
 
     private static bool IsSupportedHorizontalTaskbar(PixelRect bounds, PixelRect monitorBounds)
@@ -136,6 +236,9 @@ internal static class NativeTaskbarController
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetShellWindow();
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

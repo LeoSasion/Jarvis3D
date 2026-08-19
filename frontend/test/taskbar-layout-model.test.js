@@ -16,20 +16,42 @@ test("taskbar capacity fails safe for invalid measurements", () => {
   assert.equal(getTaskbarCapacity(Number.NaN, Number.NaN), 5);
 });
 
-test("taskbar planner keeps every complete label when intrinsic widths fit", () => {
+test("taskbar planner prefers stable icon slots even when complete labels fit", () => {
   const plan = getTaskbarLayoutPlan([
     { id: "explorer", fullWidth: 118, canUseIconOnly: true },
     { id: "terminal", fullWidth: 104, canUseIconOnly: true },
     { id: "generic", fullWidth: 156, canUseIconOnly: false },
   ], 378);
 
-  assert.equal(plan.mode, "full");
-  assert.deepEqual(plan.visible.map(({ id, density }) => [id, density]), [
-    ["explorer", "full"],
-    ["terminal", "full"],
-    ["generic", "full"],
+  assert.equal(plan.mode, "mixed");
+  assert.deepEqual(plan.visible.map(({ id, density, width }) => [id, density, width]), [
+    ["explorer", "icon", 48],
+    ["terminal", "icon", 48],
+    ["generic", "full", 156],
   ]);
   assert.deepEqual(plan.overflowIds, []);
+});
+
+test("contextual label state never changes icon layout geometry", () => {
+  const baseItems = [
+    { id: "explorer", fullWidth: 118, canUseIconOnly: true },
+    { id: "terminal", fullWidth: 104, canUseIconOnly: true },
+    { id: "browser", fullWidth: 132, canUseIconOnly: true },
+  ];
+  const idle = getTaskbarLayoutPlan(baseItems, 144);
+  const contextual = getTaskbarLayoutPlan(baseItems.map((item, index) => ({
+    ...item,
+    active: index === 0,
+    hovered: index === 1,
+    focused: index === 2,
+  })), 144);
+
+  assert.deepEqual(contextual, idle);
+  assert.deepEqual(contextual.visible.map(({ id, density, width }) => [id, density, width]), [
+    ["explorer", "icon", 48],
+    ["terminal", "icon", 48],
+    ["browser", "icon", 48],
+  ]);
 });
 
 test("taskbar planner compacts only recognizable icons", () => {
@@ -54,7 +76,7 @@ test("taskbar planner reserves overflow and preserves the atomic prefix", () => 
     canUseIconOnly: true,
   }));
 
-  assert.equal(getTaskbarLayoutPlan(items, 1349).mode, "full");
+  assert.equal(getTaskbarLayoutPlan(items, 1349).mode, "compact");
   assert.equal(getTaskbarLayoutPlan(items, 942).mode, "compact");
   assert.equal(getTaskbarLayoutPlan(items, 733).mode, "compact");
   const narrow = getTaskbarLayoutPlan(items, 598);

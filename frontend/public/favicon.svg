@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="JARVIS">
+  <rect width="64" height="64" fill="#000000"/>
+  <path d="M10 23V11h12M42 11h12v12M54 41v12H42M22 53H10V41" fill="none" stroke="#ff6a00" stroke-width="2"/>
+  <path d="M22 19h20v17c0 7.2-4.8 11-11 11-5.7 0-9.4-3-10.6-7.7" fill="none" stroke="#f4f0e9" stroke-linecap="square" stroke-width="3"/>
+  <path d="M31 25h11M20 39h11" fill="none" stroke="#ff6a00" stroke-width="3"/>
+  <rect x="30" y="30" width="4" height="4" fill="#ff6a00"/>
+</svg>

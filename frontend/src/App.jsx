@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getLatestAgentRelationMessage } from "./agent-context-model.js";
+import { canUseAgentChat } from "./agent-session-model.js";
 import { CommandOverlay } from "./components/CommandOverlay.jsx";
 import { CoreStage } from "./components/CoreStage.jsx";
 import { DesktopShortcuts } from "./components/DesktopShortcuts.jsx";
@@ -67,12 +68,14 @@ export function App() {
     cycle: cycleWorkspaceWindows,
   } = useWorkspaceManager();
   const agentSession = useAgentSession();
+  const agentChatAvailable = canUseAgentChat(agentSession.state);
   const [selectedShortcut, setSelectedShortcut] = useState(null);
   const [activeApp, setActiveApp] = useState("builtin:explorer");
   const [commandOpen, setCommandOpen] = useState(false);
   const [shellPanel, setShellPanel] = useState(null);
   const [explorerRequest, setExplorerRequest] = useState({ path: null, sequence: 0 });
   const [explorerSelection, setExplorerSelection] = useState([]);
+  const [graphSource, setGraphSource] = useState(null);
   const [inspectorTarget, setInspectorTarget] = useState(null);
   const [bootActive, setBootActive] = useState(true);
   const [graphLaunchpadHidden, setGraphLaunchpadHidden] = useState(false);
@@ -138,6 +141,12 @@ export function App() {
     }
     return feedback;
   }, []);
+
+  useEffect(() => {
+    const connectedPath = graphSource?.currentPath ?? graphSource?.CurrentPath;
+    if (!connectedPath) return;
+    setNotice((current) => current?.id === "knowledge-graph-source-prompt" ? null : current);
+  }, [graphSource]);
   const showDesktopFeedback = useCallback((input) => showToast(
     typeof input === "string" ? { title: input, source: "desktop" } : { ...input, source: input?.source ?? "desktop" },
   ), [showToast]);
@@ -243,6 +252,21 @@ export function App() {
   }, [hideTaskbarFlyout, toggleWorkspaceWindowFromTaskbar]);
 
   const linkExplorerSelectionToAgent = useCallback(async (entries) => {
+    if (!agentChatAvailable) {
+      await openAgent();
+      showToast({
+        severity: "warning",
+        source: "agent",
+        title: "Agent chat unavailable",
+        detail: "The active Agent Provider is unavailable or does not advertise chat capability.",
+      });
+      return;
+    }
+    if (["submitting", "running"].includes(agentSession.context.phase)) {
+      await openAgent();
+      showToast("Agent context is locked while the current response is running");
+      return;
+    }
     const stagedItems = agentSession.addContextItems(entries);
     if (!stagedItems.length) {
       showToast("Select an Explorer item before linking the Agent");
@@ -250,7 +274,44 @@ export function App() {
     }
     await openAgent();
     showToast(`${stagedItems.length} Explorer reference${stagedItems.length === 1 ? "" : "s"} linked to the Agent`);
-  }, [agentSession.addContextItems, openAgent, showToast]);
+  }, [
+    agentChatAvailable,
+    agentSession.addContextItems,
+    agentSession.context.phase,
+    openAgent,
+    showToast,
+  ]);
+
+  const linkKnowledgeGraphNodeToAgent = useCallback(async (entry) => {
+    if (!agentChatAvailable) {
+      await openAgent();
+      showToast({
+        severity: "warning",
+        source: "agent",
+        title: "Agent chat unavailable",
+        detail: "The active Agent Provider is unavailable or does not advertise chat capability.",
+      });
+      return;
+    }
+    if (["submitting", "running"].includes(agentSession.context.phase)) {
+      await openAgent();
+      showToast("Agent context is locked while the current response is running");
+      return;
+    }
+    const stagedItems = agentSession.addContextItems(entry ? [entry] : []);
+    if (!stagedItems.length) {
+      showToast("Select a local graph node before linking the Agent");
+      return;
+    }
+    await openAgent();
+    showToast(`${stagedItems[0].name} linked from the local graph · metadata only`);
+  }, [
+    agentChatAvailable,
+    agentSession.addContextItems,
+    agentSession.context.phase,
+    openAgent,
+    showToast,
+  ]);
 
   const clearLinkedAgentContext = useCallback(() => {
     if (agentSession.clearContext()) showToast("Explorer reference unlinked from the Agent");
@@ -519,7 +580,6 @@ export function App() {
       }
       if (builtinId === "explorer") {
         openExplorer();
-        showToast("JARVIS File Explorer ready");
         return;
       }
       if (builtinId === "jarvis-settings") {
@@ -658,7 +718,6 @@ export function App() {
     setShellPanel(null);
     if (target.toLowerCase() === "explorer.exe") {
       openExplorer();
-      showToast("JARVIS File Explorer ready");
       return;
     }
     try {
@@ -749,6 +808,7 @@ export function App() {
   const openGraphFiles = useCallback(() => {
     openExplorer();
     showToast({
+      id: "knowledge-graph-source-prompt",
       severity: "info",
       source: "desktop",
       title: "Choose a verified local source",
@@ -791,9 +851,13 @@ export function App() {
           onNotify={showDesktopFeedback}
         />
         <CoreStage
+          graphSource={graphSource}
+          graphSelection={explorerSelection}
           desktopOnly={graphLaunchpadHidden}
           onOpenSearch={openCommand}
           onOpenFiles={openGraphFiles}
+          onOpenGraphPath={openExplorer}
+          onLinkGraphNode={linkKnowledgeGraphNodeToAgent}
           onKeepDesktop={() => {
             setGraphLaunchpadHidden(true);
             showToast("Knowledge graph start options hidden for this session");
@@ -886,9 +950,11 @@ export function App() {
               canMaximize={!isDockedWindow("explorer", workspaceLayoutMode)}
               linkedContext={agentSession.context}
               linkedFlowPhase={agentSession.context.phase}
+              canUseAgentChat={agentChatAvailable}
               notice={explorerInlineNotice}
               onDismissNotice={dismissNotice}
               onSelectionChange={setExplorerSelection}
+              onGraphSourceChange={setGraphSource}
               onAddToAgentContext={linkExplorerSelectionToAgent}
               onMinimize={() => minimizeWorkspaceWindow("explorer")}
               onToggleMaximize={() => handleToggleWorkspaceMaximize("explorer")}

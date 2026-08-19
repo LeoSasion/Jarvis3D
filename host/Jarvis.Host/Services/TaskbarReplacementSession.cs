@@ -11,10 +11,13 @@ internal sealed class TaskbarReplacementSession : IDisposable
     private bool _watchdogExited;
     private bool _active;
     private bool _activating;
+    private bool _restoreRequested;
     private bool _disposed;
     private long _generation;
 
     public event Action? ReplacementLost;
+
+    public event Action? NativeRestoreVerified;
 
     public bool TryGetTargetBounds(out PixelRect bounds)
     {
@@ -39,7 +42,7 @@ internal sealed class TaskbarReplacementSession : IDisposable
 
             if (_active)
             {
-                return true;
+                return !_restoreRequested;
             }
 
             if (_activating)
@@ -49,6 +52,7 @@ internal sealed class TaskbarReplacementSession : IDisposable
 
             _activating = true;
             _watchdogExited = false;
+            _restoreRequested = false;
             generation = ++_generation;
         }
 
@@ -92,6 +96,7 @@ internal sealed class TaskbarReplacementSession : IDisposable
                 HostLog.Warning(
                     "Taskbar replacement was not enabled because the watchdog did not confirm a hidden taskbar.");
                 watchdog.RequestRestore();
+                _ = Restore();
                 return false;
             }
 
@@ -114,7 +119,7 @@ internal sealed class TaskbarReplacementSession : IDisposable
             if (activationFailed)
             {
                 watchdog.RequestRestore();
-                NativeTaskbarController.RestoreOwnedPrimary();
+                _ = Restore();
                 HostLog.Warning("Taskbar replacement was rolled back because the watchdog exited during activation.");
                 return false;
             }
@@ -125,14 +130,14 @@ internal sealed class TaskbarReplacementSession : IDisposable
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
         {
             watchdog?.RequestRestore();
-            NativeTaskbarController.RestoreOwnedPrimary();
+            _ = Restore();
             return false;
         }
         catch (Exception ex)
         {
             HostLog.Error("Taskbar replacement activation failed.", ex);
             watchdog?.RequestRestore();
-            NativeTaskbarController.RestoreOwnedPrimary();
+            _ = Restore();
             return false;
         }
         finally
@@ -147,31 +152,33 @@ internal sealed class TaskbarReplacementSession : IDisposable
         }
     }
 
-    public void Restore()
+    public TaskbarRestoreReceipt Restore()
     {
         TaskbarWatchdogChannel? watchdog;
         lock (_gate)
         {
             _generation++;
-            _active = false;
             _activating = false;
+            _restoreRequested = true;
             watchdog = _watchdog;
-            _watchdog = null;
         }
 
-        if (watchdog is not null)
+        watchdog?.RequestRestore();
+
+        var receipt = RestoreOwnedTaskbarWithReceipt("taskbar replacement shutdown");
+        if (receipt.Verified)
         {
-            watchdog.Process.Exited -= OnWatchdogExited;
-            watchdog.RequestRestore();
-            watchdog.Dispose();
+            CompleteVerifiedRestore(watchdog);
         }
 
-        NativeTaskbarController.RestoreOwnedPrimary();
+        return receipt;
     }
 
     private void OnWatchdogExited(object? sender, EventArgs e)
     {
         var shouldDisable = false;
+        var restoreRequested = false;
+        TaskbarWatchdogChannel? watchdog;
         lock (_gate)
         {
             if (_disposed)
@@ -185,7 +192,27 @@ internal sealed class TaskbarReplacementSession : IDisposable
             }
 
             _watchdogExited = true;
-            shouldDisable = _active;
+            watchdog = _watchdog;
+            restoreRequested = _restoreRequested;
+            shouldDisable = _active && !restoreRequested;
+        }
+
+        if (restoreRequested)
+        {
+            var receipt = RestoreOwnedTaskbarWithReceipt("watchdog recovery completion");
+            if (receipt.Verified)
+            {
+                CompleteVerifiedRestore(watchdog);
+                NativeRestoreVerified?.Invoke();
+            }
+            else
+            {
+                HostLog.Warning(
+                    "The watchdog recovery window ended without a verified native taskbar; " +
+                    "the replacement surface and recovery lease remain active for retry.");
+            }
+
+            return;
         }
 
         if (shouldDisable)
@@ -214,18 +241,58 @@ internal sealed class TaskbarReplacementSession : IDisposable
             _disposed = true;
             _generation++;
             _shutdown.Cancel();
+            _restoreRequested = true;
             watchdog = _watchdog;
-            _watchdog = null;
         }
 
         watchdog?.RequestRestore();
-        NativeTaskbarController.RestoreOwnedPrimary();
+        var receipt = RestoreOwnedTaskbarWithReceipt("taskbar replacement disposal");
+        if (receipt.Verified)
+        {
+            CompleteVerifiedRestore(watchdog);
+            watchdog = null;
+        }
+
         if (watchdog is not null)
         {
             watchdog.Process.Exited -= OnWatchdogExited;
             watchdog.Dispose();
         }
-
         _shutdown.Dispose();
+    }
+
+    private void CompleteVerifiedRestore(TaskbarWatchdogChannel? expectedWatchdog)
+    {
+        TaskbarWatchdogChannel? watchdogToDispose = null;
+        lock (_gate)
+        {
+            _active = false;
+            _activating = false;
+            _restoreRequested = false;
+            if (expectedWatchdog is null || ReferenceEquals(_watchdog, expectedWatchdog))
+            {
+                watchdogToDispose = _watchdog;
+                _watchdog = null;
+            }
+        }
+
+        if (watchdogToDispose is not null)
+        {
+            watchdogToDispose.Process.Exited -= OnWatchdogExited;
+            watchdogToDispose.Dispose();
+        }
+    }
+
+    private static TaskbarRestoreReceipt RestoreOwnedTaskbarWithReceipt(string reason)
+    {
+        var receipt = NativeTaskbarController.RestoreOwnedPrimary();
+        if (!receipt.Verified)
+        {
+            HostLog.Warning(
+                $"Native taskbar recovery was not verified during {reason}; " +
+                "the application-level recovery lease remains active for another exit-path attempt.");
+        }
+
+        return receipt;
     }
 }

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
+  AGENT_CAPABILITIES,
+  agentSupportsCapability,
   agentSessionReducer,
+  canUseAgentChat,
+  createAgentCapabilityError,
   createAgentSessionModel,
+  normalizeAgentState,
 } from "../agent-session-model.js";
 import {
   agentContextReducer,
@@ -42,7 +47,49 @@ function resultState(result) {
   return readResult(result, "status", "Status") ? result : null;
 }
 
-export async function runAgentSessionTransition(agent, gate) {
+export async function hydrateAgentSession(agent, gate, hydration) {
+  try {
+    const state = await agent.getState();
+    const normalizedState = normalizeAgentState(state);
+    if (!agentSupportsCapability(
+      normalizedState,
+      AGENT_CAPABILITIES.messageHistory,
+    )) {
+      gate.hydrate(hydration, state, []);
+      return { state: normalizedState, messagesRequested: false };
+    }
+
+    try {
+      const messages = await agent.getMessages();
+      gate.hydrate(hydration, state, messages);
+    } catch (error) {
+      gate.hydrate(hydration, state, [], error);
+    }
+    return { state: normalizedState, messagesRequested: true };
+  } catch (error) {
+    gate.failHydration(hydration, error);
+    return { state: null, messagesRequested: false, error };
+  }
+}
+
+export function runAgentPrompt(agent, state, message, clientMessageId) {
+  if (!agentSupportsCapability(state, AGENT_CAPABILITIES.chat)) {
+    throw createAgentCapabilityError(AGENT_CAPABILITIES.chat);
+  }
+  return agent.prompt(message, clientMessageId);
+}
+
+export function runAgentAbort(agent, state) {
+  if (!agentSupportsCapability(state, AGENT_CAPABILITIES.abort)) {
+    throw createAgentCapabilityError(AGENT_CAPABILITIES.abort);
+  }
+  return agent.abort();
+}
+
+export async function runAgentSessionTransition(agent, gate, state = null) {
+  if (state && !agentSupportsCapability(state, AGENT_CAPABILITIES.newSession)) {
+    throw createAgentCapabilityError(AGENT_CAPABILITIES.newSession);
+  }
   const token = gate.beginSessionTransition();
   if (token === null) {
     const error = new Error("An Agent session change is already in progress.");
@@ -80,6 +127,15 @@ export function useAgentSession() {
   );
   const [draft, setDraft] = useState("");
   const gateRef = useRef(null);
+  const supportsChat = canUseAgentChat(model.state);
+  const supportsAbort = agentSupportsCapability(
+    model.state,
+    AGENT_CAPABILITIES.abort,
+  );
+  const supportsNewSession = agentSupportsCapability(
+    model.state,
+    AGENT_CAPABILITIES.newSession,
+  );
 
   useEffect(() => {
     const gate = createAgentSessionGate(dispatch);
@@ -106,22 +162,7 @@ export function useAgentSession() {
       }
     });
 
-    Promise.allSettled([platform.agent.getState(), platform.agent.getMessages()])
-      .then(([stateResult, messagesResult]) => {
-        if (stateResult.status === "rejected") {
-          gate.failHydration(hydration, stateResult.reason);
-          return;
-        }
-        gate.hydrate(
-          hydration,
-          stateResult.value,
-          messagesResult.status === "fulfilled" ? messagesResult.value : [],
-          messagesResult.status === "rejected" ? messagesResult.reason : null,
-        );
-      })
-      .catch((error) => {
-        gate.failHydration(hydration, error);
-      });
+    void hydrateAgentSession(platform.agent, gate, hydration);
 
     return () => {
       gate.dispose();
@@ -151,7 +192,12 @@ export function useAgentSession() {
       dispatchContext({ type: "submit", clientMessageId });
     }
     try {
-      const result = await platform.agent.prompt(prompt, clientMessageId);
+      const result = await runAgentPrompt(
+        platform.agent,
+        model.state,
+        prompt,
+        clientMessageId,
+      );
       if (readResult(result, "accepted", "Accepted") === false) {
         throw commandResultError(result, "The Agent Provider rejected the prompt.");
       }
@@ -168,7 +214,7 @@ export function useAgentSession() {
       dispatch({ type: "error", error });
       throw error;
     }
-  }, [context.items, draft, model.state.available, model.state.status]);
+  }, [context.items, draft, model.state.available, model.state.status, supportsChat]);
 
   const addContextItems = useCallback((entries) => {
     if (["submitting", "running"].includes(context.phase)) return context.items;
@@ -192,7 +238,7 @@ export function useAgentSession() {
 
   const abort = useCallback(async () => {
     try {
-      const result = await platform.agent.abort();
+      const result = await runAgentAbort(platform.agent, model.state);
       if (readResult(result, "success", "Success") === false) {
         throw commandResultError(result, "The Agent Provider could not stop the active response.");
       }
@@ -202,18 +248,25 @@ export function useAgentSession() {
       dispatch({ type: "error", error });
       throw error;
     }
-  }, []);
+  }, [model.state, supportsAbort]);
 
   const newSession = useCallback(async () => {
+    if (!supportsNewSession) {
+      throw createAgentCapabilityError(AGENT_CAPABILITIES.newSession);
+    }
     const gate = gateRef.current;
     if (!gate) throw new Error("Agent session is not initialized.");
-    const { state, applied } = await runAgentSessionTransition(platform.agent, gate);
+    const { state, applied } = await runAgentSessionTransition(
+      platform.agent,
+      gate,
+      model.state,
+    );
     if (applied) {
       setDraft("");
       dispatchContext({ type: "session-reset" });
     }
     return state;
-  }, []);
+  }, [model.state, supportsNewSession]);
 
   return {
     state: model.state,
@@ -225,6 +278,11 @@ export function useAgentSession() {
     context,
     addContextItems,
     clearContext,
+    capabilities: {
+      chat: supportsChat,
+      abort: supportsAbort,
+      newSession: supportsNewSession,
+    },
     send,
     abort,
     newSession,

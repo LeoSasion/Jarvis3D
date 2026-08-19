@@ -10,7 +10,7 @@ JarvisV1 is an experimental HUD-style desktop shell for Windows 10 and Windows 1
 - Hybrid primary-taskbar composition by default, preserving Explorer's notification area, with optional native fallback and experimental full replacement, fullscreen-aware reversible suppression, running-window synchronization, delayed DWM hover previews, session-scoped Show Desktop restore, and a recovery watchdog
 - Current-virtual-desktop window scoping for the replacement taskbar and bounded HUD Alt+Tab switcher, with fail-open public-API fallback and native Windows fallback in hybrid, safe, secure-desktop, and renderer-failure paths
 - Local Quick Search from the desktop and replacement taskbar, with keyboard scope switching and bounded history
-- A centered Pi Agent taskbar entry and embedded streaming chat window; V1 keeps Pi tools disabled and lazily starts a repository-pinned, privately bundled runtime only when a prompt is sent
+- A persistent provider-neutral Agent entry immediately after Start, replacing the former search-box slot without consuming the running-app rail; Pi is the first supported adapter, with tools disabled and a repository-pinned private runtime started only when a prompt is sent
 - Explorer-owned notification area in hybrid mode, with automatic native fallback
 - Real Windows audio, network, power, and local-time state shared by the top bar, taskbar, Quick Settings, and the taskbar date-and-time center
 - Keyboard-accessible Monday-first calendar with session-event filtering and an allowlisted handoff to Windows Date & Time Settings
@@ -39,7 +39,7 @@ JarvisV1 is under active development. The experimental immersive mode can alter 
 - `third_party/pi/` — pinned Pi release trust manifest and retained MIT license; upstream binaries remain build artifacts, not source-control payloads
 - `assets/archive/` — approved source visual assets retained for restoration
 
-The WebView renderer receives bounded capabilities rather than executable paths or arbitrary command lines. Windows integration and safety-sensitive operations remain in the native host.
+The WebView renderer receives bounded capabilities rather than executable paths or arbitrary command lines. Windows integration and safety-sensitive operations remain in the native host. Bridge input, output, concurrency, and per-surface permissions are bounded independently. Agent providers also sit behind an explicit capability contract; a provider cannot use chat, streaming, history, abort, or session controls unless it declares that capability, and the current chat contract requires streaming support.
 
 ## Development
 

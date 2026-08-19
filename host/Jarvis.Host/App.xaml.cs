@@ -10,7 +10,9 @@ namespace Jarvis.Host;
 public partial class App : Application
 {
     private SingleInstanceGuard? _singleInstance;
+    private HostStartupSafetySession? _startupSafety;
     private bool _mayRestoreTaskbar;
+    private bool _fatalFailure;
     private RendererSmokeOptions? _rendererSmokeOptions;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -66,6 +68,17 @@ public partial class App : Application
                 MessageBoxImage.Information);
             Shutdown(2);
             return;
+        }
+
+        if (_rendererSmokeOptions is null)
+        {
+            _startupSafety = HostStartupSafetySession.Begin(e.Args);
+            if (_startupSafety.IsSafeMode)
+            {
+                HostLog.Warning(
+                    "Host startup safety mode enabled; native Windows shell surfaces will remain active. " +
+                    _startupSafety.Reason);
+            }
         }
 
         var staleAppearanceRecovery = _rendererSmokeOptions is null
@@ -206,6 +219,7 @@ public partial class App : Application
         object sender,
         DispatcherUnhandledExceptionEventArgs e)
     {
+        _fatalFailure = true;
         HostLog.Error("Unhandled UI exception.", e.Exception);
         RestoreWindowAppearanceIfOwned();
         RestoreTaskbarIfOwned();
@@ -227,6 +241,7 @@ public partial class App : Application
 
     private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
+        _fatalFailure = true;
         HostLog.Error("Unhandled process exception.", e.ExceptionObject as Exception);
         RestoreWindowAppearanceIfOwned();
         RestoreTaskbarIfOwned();
@@ -271,22 +286,35 @@ public partial class App : Application
         }
     }
 
-    private void RestoreTaskbarIfOwned()
+    private TaskbarRestoreReceipt RestoreTaskbarIfOwned()
     {
-        if (_mayRestoreTaskbar)
-        {
-            NativeTaskbarController.RestoreOwnedPrimary();
-        }
+        return _mayRestoreTaskbar
+            ? NativeTaskbarController.RestoreOwnedPrimary()
+            : TaskbarRestoreReceipt.NotRequired;
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        RestoreTaskbarIfOwned();
+        var taskbarRecovery = RestoreTaskbarIfOwned();
         AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
         AppDomain.CurrentDomain.UnhandledException -= OnUnhandledException;
         TaskScheduler.UnobservedTaskException -= OnUnobservedTaskException;
         _singleInstance?.Dispose();
         _singleInstance = null;
+
+        if (!_fatalFailure &&
+            taskbarRecovery.Verified &&
+            !NativeTaskbarController.OwnsVisibilityLease &&
+            _startupSafety is not null &&
+            !_startupSafety.MarkCleanExit())
+        {
+            HostLog.Warning(
+                "The host exited normally, but its startup health ledger could not be marked clean; " +
+                "the next launch will remain in safe mode.");
+        }
+
+        _startupSafety?.Dispose();
+        _startupSafety = null;
         base.OnExit(e);
     }
 }

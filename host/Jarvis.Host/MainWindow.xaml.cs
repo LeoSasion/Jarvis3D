@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     private readonly TaskbarLifecycleMachine _taskbarLifecycle = new();
     private readonly TaskbarRebindEpoch _taskbarRebindEpoch = new();
     private readonly TaskbarRecoveryCircuit _taskbarRecoveryCircuit = new();
+    private readonly TaskbarGracefulExitGate _gracefulExitGate = new();
     private readonly NativeWindowAppearanceService _windowAppearanceService;
     private GlobalSafetyHotkey? _safetyHotkey;
     private WebBridge? _bridge;
@@ -46,6 +47,9 @@ public partial class MainWindow : Window
     private WindowSwitcherController? _windowSwitcherController;
     private CancellationTokenSource? _taskbarRebindCancellation;
     private CancellationTokenSource? _taskbarStabilityCancellation;
+    private CancellationTokenSource? _nativeTaskbarRestoreCancellation;
+    private bool _nativeTaskbarRestorePending;
+    private string? _nativeTaskbarRestoreReason;
     private bool _isClosing;
     private bool _diagnosticPanelShown;
     private bool _diagnosticWindowSwitcherShown;
@@ -76,6 +80,7 @@ public partial class MainWindow : Window
             Top = -32000;
         }
         _taskbarReplacement.ReplacementLost += OnTaskbarReplacementLost;
+        _taskbarReplacement.NativeRestoreVerified += OnNativeTaskbarRestoreVerified;
         _taskbarModeService.RequestedModeChanged += OnRequestedTaskbarModeChanged;
         _taskbarModeService.RetryRequested += OnTaskbarRetryRequested;
         _taskbarModeService.StateChanged += OnTaskbarModeStateChanged;
@@ -251,7 +256,8 @@ public partial class MainWindow : Window
             RequestSafeExit,
             ShowDesktop,
             systemSessionActionService: _systemSessionActionService,
-            agentCoordinator: _agentCoordinator);
+            agentCoordinator: _agentCoordinator,
+            surface: WebBridgeSurface.Desktop);
         _bridge.Attach();
 
         WebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
@@ -525,6 +531,7 @@ public partial class MainWindow : Window
             _taskbarModeService,
             _trayStatusService,
             _systemFeedService,
+            _agentCoordinator,
             () => OnTaskbarSurfaceReady(generation, mode, hybridAvailable),
             () => OnTaskbarSurfaceFailed(generation, mode, hybridAvailable),
             RequestSafeExit,
@@ -652,9 +659,14 @@ public partial class MainWindow : Window
         _ = Dispatcher.BeginInvoke(HandleTaskbarReplacementLost);
     }
 
+    private void OnNativeTaskbarRestoreVerified()
+    {
+        _ = Dispatcher.BeginInvoke(() => CompletePendingNativeTaskbarRestore("watchdog-verified"));
+    }
+
     private void HandleTaskbarReplacementLost()
     {
-        if (_isClosing)
+        if (_isClosing || _gracefulExitGate.Requested)
         {
             return;
         }
@@ -662,14 +674,22 @@ public partial class MainWindow : Window
         CancelTaskbarStabilityConfirmation();
         var generation = _taskbarRebindEpoch.Current;
         var recovery = _taskbarRecoveryCircuit.ReportFailure(DateTimeOffset.UtcNow);
+        var restored = DisableTaskbarReplacement();
         SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "watchdog-lost");
         _taskbarModeService.ReportEffectiveMode(
             generation,
-            TaskbarMode.Native,
-            hybridAvailable: NativeShellSurfaceService.TryCapture(out _, out _),
-            fallbackReason: "The taskbar recovery watchdog exited unexpectedly.",
-            transitionReason: "watchdog-lost",
+            restored ? TaskbarMode.Native : TaskbarMode.Full,
+            hybridAvailable: restored && NativeShellSurfaceService.TryCapture(out _, out _),
+            fallbackReason: restored
+                ? "The taskbar recovery watchdog exited unexpectedly."
+                : "Explorer recovery is pending; the JARVIS taskbar remains active after watchdog loss.",
+            transitionReason: restored ? "watchdog-lost" : "watchdog-lost-recovery-pending",
             recovery: recovery);
+        if (!restored)
+        {
+            return;
+        }
+
         if (recovery.IsOpen)
         {
             if (recovery.RetryAfterUtc is { } retryAfterUtc)
@@ -700,6 +720,16 @@ public partial class MainWindow : Window
         if (countFailure)
         {
             CancelTaskbarStabilityConfirmation();
+        }
+
+        if (_nativeTaskbarRestorePending && effectiveMode == TaskbarMode.Native)
+        {
+            effectiveMode = TaskbarMode.Full;
+            hybridAvailable = false;
+            fallbackReason =
+                "Explorer taskbar recovery is pending; the verified JARVIS taskbar remains active. " +
+                (_nativeTaskbarRestoreReason ?? string.Empty);
+            transitionReason = "native taskbar verification pending";
         }
 
         var recovery = countFailure
@@ -1023,7 +1053,7 @@ public partial class MainWindow : Window
 
     private void QueueNativeRestore(string reason)
     {
-        if (_isClosing)
+        if (_isClosing || _gracefulExitGate.Requested)
         {
             return;
         }
@@ -1043,7 +1073,11 @@ public partial class MainWindow : Window
             }
 
             SetTaskbarLifecycleState(TaskbarLifecycleState.Recovering, reason);
-            DisableTaskbarReplacement();
+            if (!DisableTaskbarReplacement())
+            {
+                return;
+            }
+
             SetTaskbarLifecycleState(TaskbarLifecycleState.NativeVisible, reason);
             ReportTaskbarOutcome(
                 generation,
@@ -1060,7 +1094,7 @@ public partial class MainWindow : Window
         TimeSpan delay,
         Action? prepare = null)
     {
-        if (_isClosing)
+        if (_isClosing || _gracefulExitGate.Requested)
         {
             return;
         }
@@ -1112,7 +1146,10 @@ public partial class MainWindow : Window
             }
 
             SetTaskbarLifecycleState(TaskbarLifecycleState.Rebinding, reason);
-            DisableTaskbarReplacement();
+            if (!DisableTaskbarReplacement())
+            {
+                return;
+            }
 
             var requestedMode = _taskbarModeService.RequestedMode;
             if (!TryPositionDesktopSurface(TaskbarMode.Native))
@@ -1230,6 +1267,13 @@ public partial class MainWindow : Window
 
     private void SetTaskbarLifecycleState(TaskbarLifecycleState state, string reason)
     {
+        if (_nativeTaskbarRestorePending &&
+            state is TaskbarLifecycleState.NativeVisible or TaskbarLifecycleState.NativeFallback)
+        {
+            state = TaskbarLifecycleState.Recovering;
+            reason = $"{reason}; native taskbar verification pending";
+        }
+
         var transition = _taskbarLifecycle.Transition(state, reason);
         if (!transition.Changed && !transition.ForcedFallback)
         {
@@ -1241,17 +1285,21 @@ public partial class MainWindow : Window
             $"({transition.Reason}).");
         if (transition.ForcedFallback)
         {
-            DisableTaskbarReplacement();
+            var restored = DisableTaskbarReplacement();
             _taskbarModeService.ReportEffectiveMode(
                 _taskbarRebindEpoch.Current,
-                TaskbarMode.Native,
+                restored ? TaskbarMode.Native : TaskbarMode.Full,
                 hybridAvailable: false,
-                fallbackReason: transition.Reason,
-                transitionReason: "unsafe lifecycle transition",
+                fallbackReason: restored
+                    ? transition.Reason
+                    : "Unsafe lifecycle recovery is pending; the JARVIS taskbar remains active.",
+                transitionReason: restored
+                    ? "unsafe lifecycle transition"
+                    : "unsafe lifecycle recovery pending",
                 recovery: _taskbarRecoveryCircuit.Capture(DateTimeOffset.UtcNow));
         }
 
-        var effectiveState = transition.State;
+        var effectiveState = _taskbarLifecycle.State;
         _systemFeedService.Add(
             $"taskbar.{effectiveState.ToString().ToLowerInvariant()}",
             effectiveState == TaskbarLifecycleState.NativeFallback ? "warning" : "info",
@@ -1280,15 +1328,212 @@ public partial class MainWindow : Window
         cancellation?.Dispose();
     }
 
-    private void DisableTaskbarReplacement()
+    private bool DisableTaskbarReplacement()
     {
         SetWindowSwitcherEnabled(false);
-        _taskbarReplacement.Restore();
+        var receipt = _taskbarReplacement.Restore();
+        if (!receipt.Verified)
+        {
+            _nativeTaskbarRestorePending = true;
+            _nativeTaskbarRestoreReason = receipt.FailureReason ?? "native taskbar verification pending";
+            _taskbarWindow?.SetFullscreenSuppressed(false, null);
+            _taskbarWindow?.Reveal();
+            SetTaskbarLifecycleState(
+                TaskbarLifecycleState.Recovering,
+                "native taskbar restore pending");
+            ScheduleNativeTaskbarRestoreRetry();
+            HostLog.Warning(
+                "JARVIS kept its taskbar visible because Explorer recovery was not verified. " +
+                _nativeTaskbarRestoreReason);
+            return false;
+        }
+
+        _nativeTaskbarRestorePending = false;
+        _nativeTaskbarRestoreReason = null;
+        CancelNativeTaskbarRestoreRetry();
+        CloseTaskbarSurfaceAfterVerifiedNativeRestore();
+        return true;
+    }
+
+    private void CloseTaskbarSurfaceAfterVerifiedNativeRestore()
+    {
         _ = TryPositionDesktopSurface(TaskbarMode.Native);
         var taskbarWindow = _taskbarWindow;
         _taskbarWindow = null;
         taskbarWindow?.Conceal();
         taskbarWindow?.CloseFromHost();
+    }
+
+    private void ScheduleNativeTaskbarRestoreRetry()
+    {
+        if (_isClosing || _nativeTaskbarRestoreCancellation is not null)
+        {
+            return;
+        }
+
+        var cancellation = new CancellationTokenSource();
+        _nativeTaskbarRestoreCancellation = cancellation;
+        _ = RetryNativeTaskbarRestoreAsync(cancellation);
+    }
+
+    private async Task RetryNativeTaskbarRestoreAsync(CancellationTokenSource cancellation)
+    {
+        const int maximumAttempts = 16;
+        var delay = TimeSpan.FromMilliseconds(750);
+        try
+        {
+            for (var attempt = 1; attempt <= maximumAttempts; attempt++)
+            {
+                await Task.Delay(delay, cancellation.Token);
+                var receipt = await Task.Run(
+                    _taskbarReplacement.Restore,
+                    cancellation.Token);
+                if (!receipt.Verified)
+                {
+                    continue;
+                }
+
+                await Dispatcher.InvokeAsync(
+                    () => CompletePendingNativeTaskbarRestore($"host-retry-{attempt}"));
+                return;
+            }
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (_isClosing || !_nativeTaskbarRestorePending)
+                {
+                    return;
+                }
+
+                var generation = _taskbarRebindEpoch.Current;
+                var recovery = _taskbarRecoveryCircuit.ReportFailure(DateTimeOffset.UtcNow);
+                SetTaskbarLifecycleState(
+                    TaskbarLifecycleState.Recovering,
+                    "native taskbar recovery retry limit reached");
+                _taskbarModeService.ReportEffectiveMode(
+                    generation,
+                    TaskbarMode.Full,
+                    hybridAvailable: false,
+                    fallbackReason:
+                        "Explorer taskbar recovery is still pending; the JARVIS taskbar remains active.",
+                    transitionReason: "native recovery retry limit reached",
+                    recovery: recovery);
+            });
+
+            var gracefulExitStillWaiting = await Dispatcher.InvokeAsync(
+                () => _gracefulExitGate.WaitingForVerification && !_isClosing);
+            if (!gracefulExitStillWaiting)
+            {
+                return;
+            }
+
+            // A normal exit must remain recoverable even when Explorer takes
+            // longer than the initial bounded recovery window to restart.
+            // Keep a low-frequency verification loop only while that explicit
+            // exit is pending; successful recovery cancels this source.
+            var extendedAttempt = 0;
+            while (!cancellation.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellation.Token);
+                var receipt = await Task.Run(
+                    _taskbarReplacement.Restore,
+                    cancellation.Token);
+                extendedAttempt++;
+                if (receipt.Verified)
+                {
+                    await Dispatcher.InvokeAsync(
+                        () => CompletePendingNativeTaskbarRestore(
+                            $"graceful-exit-retry-{extendedAttempt}"));
+                    return;
+                }
+
+                if (extendedAttempt % 12 == 0)
+                {
+                    HostLog.Warning(
+                        "Graceful exit is still waiting for a verified Explorer taskbar; " +
+                        "the JARVIS taskbar remains available.");
+                }
+            }
+        }
+        catch (OperationCanceledException) when (
+            cancellation.IsCancellationRequested ||
+            _isClosing ||
+            Dispatcher.HasShutdownStarted)
+        {
+            // Shutdown or a verified recovery owns the remaining transition.
+        }
+        catch (InvalidOperationException) when (_isClosing || Dispatcher.HasShutdownStarted)
+        {
+            // The dispatcher can reject the final recovery callback during exit.
+        }
+        finally
+        {
+            if (ReferenceEquals(
+                    Interlocked.CompareExchange(
+                        ref _nativeTaskbarRestoreCancellation,
+                        null,
+                        cancellation),
+                    cancellation))
+            {
+                cancellation.Dispose();
+            }
+        }
+    }
+
+    private void CompletePendingNativeTaskbarRestore(string reason)
+    {
+        if (_isClosing ||
+            !_nativeTaskbarRestorePending ||
+            NativeTaskbarController.OwnsVisibilityLease ||
+            !NativeTaskbarController.IsPrimaryVisible())
+        {
+            return;
+        }
+
+        _nativeTaskbarRestorePending = false;
+        _nativeTaskbarRestoreReason = null;
+        CancelNativeTaskbarRestoreRetry();
+        CloseTaskbarSurfaceAfterVerifiedNativeRestore();
+
+        if (_gracefulExitGate.ConfirmVerifiedRestore())
+        {
+            HostLog.Info("Native taskbar recovery was verified; completing the pending graceful exit.");
+            _ = Dispatcher.BeginInvoke(Close);
+            return;
+        }
+
+        var requestedMode = _taskbarModeService.RequestedMode;
+        var generation = _taskbarRebindEpoch.Current;
+        if (requestedMode == TaskbarMode.Native ||
+            Environment.GetEnvironmentVariable("JARVIS_KEEP_NATIVE_TASKBAR") == "1")
+        {
+            SetTaskbarLifecycleState(TaskbarLifecycleState.NativeVisible, reason);
+            ReportTaskbarOutcome(
+                generation,
+                TaskbarMode.Native,
+                hybridAvailable: false,
+                fallbackReason: null,
+                transitionReason: reason,
+                countFailure: false);
+            return;
+        }
+
+        SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, reason);
+        ReportTaskbarOutcome(
+            generation,
+            TaskbarMode.Native,
+            hybridAvailable: NativeShellSurfaceService.TryCapture(out _, out _),
+            fallbackReason: "Windows recovery completed; replacement reactivation is pending.",
+            transitionReason: reason,
+            countFailure: false);
+        QueueTaskbarRebind("native-recovery-completed", TimeSpan.FromMilliseconds(750));
+    }
+
+    private void CancelNativeTaskbarRestoreRetry()
+    {
+        var cancellation = Interlocked.Exchange(ref _nativeTaskbarRestoreCancellation, null);
+        cancellation?.Cancel();
+        cancellation?.Dispose();
     }
 
     private TaskbarMode ResolveDesktopSurfaceMode()
@@ -1385,6 +1630,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_gracefulExitGate.WaitingForVerification)
+        {
+            ScheduleNativeTaskbarRestoreRetry();
+            return;
+        }
+
+        _gracefulExitGate.Request();
         Dispatcher.BeginInvoke(Close);
     }
 
@@ -1395,14 +1647,38 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
+        if (_gracefulExitGate.WaitingForVerification)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        if (_gracefulExitGate.Requested && !_gracefulExitGate.FinalCloseAuthorized)
+        {
+            _taskbarRebindEpoch.Invalidate();
+            CancelPendingTaskbarRebind();
+            CancelTaskbarStabilityConfirmation();
+            var restored = DisableTaskbarReplacement();
+            if (!_gracefulExitGate.ObserveRestore(restored))
+            {
+                e.Cancel = true;
+                HostLog.Warning(
+                    "Graceful exit is waiting for verified Explorer taskbar recovery; " +
+                    "the JARVIS taskbar remains available in the meantime.");
+                return;
+            }
+        }
+
         _isClosing = true;
         _taskbarRebindEpoch.Invalidate();
         CancelPendingTaskbarRebind();
         CancelTaskbarStabilityConfirmation();
+        CancelNativeTaskbarRestoreRetry();
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         _taskbarReplacement.ReplacementLost -= OnTaskbarReplacementLost;
+        _taskbarReplacement.NativeRestoreVerified -= OnNativeTaskbarRestoreVerified;
         _taskbarModeService.RequestedModeChanged -= OnRequestedTaskbarModeChanged;
         _taskbarModeService.RetryRequested -= OnTaskbarRetryRequested;
         _taskbarModeService.StateChanged -= OnTaskbarModeStateChanged;

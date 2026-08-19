@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Taskbar } from "./components/Taskbar.jsx";
-import { useAgentSession } from "./hooks/useAgentSession.js";
+import { useAgentState } from "./hooks/useAgentState.js";
 import { platform } from "./platform/index.js";
 import { recordRecentApplication } from "./recent-applications.js";
 import { publishShellFeedback } from "./shell-feedback-channel.js";
@@ -18,7 +18,7 @@ import {
 export function TaskbarSurface() {
   const [activeApp, setActiveApp] = useState("builtin:explorer");
   const [internalWindows, setInternalWindows] = useState(readWorkspaceRuntime);
-  const agentSession = useAgentSession();
+  const agentState = useAgentState();
   const showDesktopRestoreIdsRef = useRef([]);
   const taskbarMode = new URLSearchParams(window.location.search).get("taskbarMode") ?? "full";
 
@@ -166,7 +166,7 @@ export function TaskbarSurface() {
         onAppClick={handleAppClick}
         onOpenCommand={() => showDesktopPanel("command")}
         onToggleAgent={toggleAgent}
-        agentState={agentSession.state}
+        agentState={agentState}
         onOpenStart={() => showDesktopPanel("start")}
         onOpenQuickSettings={() => showDesktopPanel("quick-settings")}
         onOpenDateTime={() => showDesktopPanel("date-time")}

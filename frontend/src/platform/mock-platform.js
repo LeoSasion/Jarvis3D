@@ -49,12 +49,12 @@ const RENDERER_FAULT_PARAMETER_NAMES = new Set([
 const RENDERER_FAULT_TITLE_MAX_LENGTH = 160;
 const RENDERER_FAULT_DETAIL_MAX_LENGTH = 320;
 const RENDERER_FAULT_DUPLICATE_WINDOW_MS = 30_000;
-const MOCK_STYLED_WINDOW_COUNTS = {
-  off: 0,
-  conservative: 4,
-  enhanced: 4,
-  immersive: 7,
-};
+export const mockPreviewProvenance = Object.freeze({
+  kind: "browser-preview",
+  dataClass: "simulated-fixture",
+  simulated: true,
+  nativeHostConnected: false,
+});
 
 function readMockWindowAppearanceMode() {
   try {
@@ -92,7 +92,7 @@ function persistMockWindowAppearanceRules(rules) {
   }
 }
 
-function createMockWindowCompatibility(mode, rules) {
+function createMockWindowCompatibility(rules) {
   const ruleByProcess = new Map(
     rules.map((rule) => [rule.processName.toLowerCase(), rule.action]),
   );
@@ -117,7 +117,7 @@ function createMockWindowCompatibility(mode, rules) {
       processName: entry.processName,
       windowCount: entry.windowCount,
       eligibleWindowCount,
-      styledWindowCount: mode === "off" || eligibleWindowCount === 0 ? 0 : eligibleWindowCount,
+      styledWindowCount: 0,
       decision,
       reasonCode: entry.protected
         ? "system-protected"
@@ -131,17 +131,21 @@ function createMockWindowCompatibility(mode, rules) {
 function createMockWindowAppearanceState(mode, rules = []) {
   return {
     mode,
-    effectiveMode: mode,
-    osBuild: "26200.8875",
+    effectiveMode: "off",
+    osBuild: null,
     windows11: true,
-    styledWindowCount: MOCK_STYLED_WINDOW_COUNTS[mode],
-    fallbackReason: null,
-    hooksReady: mode !== "off",
-    hostIntegrityVerified: true,
-    safetyHotkeyRegistered: true,
-    recoveryArmed: true,
+    styledWindowCount: 0,
+    fallbackReason: mode === "off"
+      ? null
+      : "Browser preview only; native Windows appearance hooks were not applied.",
+    hooksReady: false,
+    hostIntegrityVerified: false,
+    safetyHotkeyRegistered: false,
+    recoveryArmed: false,
+    simulation: true,
+    provenance: mockPreviewProvenance,
     rules: rules.map((rule) => ({ ...rule })),
-    compatibilityMatrix: createMockWindowCompatibility(mode, rules),
+    compatibilityMatrix: createMockWindowCompatibility(rules),
   };
 }
 
@@ -165,16 +169,20 @@ function persistMockTaskbarMode(mode) {
 function createMockTaskbarModeState(mode, options = {}) {
   return {
     requestedMode: mode,
-    effectiveMode: options.effectiveMode ?? mode,
+    // A browser can retain the selection for preview, but it cannot inspect or
+    // mutate the effective Windows taskbar mode.
+    effectiveMode: "native",
     fallbackReason: options.fallbackReason ?? null,
     hybridAvailable: true,
     safeMode: false,
     transitionStatus: options.transitionStatus ?? "settled",
     transitionGeneration: options.transitionGeneration ?? 0,
-    transitionReason: options.transitionReason ?? "mock state ready",
-    retryAllowed: options.retryAllowed ?? false,
+    transitionReason: options.transitionReason ?? "browser preview ready; Windows taskbar unchanged",
+    retryAllowed: false,
     recoveryFailureCount: options.recoveryFailureCount ?? 0,
     retryAfterUtc: options.retryAfterUtc ?? null,
+    simulation: true,
+    provenance: mockPreviewProvenance,
   };
 }
 
@@ -213,10 +221,12 @@ export const mockDesktopEntries = shortcuts.map((shortcut) => ({
 
 export const mockSystemSnapshot = {
   timestamp: "2026-07-20T22:47:00+08:00",
+  simulation: true,
+  provenance: mockPreviewProvenance,
   os: {
     version: "10.0.26200.8875",
-    description: "Microsoft Windows 11 Pro 25H2",
-    machineName: "AVALON-PRIME",
+    description: "SIMULATED · Windows 11 preview fixture",
+    machineName: "JARVIS-PREVIEW",
     uptimeSeconds: 193_420,
   },
   cpu: {
@@ -262,6 +272,8 @@ export const mockSystemSnapshot = {
 };
 
 export const mockTaskbarSnapshot = {
+  simulation: true,
+  provenance: mockPreviewProvenance,
   windows: [
     {
       windowId: "0x10001",
@@ -379,6 +391,8 @@ export const mockTaskbarSnapshot = {
 };
 
 export const mockExplorerSnapshot = {
+  simulation: true,
+  provenance: mockPreviewProvenance,
   currentPath: "D:\\Projects\\JARVIS",
   parentPath: "D:\\Projects",
   locations: [
@@ -548,6 +562,14 @@ export function createMockPlatform() {
     connected: true,
     status: "ready",
     provider: "browser-preview",
+    providerId: "browser-preview",
+    providerLabel: "Browser Preview",
+    capabilities: ["abort", "chat", "message-history", "new-session", "streaming"],
+    health: {
+      status: "connected",
+      healthy: true,
+      detail: null,
+    },
     model: "local-simulator",
     sessionId: `browser-preview-${Date.now()}-0`,
     permissionMode: "chat-only",
@@ -624,20 +646,23 @@ export function createMockPlatform() {
   let runtimeInfo = {
     productName: "JARVIS",
     version: "0.1.0-mock",
-    buildConfiguration: "DEVELOPMENT",
-    executablePath: "C:\\Program Files\\JARVIS\\Jarvis.Host.exe",
+    buildConfiguration: "BROWSER PREVIEW",
+    executablePath: null,
     startupEnabled: false,
     startupCommandCurrent: false,
     startupCommand: null,
-    installationMode: "DEVELOPMENT",
-    windowsVersion: "Microsoft Windows 11 Pro 25H2 10.0.26200.8875",
-    webView2Version: "138.0.3351.48",
-    safeMode: true,
-    recoveryReady: true,
+    installationMode: "SIMULATED",
+    windowsVersion: "SIMULATED WINDOWS FIXTURE · NO NATIVE HOST",
+    webView2Version: "NOT CONNECTED",
+    safeMode: false,
+    recoveryReady: false,
+    simulation: true,
+    nativeHostConnected: false,
+    provenance: mockPreviewProvenance,
     requestedTaskbarMode: taskbarModeState.requestedMode,
     effectiveTaskbarMode: taskbarModeState.effectiveMode,
-    taskbarFallbackReason: null,
-    taskbarLifecycleState: "ReplacementActive",
+    taskbarFallbackReason: "Browser preview only; the Windows taskbar was not changed.",
+    taskbarLifecycleState: "BrowserPreview",
     taskbarGeneration: 1,
   };
   let taskbarSnapshot = {
@@ -821,7 +846,11 @@ export function createMockPlatform() {
     return snapshot;
   };
 
-  const cloneAgentState = () => ({ ...agentState });
+  const cloneAgentState = () => ({
+    ...agentState,
+    capabilities: [...agentState.capabilities],
+    health: { ...agentState.health },
+  });
   const cloneAgentMessages = () => agentMessages.map((message) => ({ ...message }));
   const emitAgentState = () => emit("agent.stateChanged", cloneAgentState());
   const emitAgentEvent = (event) => emit("agent.event", event);
@@ -861,6 +890,11 @@ export function createMockPlatform() {
     agentState = {
       ...agentState,
       status: error ? "error" : "ready",
+      health: {
+        status: error ? "degraded" : "connected",
+        healthy: !error,
+        detail: error?.code ?? null,
+      },
       error,
       activeRunId: null,
     };
@@ -875,7 +909,6 @@ export function createMockPlatform() {
 
     const generation = taskbarModeState.transitionGeneration + 1;
     taskbarModeState = createMockTaskbarModeState(mode, {
-      effectiveMode: taskbarModeState.effectiveMode,
       transitionStatus: "applying",
       transitionGeneration: generation,
       transitionReason: reason,
@@ -883,21 +916,23 @@ export function createMockPlatform() {
     runtimeInfo = {
       ...runtimeInfo,
       requestedTaskbarMode: mode,
-      taskbarLifecycleState: "Rebinding",
+      effectiveTaskbarMode: "native",
+      taskbarFallbackReason: "Browser preview only; the Windows taskbar was not inspected or changed.",
+      taskbarLifecycleState: "BrowserPreview",
       taskbarGeneration: generation,
     };
     emit("taskbarMode.changed", { ...taskbarModeState });
     taskbarModeTimer = globalThis.setTimeout(() => {
       taskbarModeState = createMockTaskbarModeState(mode, {
         transitionGeneration: generation,
-        transitionReason: `${mode} mock surface ready`,
+        transitionReason: `${mode} preview selection saved; Windows taskbar unchanged`,
       });
       runtimeInfo = {
         ...runtimeInfo,
         requestedTaskbarMode: mode,
-        effectiveTaskbarMode: mode,
-        taskbarFallbackReason: null,
-        taskbarLifecycleState: mode === "native" ? "NativeVisible" : "ReplacementActive",
+        effectiveTaskbarMode: "native",
+        taskbarFallbackReason: "Browser preview only; the Windows taskbar was not inspected or changed.",
+        taskbarLifecycleState: "BrowserPreview",
         taskbarGeneration: generation,
       };
       taskbarModeTimer = null;
@@ -978,6 +1013,7 @@ export function createMockPlatform() {
   return {
     kind: "mock",
     isNative: false,
+    provenance: mockPreviewProvenance,
     events: {
       subscribe(eventName, listener) {
         let listeners = eventListeners.get(eventName);
@@ -1043,6 +1079,11 @@ export function createMockPlatform() {
         agentState = {
           ...agentState,
           status: "running",
+          health: {
+            status: "busy",
+            healthy: true,
+            detail: null,
+          },
           error: null,
           activeRunId: run.runId,
         };
@@ -1098,6 +1139,11 @@ export function createMockPlatform() {
         agentState = {
           ...agentState,
           status: "ready",
+          health: {
+            status: "connected",
+            healthy: true,
+            detail: null,
+          },
           sessionId: `browser-preview-${Date.now()}-${agentSequence}`,
           error: null,
           activeRunId: null,
@@ -1108,20 +1154,31 @@ export function createMockPlatform() {
     },
     system: {
       async getSnapshot() {
-        return mockSystemSnapshot;
+        return {
+          ...mockSystemSnapshot,
+          os: { ...mockSystemSnapshot.os },
+          cpu: { ...mockSystemSnapshot.cpu },
+          memory: { ...mockSystemSnapshot.memory },
+          disk: { ...mockSystemSnapshot.disk },
+          network: { ...mockSystemSnapshot.network },
+          power: { ...mockSystemSnapshot.power },
+          processes: mockSystemSnapshot.processes.map((process) => ({ ...process })),
+        };
       },
       async getDetails() {
         return {
           capturedAt: new Date().toISOString(),
+          simulation: true,
+          provenance: mockPreviewProvenance,
           computer: {
-            machineName: "AVALON-PRIME",
+            machineName: "JARVIS-PREVIEW",
             processorName: "AMD Ryzen 9 7950X 16-Core Processor",
             logicalProcessors: 32,
-            manufacturer: "ASUS",
-            model: "ROG STRIX X670E-E GAMING WIFI",
-            biosVendor: "American Megatrends International",
-            biosVersion: "1905",
-            operatingSystem: "Microsoft Windows 11 Pro",
+            manufacturer: "SIMULATED FIXTURE",
+            model: "BROWSER PREVIEW",
+            biosVendor: "NOT AVAILABLE",
+            biosVersion: "NOT CONNECTED",
+            operatingSystem: "SIMULATED · Microsoft Windows 11 Pro",
             operatingSystemVersion: "10.0.26200.8875",
           },
           graphicsAdapters: [
@@ -1475,6 +1532,7 @@ export function createMockPlatform() {
         if (!target) return { activated: false, mock: true, windowId };
 
         taskbarSnapshot = {
+          ...taskbarSnapshot,
           windows: taskbarSnapshot.windows.map((window) => ({
             ...window,
             active: window.windowId === windowId,
@@ -1491,6 +1549,7 @@ export function createMockPlatform() {
 
         const minimize = target.active && !target.minimized;
         taskbarSnapshot = {
+          ...taskbarSnapshot,
           windows: taskbarSnapshot.windows.map((window) => ({
             ...window,
             active: minimize ? false : window.windowId === windowId,
@@ -1504,6 +1563,7 @@ export function createMockPlatform() {
       async closeWindow(windowId) {
         const before = taskbarSnapshot.windows.length;
         taskbarSnapshot = {
+          ...taskbarSnapshot,
           windows: taskbarSnapshot.windows.filter((window) => window.windowId !== windowId),
           foregroundWindowId: taskbarSnapshot.foregroundWindowId === windowId
             ? null
@@ -1589,9 +1649,14 @@ export function createMockPlatform() {
         }
 
         persistMockTaskbarMode(mode);
-        return beginMockTaskbarTransition(mode, "mock requested-mode-changed");
+        return beginMockTaskbarTransition(mode, "browser preview selection changing");
       },
       async retry() {
+        if (taskbarModeState.simulation) {
+          const error = new Error("Browser preview cannot retry a native Windows taskbar transition.");
+          error.code = "TASKBAR_RETRY_BLOCKED";
+          throw error;
+        }
         if (taskbarModeState.transitionStatus === "applying") {
           const error = new Error("A taskbar transition is already in progress.");
           error.code = "TASKBAR_RETRY_BLOCKED";
@@ -1824,34 +1889,35 @@ export function createMockPlatform() {
           startupEnabled: Boolean(enabled),
           startupCommandCurrent: Boolean(enabled),
           startupCommand: enabled
-            ? `"${runtimeInfo.executablePath}" --startup`
+            ? "SIMULATED · browser preview does not write Windows startup settings"
             : null,
         };
         return runtimeInfo;
       },
       async runDiagnostics() {
-        const startupHealthy = !runtimeInfo.startupEnabled || runtimeInfo.startupCommandCurrent;
         const checks = [
-          { id: "windows-recovery", label: "WINDOWS RECOVERY", status: "READY", detail: "Explorer and the native Windows taskbar are available.", verifiedFiles: 0 },
+          { id: "windows-recovery", label: "WINDOWS RECOVERY", status: "ATTENTION", detail: "Browser preview only; Explorer recovery and the native Windows taskbar were not inspected.", verifiedFiles: 0 },
           {
             id: "taskbar-mode",
             label: "TASKBAR MODE",
-            status: taskbarModeState.transitionStatus === "settled" ? "READY" : "ATTENTION",
-            detail: `Requested ${taskbarModeState.requestedMode.toUpperCase()}; effective ${taskbarModeState.effectiveMode.toUpperCase()}; transition ${taskbarModeState.transitionStatus.toUpperCase()} at generation ${taskbarModeState.transitionGeneration}; recovery failures ${taskbarModeState.recoveryFailureCount}.`,
+            status: "ATTENTION",
+            detail: `Simulated selection ${taskbarModeState.requestedMode.toUpperCase()}; no native taskbar transition was attempted.`,
             verifiedFiles: 0,
           },
-          { id: "taskbar-synchronization", label: "TASKBAR SYNCHRONIZATION", status: "READY", detail: "6/6 Windows event hooks are active with 75 ms coalescing; 1000 ms polling remains as recovery fallback. Current virtual desktop filtering is active; 0 off-desktop windows are omitted. No primary-monitor fullscreen foreground window is currently detected.", verifiedFiles: 0 },
-          { id: "global-safety-hotkey", label: "GLOBAL SAFETY EXIT", status: "READY", detail: "Ctrl+Shift+Q is registered system-wide for safe JARVIS exit.", verifiedFiles: 0 },
-          { id: "native-window-appearance", label: "WINDOW APPEARANCE", status: "READY", detail: `${windowAppearanceState.effectiveMode.toUpperCase()} mode is active; event hooks, integrity guard, persistence, and DWM state tracking are ready.`, verifiedFiles: 0 },
-          { id: "webview2", label: "WEBVIEW2 RUNTIME", status: "READY", detail: `Evergreen runtime ${runtimeInfo.webView2Version}.`, verifiedFiles: 0 },
-          { id: "installation", label: "INSTALLATION MODE", status: "READY", detail: "Development mode does not require an installer registration.", verifiedFiles: 0 },
-          { id: "startup", label: "SIGN-IN STARTUP", status: startupHealthy ? "READY" : "ATTENTION", detail: startupHealthy ? "The startup configuration is valid." : "The saved startup command is stale.", verifiedFiles: 0 },
-          { id: "package-integrity", label: "PACKAGE INTEGRITY", status: "READY", detail: "Verified 262 packaged files against SHA-256.", verifiedFiles: 262 },
+          { id: "taskbar-synchronization", label: "TASKBAR SYNCHRONIZATION", status: "ATTENTION", detail: "Browser fixture only; Windows event hooks and virtual desktop filtering were not inspected.", verifiedFiles: 0 },
+          { id: "global-safety-hotkey", label: "GLOBAL SAFETY EXIT", status: "ATTENTION", detail: "Browser preview cannot register or verify the system-wide safety shortcut.", verifiedFiles: 0 },
+          { id: "native-window-appearance", label: "WINDOW APPEARANCE", status: "ATTENTION", detail: "Preview controls are simulated; no DWM state or native window was changed.", verifiedFiles: 0 },
+          { id: "webview2", label: "WEBVIEW2 RUNTIME", status: "ATTENTION", detail: "No WebView2 host is connected to this browser preview.", verifiedFiles: 0 },
+          { id: "installation", label: "INSTALLATION MODE", status: "ATTENTION", detail: "Installer registration is outside the browser preview and was not inspected.", verifiedFiles: 0 },
+          { id: "startup", label: "SIGN-IN STARTUP", status: "ATTENTION", detail: "Changes are simulated in browser storage; Windows startup settings were not written.", verifiedFiles: 0 },
+          { id: "package-integrity", label: "PACKAGE INTEGRITY", status: "ATTENTION", detail: "Package hashes require the native Host and were not verified in this preview.", verifiedFiles: 0 },
         ];
         return {
-          overallStatus: checks.some((check) => check.status === "ATTENTION") ? "ATTENTION" : "READY",
-          verifiedFiles: 262,
+          overallStatus: "ATTENTION",
+          verifiedFiles: 0,
           checkedAt: new Date().toISOString(),
+          simulation: true,
+          provenance: mockPreviewProvenance,
           checks,
         };
       },

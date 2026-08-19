@@ -27,12 +27,40 @@ const AGENT_EVENT_KINDS = new Set([
   "tool",
 ]);
 
+export const AGENT_CAPABILITIES = Object.freeze({
+  chat: "chat",
+  streaming: "streaming",
+  messageHistory: "message-history",
+  abort: "abort",
+  newSession: "new-session",
+});
+
+const LEGACY_AGENT_CAPABILITIES = Object.freeze(
+  Object.values(AGENT_CAPABILITIES),
+);
+const PROVIDER_HEALTH_STATUSES = new Set([
+  "unavailable",
+  "degraded",
+  "busy",
+  "connected",
+  "ready",
+]);
+const CAPABILITY_PATTERN = /^[a-z0-9][a-z0-9.-]{0,47}$/u;
+
 export const DEFAULT_AGENT_STATE = Object.freeze({
   available: false,
   configured: false,
   connected: false,
   status: "unavailable",
   provider: null,
+  providerId: null,
+  providerLabel: null,
+  capabilities: LEGACY_AGENT_CAPABILITIES,
+  health: Object.freeze({
+    status: "unavailable",
+    healthy: false,
+    detail: null,
+  }),
   model: null,
   sessionId: null,
   permissionMode: "chat-only",
@@ -50,6 +78,18 @@ function has(raw, camelName, pascalName) {
 
 function nullableText(value) {
   return value === undefined || value === null || value === "" ? null : String(value);
+}
+
+function boundedText(value, maximumLength) {
+  const text = nullableText(value)?.replace(/[\u0000-\u001f\u007f]+/gu, " ").trim();
+  return text ? text.slice(0, maximumLength) : null;
+}
+
+function providerIdentifier(value) {
+  const identifier = boundedText(value, 32)?.toLowerCase();
+  return identifier && /^[a-z0-9][a-z0-9.-]{0,31}$/u.test(identifier)
+    ? identifier
+    : null;
 }
 
 function errorText(value) {
@@ -76,29 +116,147 @@ function normalizeMessageStatus(value, fallback = "complete") {
   return MESSAGE_STATUSES.has(status) ? status : fallback;
 }
 
+function normalizeAgentCapabilities(value, fallback) {
+  if (!Array.isArray(value)) return fallback;
+  const normalized = [];
+  for (const capability of value) {
+    const name = nullableText(capability)?.trim().toLowerCase();
+    if (!name || !CAPABILITY_PATTERN.test(name) || normalized.includes(name)) continue;
+    normalized.push(name);
+    if (normalized.length === 32) break;
+  }
+  return normalized;
+}
+
+function deriveAgentHealth({ available, configured, connected, status, error }) {
+  const healthStatus = !available || !configured
+    ? "unavailable"
+    : error
+      ? "degraded"
+      : status === "running" || status === "starting"
+        ? "busy"
+        : connected
+          ? "connected"
+          : "ready";
+  return {
+    status: healthStatus,
+    healthy: Boolean(available && configured && !error),
+    detail: error?.code ?? null,
+  };
+}
+
+function normalizeAgentHealth(rawHealth, state, fallback) {
+  if (!rawHealth || typeof rawHealth !== "object" || Array.isArray(rawHealth)) {
+    return fallback ?? deriveAgentHealth(state);
+  }
+  const reportedStatus = nullableText(read(rawHealth, "status", "Status"))?.toLowerCase();
+  return {
+    status: PROVIDER_HEALTH_STATUSES.has(reportedStatus)
+      ? reportedStatus
+      : deriveAgentHealth(state).status,
+    healthy: has(rawHealth, "healthy", "Healthy")
+      ? Boolean(read(rawHealth, "healthy", "Healthy"))
+      : deriveAgentHealth(state).healthy,
+    detail: boundedText(read(rawHealth, "detail", "Detail"), 160),
+  };
+}
+
+function withDerivedAgentHealth(state) {
+  return { ...state, health: deriveAgentHealth(state) };
+}
+
+export function agentSupportsCapability(state, capability) {
+  const normalized = nullableText(capability)?.trim().toLowerCase();
+  return Boolean(normalized && state?.capabilities?.includes(normalized));
+}
+
+export function canUseAgentChat(state) {
+  return Boolean(
+    state?.available
+    && state?.configured !== false
+    && agentSupportsCapability(state, AGENT_CAPABILITIES.chat),
+  );
+}
+
+export function createAgentCapabilityError(capability) {
+  const error = new Error(`The active Agent Provider does not support ${capability}.`);
+  error.code = "CAPABILITY_UNAVAILABLE";
+  error.retryable = false;
+  return error;
+}
+
 export function normalizeAgentState(rawState = {}, fallback = DEFAULT_AGENT_STATE) {
   const reportedStatus = nullableText(read(rawState, "status", "Status"))?.toLowerCase();
   const status = AGENT_STATUSES.has(reportedStatus) ? reportedStatus : fallback.status;
   const permissionMode = nullableText(
     read(rawState, "permissionMode", "PermissionMode"),
   );
-
-  return {
-    available: has(rawState, "available", "Available")
+  const available = has(rawState, "available", "Available")
       ? Boolean(read(rawState, "available", "Available"))
-      : fallback.available,
-    configured: has(rawState, "configured", "Configured")
+      : fallback.available;
+  const configured = has(rawState, "configured", "Configured")
       ? Boolean(read(rawState, "configured", "Configured"))
       : has(rawState, "available", "Available")
         ? Boolean(read(rawState, "available", "Available"))
-        : fallback.configured,
-    connected: has(rawState, "connected", "Connected")
+        : fallback.configured;
+  const connected = has(rawState, "connected", "Connected")
       ? Boolean(read(rawState, "connected", "Connected"))
-      : fallback.connected,
+      : fallback.connected;
+  const error = has(rawState, "error", "Error")
+    ? normalizeAgentError(read(rawState, "error", "Error"))
+    : fallback.error;
+  const provider = has(rawState, "provider", "Provider")
+    ? boundedText(read(rawState, "provider", "Provider"), 64)
+    : fallback.provider;
+  const providerId = has(rawState, "providerId", "ProviderId")
+    ? providerIdentifier(read(rawState, "providerId", "ProviderId"))
+    : providerIdentifier(provider) ?? fallback.providerId;
+  const providerLabel = has(rawState, "providerLabel", "ProviderLabel")
+    ? boundedText(read(rawState, "providerLabel", "ProviderLabel"), 64)
+    : fallback.providerLabel;
+  const hasModernProviderContract = has(rawState, "providerId", "ProviderId")
+    || has(rawState, "providerLabel", "ProviderLabel")
+    || has(rawState, "health", "Health")
+    || has(rawState, "capabilities", "Capabilities");
+  const capabilityFallback = fallback !== DEFAULT_AGENT_STATE
+    ? fallback.capabilities
+    : hasModernProviderContract
+      ? []
+      : LEGACY_AGENT_CAPABILITIES;
+  const capabilities = has(rawState, "capabilities", "Capabilities")
+    ? normalizeAgentCapabilities(
+      read(rawState, "capabilities", "Capabilities"),
+      [],
+    )
+    : capabilityFallback;
+  const stateWithoutHealth = {
+    available,
+    configured,
+    connected,
     status,
-    provider: has(rawState, "provider", "Provider")
-      ? nullableText(read(rawState, "provider", "Provider"))
-      : fallback.provider,
+    error,
+  };
+
+  return {
+    available,
+    configured,
+    connected,
+    status,
+    provider,
+    providerId,
+    providerLabel,
+    capabilities,
+    health: has(rawState, "health", "Health")
+      ? normalizeAgentHealth(
+        read(rawState, "health", "Health"),
+        stateWithoutHealth,
+        null,
+      )
+      : normalizeAgentHealth(
+        null,
+        stateWithoutHealth,
+        fallback === DEFAULT_AGENT_STATE ? null : fallback.health,
+      ),
     model: has(rawState, "model", "Model")
       ? nullableText(read(rawState, "model", "Model"))
       : fallback.model,
@@ -106,9 +264,7 @@ export function normalizeAgentState(rawState = {}, fallback = DEFAULT_AGENT_STAT
       ? nullableText(read(rawState, "sessionId", "SessionId"))
       : fallback.sessionId,
     permissionMode: permissionMode === "chat-only" ? permissionMode : "chat-only",
-    error: has(rawState, "error", "Error")
-      ? normalizeAgentError(read(rawState, "error", "Error"))
-      : fallback.error,
+    error,
     activeRunId: has(rawState, "activeRunId", "ActiveRunId")
       ? nullableText(read(rawState, "activeRunId", "ActiveRunId"))
       : fallback.activeRunId,
@@ -288,14 +444,14 @@ function applyAgentEvent(model, rawEvent) {
   if (event.kind === "run-start") {
     return {
       ...model,
-      state: {
+      state: withDerivedAgentHealth({
         ...model.state,
         available: true,
         connected: true,
         status: "running",
         activeRunId: event.runId,
         error: null,
-      },
+      }),
     };
   }
 
@@ -303,12 +459,12 @@ function applyAgentEvent(model, rawEvent) {
     const failed = ["error", "failed"].includes(event.status) || Boolean(event.error);
     return {
       ...model,
-      state: {
+      state: withDerivedAgentHealth({
         ...model.state,
         status: failed ? "error" : "ready",
         activeRunId: null,
         error: event.error,
-      },
+      }),
     };
   }
 
@@ -317,12 +473,12 @@ function applyAgentEvent(model, rawEvent) {
       ...model,
       messages: [],
       tools: [],
-      state: {
+      state: withDerivedAgentHealth({
         ...model.state,
         connected: false,
         sessionId: null,
         activeRunId: null,
-      },
+      }),
     };
   }
 
@@ -385,7 +541,7 @@ function reduceAgentSessionAction(current, action) {
     case "error":
       return {
         ...current,
-        state: {
+        state: withDerivedAgentHealth({
           ...current.state,
           status: "error",
           activeRunId: null,
@@ -394,7 +550,7 @@ function reduceAgentSessionAction(current, action) {
             message: "Agent request failed.",
             retryable: false,
           },
-        },
+        }),
       };
     default:
       return current;
