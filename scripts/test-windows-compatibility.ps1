@@ -40,15 +40,18 @@ if (-not $webViewVersion) {
 }
 
 $screens = @([System.Windows.Forms.Screen]::AllScreens)
+$primaryScreen = $screens | Where-Object { $_.Primary } | Select-Object -First 1
 $result = [ordered]@{
-    compatible = $os.Build -ge $minimumBuild -and $architecture -eq 'X64'
+    compatible = $os.Build -ge $minimumBuild -and
+        $architecture -eq 'X64' -and
+        $null -ne $primaryScreen
     osVersion = $os.ToString()
     osBuild = $os.Build
     minimumBuild = $minimumBuild
     architecture = $architecture
     monitorCount = $screens.Count
-    primaryResolution = if ($screens.Count -gt 0) {
-        '{0}x{1}' -f $screens[0].Bounds.Width, $screens[0].Bounds.Height
+    primaryResolution = if ($null -ne $primaryScreen) {
+        '{0}x{1}' -f $primaryScreen.Bounds.Width, $primaryScreen.Bounds.Height
     } else {
         $null
     }

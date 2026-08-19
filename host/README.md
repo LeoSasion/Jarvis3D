@@ -104,6 +104,26 @@ placement, and Reduced Motion styling, writes a bounded receipt, and exits. It
 fails closed if another JARVIS instance is running and confirms that Explorer's
 native taskbar stayed visible.
 
+Three controlled native lifecycle gates are available after the Debug Host is
+built:
+
+```powershell
+.\scripts\verify-native-lifecycle.ps1 `
+  -JarvisExecutable .\host\Jarvis.Host\bin\Debug\net8.0-windows\Jarvis.Host.exe `
+  -LaunchSafeMode
+.\scripts\verify-fullscreen-lifecycle.ps1
+.\scripts\verify-host-crash-recovery.ps1
+```
+
+The Safe Mode gate requests the same Host recovery message as `Ctrl+Shift+Q`
+and requires a clean startup-ledger readback. The fullscreen gate temporarily
+uses Full replacement, shows a bounded local borderless test window, verifies
+taskbar suppression/restoration, and exits normally. The crash gate deliberately
+terminates only the Full Host, waits for watchdog recovery, then proves that the
+next ordinary launch enters automatic Safe Mode and can clear the ledger. The
+Full-mode gates refuse to overwrite an existing taskbar preference and remove
+their temporary setting before returning.
+
 Set `JARVIS_KEEP_NATIVE_TASKBAR=1` before launch to run the full-screen desktop
 host without hiding or overlaying the native taskbar. Native-window hooks and
 styling are also disabled. This is the recovery and development-safe mode.

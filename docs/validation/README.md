@@ -6,6 +6,9 @@ the native Explorer taskbar and desktop.
 
 ## Evidence kept in this repository
 
+- [Current Windows 11 native acceptance](win11-native-acceptance-2026-08-20.md)
+  records the latest automated and controlled native gates, audit score,
+  validation-harness fixes, and the hardware-dependent coverage still missing.
 - [Windows 11 test closure](win11-test-closure.md) is the dated, machine-specific
   record for the available Windows 11 hardware gates completed on 2026-07-30.
   It is historical evidence, not a claim of current-release certification.

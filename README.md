@@ -81,7 +81,23 @@ checks Help, Explorer, Agent linking, notice bounds, and Reduced Motion, then
 exits automatically. The gate refuses to start while JARVIS is already running
 and verifies that the native Windows taskbar remains visible.
 
-Set `JARVIS_KEEP_NATIVE_TASKBAR=1` before launch to keep the Windows taskbar visible while developing or recovering. More native-host and release details are documented in [`host/README.md`](host/README.md); supported coverage and historical Windows evidence live in [`docs/validation/`](docs/validation/README.md).
+Run the controlled native lifecycle gates only when the desktop can briefly
+yield to JARVIS:
+
+```powershell
+.\scripts\verify-native-lifecycle.ps1 `
+  -JarvisExecutable .\host\Jarvis.Host\bin\Debug\net8.0-windows\Jarvis.Host.exe `
+  -LaunchSafeMode
+.\scripts\verify-fullscreen-lifecycle.ps1
+.\scripts\verify-host-crash-recovery.ps1
+```
+
+The latter two gates temporarily request Full mode. They refuse to overwrite an
+existing taskbar preference, exercise safe exit or watchdog recovery, remove
+their test setting, and finish only after the native taskbar and clean startup
+ledger have been verified.
+
+Set `JARVIS_KEEP_NATIVE_TASKBAR=1` before launch to keep the Windows taskbar visible while developing or recovering. More native-host and release details are documented in [`host/README.md`](host/README.md); current coverage and historical Windows evidence live in [`docs/validation/`](docs/validation/README.md).
 
 If both JARVIS and its watchdog have already exited but Explorer's primary
 taskbar is still hidden after an interrupted development session, run
