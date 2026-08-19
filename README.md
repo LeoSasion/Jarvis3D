@@ -81,7 +81,7 @@ checks Help, Explorer, Agent linking, notice bounds, and Reduced Motion, then
 exits automatically. The gate refuses to start while JARVIS is already running
 and verifies that the native Windows taskbar remains visible.
 
-Set `JARVIS_KEEP_NATIVE_TASKBAR=1` before launch to keep the Windows taskbar visible while developing or recovering. More native-host and release details are documented in [`host/README.md`](host/README.md).
+Set `JARVIS_KEEP_NATIVE_TASKBAR=1` before launch to keep the Windows taskbar visible while developing or recovering. More native-host and release details are documented in [`host/README.md`](host/README.md); supported coverage and historical Windows evidence live in [`docs/validation/`](docs/validation/README.md).
 
 If both JARVIS and its watchdog have already exited but Explorer's primary
 taskbar is still hidden after an interrupted development session, run
