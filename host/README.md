@@ -95,14 +95,18 @@ For a real WebView2 integration check that does not take over the desktop or
 taskbar, first build the frontend and Host, then run from the repository root:
 
 ```powershell
-.\scripts\verify-renderer-smoke.ps1
+.\scripts\verify-renderer-smoke.ps1 -Culture en-US
+.\scripts\verify-renderer-smoke.ps1 -Culture zh-CN
 ```
 
 The smoke process uses a one-time isolated WebView2 data directory, renders at
-1040x720 off-screen, exercises F1 Help, Explorer + Agent linked layout, notice
-placement, and Reduced Motion styling, writes a bounded receipt, and exits. It
+1040x720 off-screen, exercises F1 Help through a locale-independent DOM
+contract, Explorer + Agent linked layout, notice placement, and Reduced Motion
+styling, writes the requested culture into a bounded receipt, and exits. It
 fails closed if another JARVIS instance is running and confirms that Explorer's
-native taskbar stayed visible.
+native taskbar stayed visible. Run both cultures from an interactive Windows
+desktop as a pre-release gate; hosted CI does not claim this desktop-only
+coverage.
 
 Three controlled native lifecycle gates are available after the Debug Host is
 built:
@@ -305,9 +309,10 @@ repository root:
 .\scripts\publish-release.ps1 -Version 0.1.0
 ```
 
-The script first downloads or reuses the exact Pi archive pinned by
+The script downloads the exact Pi archive pinned by
 `third_party/pi/runtime.json`, validates both archive and entry-point hashes,
-and stages the full distribution. Only then does it rebuild `frontend/dist`,
+stages the full distribution, and removes the temporary download after use.
+Only then does it rebuild `frontend/dist`,
 publish the native host, create a portable ZIP, write `version.json`,
 `RECOVERY.txt`, and `SHA256SUMS.txt`, and compile `installer/JARVIS.iss` when
 Inno Setup 6 is available. Output is written under `artifacts/release` and
@@ -317,12 +322,13 @@ already-downloaded official archive explicitly:
 ```powershell
 .\scripts\publish-release.ps1 -Version 0.1.0 `
   -OfflinePiRuntime `
-  -PiRuntimeArchivePath .\artifacts\vendor\pi\0.83.0\pi-windows-x64.zip
+  -PiRuntimeArchivePath C:\path\to\pi-windows-x64.zip
 ```
 
 The upstream Pi executable is currently unsigned. JARVIS therefore treats the
 repository-pinned version, source commit, asset URL, size, and SHA-256 as its
-explicit trust boundary; it never follows an upstream `latest` pointer.
+explicit trust boundary; it never follows an upstream `latest` pointer. Refresh
+the manifest and its reviewed receipts before adopting a newer Pi release.
 
 The installer is per-user (`%LOCALAPPDATA%\Programs\JARVIS`), does not require
 administrator privileges, and offers optional desktop-shortcut and sign-in

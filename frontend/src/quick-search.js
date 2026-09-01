@@ -9,11 +9,11 @@ const QUICK_SEARCH_SCOPE_KINDS = Object.freeze({
 });
 
 export const quickSearchScopes = Object.freeze([
-  Object.freeze({ id: "all", prefix: "", label: "ALL", detail: "Everything" }),
-  Object.freeze({ id: "app", prefix: "app:", label: "APPS", detail: "Installed applications" }),
-  Object.freeze({ id: "win", prefix: "win:", label: "WINDOWS", detail: "Open windows" }),
-  Object.freeze({ id: "file", prefix: "file:", label: "FILES", detail: "Desktop items" }),
-  Object.freeze({ id: "set", prefix: "set:", label: "SETTINGS", detail: "Windows settings" }),
+  Object.freeze({ id: "all", prefix: "", labelKey: "quickSearch.scope.all.label", detailKey: "quickSearch.scope.all.detail" }),
+  Object.freeze({ id: "app", prefix: "app:", labelKey: "quickSearch.scope.applications.label", detailKey: "quickSearch.scope.applications.detail" }),
+  Object.freeze({ id: "win", prefix: "win:", labelKey: "quickSearch.scope.windows.label", detailKey: "quickSearch.scope.windows.detail" }),
+  Object.freeze({ id: "file", prefix: "file:", labelKey: "quickSearch.scope.files.label", detailKey: "quickSearch.scope.files.detail" }),
+  Object.freeze({ id: "set", prefix: "set:", labelKey: "quickSearch.scope.settings.label", detailKey: "quickSearch.scope.settings.detail" }),
 ]);
 
 export function isQuickSearchToggleShortcut(eventLike) {
@@ -269,7 +269,12 @@ export function createQuickSearchIndex({
   return indexed;
 }
 
-export function searchQuickIndex(index, query, limit = MAX_RESULTS) {
+export function searchQuickIndex(
+  index,
+  query,
+  limit = MAX_RESULTS,
+  language = undefined,
+) {
   const parsed = parseQuickSearchQuery(query);
   const normalizedQuery = normalizeSearchText(parsed.query);
   const allowedKinds = QUICK_SEARCH_SCOPE_KINDS[parsed.scope] ?? null;
@@ -282,9 +287,10 @@ export function searchQuickIndex(index, query, limit = MAX_RESULTS) {
     scored.push({ item, score });
   });
 
+  const labelCollator = new Intl.Collator(language, { sensitivity: "base" });
   scored.sort((left, right) => (
     right.score - left.score ||
-    left.item.label.localeCompare(right.item.label, undefined, { sensitivity: "base" })
+    labelCollator.compare(left.item.label, right.item.label)
   ));
 
   return scored.slice(0, limit).map(({ item }) => item);

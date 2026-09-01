@@ -1,0 +1,77 @@
+.graphics-runtime,
+.graphics-runtime__surface,
+.graphics-runtime__canvas {
+  position: absolute !important;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.graphics-runtime {
+  z-index: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 50% 48%,
+      color-mix(in srgb, var(--core-visual-accent, var(--theme-action)) 6%, transparent),
+      transparent 42%
+    ),
+    var(--void);
+  contain: strict;
+}
+
+.graphics-runtime.is-passive {
+  pointer-events: none;
+}
+
+.graphics-runtime.is-interactive {
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.graphics-runtime.is-neural-orb {
+  background:
+    radial-gradient(
+      circle at 52% 52%,
+      color-mix(in srgb, var(--core-visual-accent, var(--theme-action)) 13%, transparent),
+      transparent 42%
+    ),
+    radial-gradient(
+      circle at 78% 31%,
+      color-mix(in srgb, var(--core-visual-accent, var(--theme-action)) 8%, transparent),
+      transparent 34%
+    ),
+    var(--void);
+}
+
+.graphics-runtime canvas {
+  display: block;
+  outline: none;
+}
+
+.graphics-runtime.is-interactive canvas:focus-visible {
+  outline: 2px solid var(--signal-hot);
+  outline-offset: -4px;
+  box-shadow: inset 0 0 0 1px var(--void);
+}
+
+@media (forced-colors: active) {
+  .graphics-runtime.is-interactive canvas:focus-visible {
+    outline-color: Highlight;
+    box-shadow: none;
+  }
+}
+
+.graphics-runtime__recovery {
+  position: absolute;
+  z-index: 8;
+  inset: 0;
+  display: grid;
+  place-items: end center;
+  padding: 18px;
+  color: var(--signal-hot);
+  background: var(--void);
+  font: 10px/1 var(--font-data);
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}

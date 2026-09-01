@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
 
@@ -6,12 +7,15 @@ namespace Jarvis.Host.Infrastructure;
 internal sealed record RendererSmokeOptions(
     string DataRoot,
     string ReceiptPath,
-    string Nonce)
+    string Nonce,
+    string CultureName = "en-US")
 {
+    internal const string DefaultCultureName = "en-US";
     private const string SmokeArgument = "--renderer-smoke";
     private const string DataRootArgument = "--renderer-smoke-data-root=";
     private const string ReceiptArgument = "--renderer-smoke-receipt=";
     private const string NonceArgument = "--renderer-smoke-nonce=";
+    private const string CultureArgument = "--renderer-smoke-culture=";
 
     private static readonly Regex NoncePattern = new(
         "^[0-9a-fA-F]{32}$",
@@ -35,11 +39,11 @@ internal sealed record RendererSmokeOptions(
             return false;
         }
 
-        if (arguments.Count != 4 ||
+        if (arguments.Count is not (4 or 5) ||
             arguments.Count(argument =>
                 argument.Equals(SmokeArgument, StringComparison.OrdinalIgnoreCase)) != 1)
         {
-            error = "Renderer smoke requires exactly one marker and three value arguments.";
+            error = "Renderer smoke requires one marker, three value arguments, and an optional culture.";
             return false;
         }
 
@@ -49,6 +53,37 @@ internal sealed record RendererSmokeOptions(
         {
             error = "Renderer smoke arguments are missing, duplicated, or unsupported.";
             return false;
+        }
+
+        var cultureMatches = arguments
+            .Where(argument =>
+                argument.StartsWith(CultureArgument, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (cultureMatches.Length > 1 ||
+            (arguments.Count == 5 && cultureMatches.Length != 1))
+        {
+            error = "Renderer smoke culture is duplicated or an unsupported argument was supplied.";
+            return false;
+        }
+
+        var cultureName = DefaultCultureName;
+        if (cultureMatches.Length == 1)
+        {
+            var cultureValue = cultureMatches[0][CultureArgument.Length..].Trim();
+            if (string.IsNullOrWhiteSpace(cultureValue))
+            {
+                error = "Renderer smoke culture is invalid.";
+                return false;
+            }
+            try
+            {
+                cultureName = CultureInfo.GetCultureInfo(cultureValue).Name;
+            }
+            catch (CultureNotFoundException)
+            {
+                error = "Renderer smoke culture is invalid.";
+                return false;
+            }
         }
 
         if (!Path.IsPathFullyQualified(dataRootValue) ||
@@ -104,7 +139,8 @@ internal sealed record RendererSmokeOptions(
         options = new RendererSmokeOptions(
             dataRoot,
             receiptPath,
-            nonceValue.ToLowerInvariant());
+            nonceValue.ToLowerInvariant(),
+            cultureName);
         return true;
     }
 

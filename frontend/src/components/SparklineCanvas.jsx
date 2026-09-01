@@ -46,7 +46,7 @@ export const SparklineCanvas = memo(function SparklineCanvas({ points }) {
     if (!canvas) return undefined;
 
     const render = () => {
-      const accent = getComputedStyle(canvas).getPropertyValue("--spark-color").trim() || "#ff6a00";
+      const accent = getComputedStyle(canvas).getPropertyValue("--spark-color").trim() || "#ff5a2d";
       drawSparkline(canvas, points, accent);
     };
 

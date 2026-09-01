@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  AGENT_HISTORY_UNAVAILABLE,
   AGENT_CAPABILITIES,
   agentSupportsCapability,
   canUseAgentChat,
@@ -326,6 +327,19 @@ test("records a history-only hydration failure without hiding runtime state", ()
   assert.equal(model.state.available, true);
   assert.equal(model.state.status, "ready");
   assert.equal(model.historyError, "Message history timed out");
+});
+
+test("missing Agent failure copy stays structural for localized view fallbacks", () => {
+  let model = createAgentSessionModel({ available: true, status: "ready" });
+  model = agentSessionReducer(model, { type: "history-error", error: {} });
+  assert.equal(model.historyError, AGENT_HISTORY_UNAVAILABLE);
+
+  model = agentSessionReducer(model, { type: "error", error: null });
+  assert.deepEqual(model.state.error, {
+    code: "AGENT_ERROR",
+    message: null,
+    retryable: false,
+  });
 });
 
 test("late hydration merges history without overwriting newer state or messages", () => {

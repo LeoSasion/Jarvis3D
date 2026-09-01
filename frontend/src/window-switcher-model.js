@@ -5,8 +5,12 @@ function read(value, camelName, pascalName, fallback = null) {
 }
 
 function normalizeWindow(window, index) {
+  const internalWindowId = read(window, "internalWindowId", "InternalWindowId");
   return {
     windowId: String(read(window, "windowId", "WindowId", `window-${index}`)),
+    internalWindowId: typeof internalWindowId === "string"
+      ? internalWindowId.slice(0, 64)
+      : null,
     title: String(read(window, "title", "Title", "Untitled window")),
     processName: String(read(window, "processName", "ProcessName", "application")),
     pid: Number(read(window, "pid", "Pid", 0)),
@@ -71,6 +75,35 @@ export function getVisibleWindowSwitcherEntries(state, limit = WINDOW_SWITCHER_V
       selected: index === normalized.selectedIndex,
     };
   });
+}
+
+export function getWindowSwitcherSelectionScrollTop({
+  viewportHeight,
+  scrollHeight,
+  scrollTop,
+  selectedTop,
+  selectedHeight,
+}) {
+  const viewport = Math.max(0, Number(viewportHeight) || 0);
+  const content = Math.max(viewport, Number(scrollHeight) || viewport);
+  const maximumScrollTop = Math.max(0, content - viewport);
+  const currentScrollTop = Math.min(
+    maximumScrollTop,
+    Math.max(0, Number(scrollTop) || 0),
+  );
+  const itemTop = Math.max(0, Number(selectedTop) || 0);
+  const itemHeight = Math.max(0, Number(selectedHeight) || 0);
+
+  if (viewport === 0 || itemHeight === 0) return currentScrollTop;
+  if (itemTop < currentScrollTop) {
+    return Math.min(maximumScrollTop, itemTop);
+  }
+
+  const itemBottom = itemTop + itemHeight;
+  if (itemBottom > currentScrollTop + viewport) {
+    return Math.min(maximumScrollTop, Math.max(0, itemBottom - viewport));
+  }
+  return currentScrollTop;
 }
 
 export function getWindowInitials(processName) {

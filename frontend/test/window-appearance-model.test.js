@@ -105,8 +105,9 @@ test("browser preview provenance survives window appearance normalization", asyn
 });
 
 test("window appearance preview copy cannot imply a native change", () => {
-  assert.match(shellPanelsSource, /预览选择 · PREVIEW/u);
-  assert.match(shellPanelsSource, /<small>WINDOWS<\/small><strong>NOT INSPECTED<\/strong>/u);
-  assert.match(shellPanelsSource, /<small>NATIVE CHANGE<\/small><strong>NONE<\/strong>/u);
-  assert.match(shellPanelsSource, /Windows unchanged/u);
+  assert.match(shellPanelsSource, /settings\.windows\.telemetry\.previewSelection/u);
+  assert.match(shellPanelsSource, /settings\.windows\.state\.notInspected/u);
+  assert.match(shellPanelsSource, /settings\.windows\.telemetry\.nativeChange/u);
+  assert.match(shellPanelsSource, /settings\.windows\.state\.none/u);
+  assert.match(shellPanelsSource, /settings\.windows\.appearance\.toast\.previewSet/u);
 });

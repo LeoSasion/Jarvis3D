@@ -47,14 +47,34 @@ The original license is available at https://github.com/earendil-works/pi/blob/v
 
 ## xterm.js
 
-- Packages: `@xterm/xterm`, `@xterm/addon-fit`, `@xterm/addon-search`, `@xterm/addon-webgl`
+- Packages: `@xterm/xterm`, `@xterm/addon-fit`, `@xterm/addon-search`
 - Source: https://github.com/xtermjs/xterm.js
 - License: MIT
-- Use in JARVIS: terminal rendering, fit, search, and optional WebGL acceleration. Windows process hosting is implemented by JARVIS through ConPTY.
+- Use in JARVIS: terminal rendering, fit, and search. Windows process hosting is implemented by JARVIS through ConPTY.
 
 ## React and Vite
 
 - React: https://github.com/facebook/react — MIT
 - Vite: https://github.com/vitejs/vite — MIT
 
-Dependency packages may include their own notices. Release packaging must retain the license files shipped by those packages.
+## JARVIS graphics runtime
+
+- Three.js `0.182.0`: https://github.com/mrdoob/three.js — MIT
+- React Three Fiber `9.7.0`: https://github.com/pmndrs/react-three-fiber — MIT
+- React Postprocessing `3.0.5`: https://github.com/pmndrs/react-postprocessing — MIT
+- postprocessing `6.39.4`: https://github.com/pmndrs/postprocessing — zlib
+- d3-force-3d `3.0.6`: https://github.com/vasturiano/d3-force-3d — MIT
+- Graphology `0.26.0`: https://github.com/graphology/graphology — MIT
+- Noto Sans SC `5.2.8`: https://fontsource.org/fonts/noto-sans-sc — SIL Open Font License 1.1
+- Use in JARVIS: the dynamically loaded, demand-driven WebGL2 graph scene, offline Canvas2D label atlas, single postprocessing pipeline, and Worker-owned graph topology/layout.
+
+Release packages include the reviewed license text for every package in the
+complete frontend production dependency closure under
+`ThirdPartyLicenses/frontend/`. The accompanying
+`FRONTEND-RUNTIME-LICENSES.json` receipt binds each text to its package-lock
+location, locked version and integrity, SPDX identifier, reviewed license
+SHA-256, and the exact `package.json`, `package-lock.json`, and policy inputs.
+When an npm package omits its repository license file, the release builder uses
+the reviewed copy retained under `scripts/licenses/`. Staging and verification
+fail closed if a dependency, lock entry, reviewed license, or receipt field
+changes.

@@ -10,11 +10,22 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLanguage } from "../i18n/language-system.js";
 import { platform } from "../platform/index.js";
 
 const MAX_TABS = 5;
 const DEFAULT_COLUMNS = 120;
 const DEFAULT_ROWS = 32;
+const terminalStatusKeys = Object.freeze({
+  connecting: "terminal.status.connecting",
+  ready: "terminal.status.ready",
+  exited: "terminal.status.exited",
+  error: "terminal.status.error",
+});
+
+function terminalStatusLabel(t, status) {
+  return t(terminalStatusKeys[status] ?? "terminal.status.standby");
+}
 
 function createLocalTab(sequence, profile) {
   return {
@@ -56,7 +67,7 @@ function readTerminalTheme() {
   };
 }
 
-function TerminalViewport({ tab, active, focused, onSessionState, onToast }) {
+function TerminalViewport({ tab, active, focused, onSessionState, onToast, t }) {
   const containerRef = useRef(null);
   const terminalRef = useRef(null);
   const fitAddonRef = useRef(null);
@@ -64,8 +75,10 @@ function TerminalViewport({ tab, active, focused, onSessionState, onToast }) {
   const sessionIdRef = useRef(null);
   const activeRef = useRef(active);
   const focusedRef = useRef(focused);
+  const translatorRef = useRef(t);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  translatorRef.current = t;
 
   useEffect(() => {
     activeRef.current = active;
@@ -95,7 +108,6 @@ function TerminalViewport({ tab, active, focused, onSessionState, onToast }) {
     let lastSequence = 0;
     let writeQueue = Promise.resolve();
     let inputFailureReported = false;
-    let webglAddon = null;
 
     const terminal = new Terminal({
       allowProposedApi: false,
@@ -140,7 +152,9 @@ function TerminalViewport({ tab, active, focused, onSessionState, onToast }) {
         .catch((error) => {
           if (!inputFailureReported) {
             inputFailureReported = true;
-            onToast(`Terminal input failed: ${error.message}`);
+            onToast(translatorRef.current("terminal.toast.inputFailed", {
+              message: error.message,
+            }));
           }
         });
     };
@@ -225,18 +239,6 @@ function TerminalViewport({ tab, active, focused, onSessionState, onToast }) {
       onSessionState(tab.localId, { status: "error" });
     });
 
-    void import("@xterm/addon-webgl").then(({ WebglAddon }) => {
-      if (!mounted) return;
-      try {
-        webglAddon = new WebglAddon();
-        webglAddon.onContextLoss(() => webglAddon?.dispose());
-        terminal.loadAddon(webglAddon);
-      } catch {
-        webglAddon = null;
-        // Canvas rendering remains a supported fallback.
-      }
-    });
-
     return () => {
       mounted = false;
       if (resizeFrame) window.cancelAnimationFrame(resizeFrame);
@@ -249,7 +251,6 @@ function TerminalViewport({ tab, active, focused, onSessionState, onToast }) {
       const sessionId = sessionIdRef.current;
       sessionIdRef.current = null;
       if (sessionId) void platform.terminal.close(sessionId).catch(() => {});
-      webglAddon?.dispose();
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
@@ -266,7 +267,7 @@ function TerminalViewport({ tab, active, focused, onSessionState, onToast }) {
   return (
     <section
       className={`terminal-viewport${active ? " is-active" : ""}`}
-      aria-label={`${tab.label} terminal`}
+      aria-label={t("terminal.viewport.aria", { profile: tab.label })}
       aria-hidden={!active}
     >
       <div ref={containerRef} className="terminal-canvas" />
@@ -277,11 +278,15 @@ function TerminalViewport({ tab, active, focused, onSessionState, onToast }) {
             autoFocus
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Find in terminal"
-            aria-label="Find in terminal"
+            placeholder={t("terminal.search.placeholder")}
+            aria-label={t("terminal.search.inputAria")}
           />
-          <button type="submit">NEXT</button>
-          <button type="button" onClick={() => setSearchOpen(false)} aria-label="Close terminal search">
+          <button type="submit">{t("terminal.search.next")}</button>
+          <button
+            type="button"
+            onClick={() => setSearchOpen(false)}
+            aria-label={t("terminal.search.closeAria")}
+          >
             <DismissRegular />
           </button>
         </form>
@@ -300,27 +305,30 @@ export function TerminalWorkbench({
   onToggleMaximize,
   onToast,
 }) {
+  const { t } = useLanguage();
+  const translatorRef = useRef(t);
   const [profiles, setProfiles] = useState([]);
   const [selectedProfileId, setSelectedProfileId] = useState("powershell");
   const [tabs, setTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState(null);
   const sequenceRef = useRef(0);
+  translatorRef.current = t;
 
   const addTab = useCallback((profileId = selectedProfileId, sourceProfiles = profiles) => {
     if (tabs.length >= MAX_TABS) {
-      onToast(`Terminal tab limit reached (${MAX_TABS})`);
+      onToast(t("terminal.toast.tabLimit", { count: MAX_TABS }));
       return;
     }
     const profile = sourceProfiles.find((candidate) => candidate.id === profileId && candidate.available)
       ?? sourceProfiles.find((candidate) => candidate.available);
     if (!profile) {
-      onToast("No terminal profile is available");
+      onToast(t("terminal.toast.noProfile"));
       return;
     }
     const tab = createLocalTab(++sequenceRef.current, profile);
     setTabs((current) => [...current, tab]);
     setActiveTabId(tab.localId);
-  }, [onToast, profiles, selectedProfileId, tabs.length]);
+  }, [onToast, profiles, selectedProfileId, t, tabs.length]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -332,7 +340,7 @@ export function TerminalWorkbench({
         setProfiles(result.profiles ?? []);
         setSelectedProfileId(result.defaultProfileId ?? availableProfiles[0]?.id ?? "powershell");
         if (!result.conPtyAvailable && platform.isNative) {
-          onToast("ConPTY is unavailable on this Windows version");
+          onToast(translatorRef.current("terminal.toast.conPtyUnavailable"));
           return;
         }
         if (availableProfiles.length > 0) {
@@ -343,7 +351,9 @@ export function TerminalWorkbench({
           setActiveTabId(tab.localId);
         }
       })
-      .catch((error) => onToast(`Terminal profiles unavailable: ${error.message}`));
+      .catch((error) => onToast(translatorRef.current("terminal.toast.profilesUnavailable", {
+        message: error.message,
+      })));
     return () => {
       active = false;
     };
@@ -370,7 +380,12 @@ export function TerminalWorkbench({
 
   return (
     <div className="terminal-layer" role="presentation">
-      <section className="terminal-workbench" role="dialog" aria-modal="false" aria-label="JARVIS Terminal Workbench">
+      <section
+        className="terminal-workbench"
+        role="dialog"
+        aria-modal="false"
+        aria-label={t("terminal.accessibility.window")}
+      >
         <header
           className="terminal-titlebar"
           data-window-drag-handle
@@ -378,26 +393,51 @@ export function TerminalWorkbench({
         >
           <span className="terminal-titlemark"><WindowConsoleRegular /></span>
           <span className="terminal-titlecopy">
-            <small>CONPTY SECURE CHANNEL</small>
-            <strong>TERMINAL WORKBENCH</strong>
+            <small>{t("terminal.header.secureChannel")}</small>
+            <strong>{t("terminal.title")}</strong>
           </span>
-          <span className="terminal-link-status"><i />LOCAL HOST · {platform.isNative ? "NATIVE" : "SIMULATION"}</span>
-          <button type="button" data-no-window-drag onClick={onMinimize} aria-label="Minimize terminal">
+          <span className="terminal-link-status">
+            <i />
+            {t("terminal.host.status", {
+              mode: t(platform.isNative
+                ? "terminal.host.mode.native"
+                : "terminal.host.mode.simulation"),
+            })}
+          </span>
+          <button
+            type="button"
+            data-no-window-drag
+            onClick={onMinimize}
+            aria-label={t("terminal.action.minimizeAria")}
+          >
             <SubtractRegular />
           </button>
           <button
             type="button"
             data-no-window-drag
             onClick={onToggleMaximize}
-            aria-label={maximized ? "Restore terminal" : "Maximize terminal"}
+            aria-label={maximized
+              ? t("terminal.action.restoreAria")
+              : t("terminal.action.maximizeAria")}
           >
             {maximized ? "❐" : "□"}
           </button>
-          <button type="button" data-no-window-drag onClick={onClose} aria-label="Close terminal"><DismissRegular /></button>
+          <button
+            type="button"
+            data-no-window-drag
+            onClick={onClose}
+            aria-label={t("terminal.action.closeAria")}
+          >
+            <DismissRegular />
+          </button>
         </header>
 
         <>
-          <div className="terminal-tabbar" role="tablist" aria-label="Terminal sessions">
+          <div
+            className="terminal-tabbar"
+            role="tablist"
+            aria-label={t("terminal.tabs.aria")}
+          >
               <div className="terminal-tabs">
                 {tabs.map((tab, index) => (
                   <div key={tab.localId} className={`terminal-tab${activeTabId === tab.localId ? " is-active" : ""}`}>
@@ -411,7 +451,11 @@ export function TerminalWorkbench({
                       <span>{tab.label}</span>
                       <small>{String(index + 1).padStart(2, "0")}</small>
                     </button>
-                    <button type="button" onClick={() => closeTab(tab.localId)} aria-label={`Close ${tab.label}`}>
+                    <button
+                      type="button"
+                      onClick={() => closeTab(tab.localId)}
+                      aria-label={t("terminal.tabs.closeAria", { profile: tab.label })}
+                    >
                       <DismissRegular />
                     </button>
                   </div>
@@ -420,16 +464,18 @@ export function TerminalWorkbench({
               <select
                 value={selectedProfileId}
                 onChange={(event) => setSelectedProfileId(event.target.value)}
-                aria-label="New terminal profile"
+                aria-label={t("terminal.profile.selectAria")}
               >
                 {profiles.map((profile) => (
                   <option key={profile.id} value={profile.id} disabled={!profile.available}>
-                    {profile.label}{profile.available ? "" : " · unavailable"}
+                    {profile.available
+                      ? profile.label
+                      : t("terminal.profile.unavailable", { profile: profile.label })}
                   </option>
                 ))}
               </select>
               <button type="button" className="terminal-new-tab" onClick={() => addTab()} disabled={tabs.length >= MAX_TABS}>
-                <AddRegular /><span>NEW SESSION</span>
+                <AddRegular /><span>{t("terminal.action.newSession")}</span>
               </button>
           </div>
 
@@ -443,17 +489,27 @@ export function TerminalWorkbench({
                 focused={active && activeTabId === tab.localId}
                 onSessionState={updateSessionState}
                 onToast={onToast}
+                t={t}
               />
             ))}
-            {tabs.length === 0 ? <div className="terminal-empty">ESTABLISHING CONPTY CHANNEL…</div> : null}
+            {tabs.length === 0 ? (
+              <div className="terminal-empty">
+                {t("terminal.empty.establishingChannel")}
+              </div>
+            ) : null}
           </div>
 
           <footer className="terminal-statusbar">
             <span><i />UTF-8</span>
             <span>VT SEQUENCES</span>
-            <span>CTRL+F · SEARCH</span>
-            <span>SCROLLBACK · 6000</span>
-            <strong>{tabs.find((tab) => tab.localId === activeTabId)?.status?.toUpperCase() ?? "STANDBY"}</strong>
+            <span>{t("terminal.footer.searchShortcut", { shortcut: "CTRL+F" })}</span>
+            <span>{t("terminal.footer.scrollback", { count: 6000 })}</span>
+            <strong>
+              {terminalStatusLabel(
+                t,
+                tabs.find((tab) => tab.localId === activeTabId)?.status,
+              )}
+            </strong>
           </footer>
         </>
       </section>

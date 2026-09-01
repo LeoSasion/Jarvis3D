@@ -26,6 +26,14 @@ test("serious feedback persists and keeps only real actions", () => {
   assert.deepEqual(feedback.actions, [{ label: "RETRY", onInvoke: retry }]);
 });
 
+test("feedback fallbacks do not invent untranslated action copy", () => {
+  const action = () => {};
+  const feedback = createShellFeedback({ actions: [{ onInvoke: action }] });
+
+  assert.equal(feedback.title, "JARVIS");
+  assert.deepEqual(feedback.actions, []);
+});
+
 test("legacy English and Chinese failures are promoted while confirmations remain transient", () => {
   assert.equal(createShellFeedback("Unable to open application").severity, "error");
   assert.equal(createShellFeedback("Windows 剪贴板暂时不可用").severity, "error");

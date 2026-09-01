@@ -3,37 +3,43 @@ import {
   LinkRegular,
   OpenRegular,
   SearchRegular,
+  SettingsRegular,
   ZoomInRegular,
   ZoomOutRegular,
 } from "@fluentui/react-icons";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useDeferredValue,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
+import {
+  getGraphVisualSettingsSnapshot,
+  setGraphVisualSetting,
+  subscribeGraphVisualSettings,
+} from "../graphics/graph/graph-visual-settings.js";
+import { useLanguage } from "../i18n/language-system.js";
+import { formatDateTime } from "../i18n/locale-format.js";
 import {
   clampKnowledgeGraphZoom,
   createKnowledgeGraphModel,
+  getKnowledgeGraphNavigationIndex,
+  getKnowledgeGraphNodeConnections,
   getKnowledgeGraphNodeContextItem,
   getKnowledgeGraphWheelZoomDelta,
 } from "../knowledge-graph-model.js";
+import { KnowledgeGraphField } from "./VectorMarks.jsx";
 
-const VIEWBOX_WIDTH = 1000;
-const VIEWBOX_HEIGHT = 620;
+const CoreVisualCanvas = lazy(() => import("../graphics/CoreVisualCanvas.jsx")
+  .then((module) => ({ default: module.CoreVisualCanvas })));
 const EMPTY_OFFSETS = Object.freeze({});
 const EMPTY_SELECTION = Object.freeze([]);
-const MODIFIED_FORMATTER = new Intl.DateTimeFormat("zh-CN", {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
 function formatFileSize(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) return "—";
   if (bytes < 1024) return `${bytes} B`;
@@ -42,36 +48,256 @@ function formatFileSize(bytes) {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
-function formatModified(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return MODIFIED_FORMATTER.format(date);
+function createSceneGraph(graph, sourceKey) {
+  const degreeById = new Map(graph.nodes.map((node) => [node.id, 0]));
+  graph.edges.forEach((edge) => {
+    degreeById.set(edge.from, (degreeById.get(edge.from) ?? 0) + 1);
+    degreeById.set(edge.to, (degreeById.get(edge.to) ?? 0) + 1);
+  });
+  return {
+    schemaVersion: 1,
+    available: graph.nodes.length > 0,
+    source: {
+      kind: "explorer",
+      name: graph.source.sourceName,
+      simulation: graph.source.simulation,
+      revision: `${sourceKey}:${graph.visibleEntryCount}:${graph.relationCount}`,
+    },
+    nodes: graph.nodes.map((node) => ({
+      id: node.id,
+      title: node.label,
+      relativePath: node.path ?? "",
+      kind: node.kind === "entry" ? "note" : node.kind,
+      group: node.meta ?? "",
+      tags: node.graphKind ? [node.graphKind] : [],
+      resolved: true,
+      degree: degreeById.get(node.id) ?? 0,
+      weight: node.kind === "source" ? 7 : node.kind === "group" ? 4 : node.selected ? 2 : 1,
+      x: node.x - 500,
+      y: 310 - node.y,
+      z: 0,
+    })),
+    edges: graph.edges.map((edge) => ({
+      id: edge.id,
+      source: edge.from,
+      target: edge.to,
+      kind: "contains",
+      weight: 1,
+    })),
+    stats: {
+      nodeCount: graph.nodes.length,
+      edgeCount: graph.edges.length,
+      resolvedEdgeCount: graph.edges.length,
+      unresolvedNodeCount: 0,
+      truncated: graph.source.truncatedCount > 0,
+    },
+  };
 }
 
-function nodeRadius(node) {
-  if (node.kind === "source") return 20;
-  if (node.kind === "group") return 12;
-  return node.selected ? 7 : 5;
+function GraphFallback() {
+  return (
+    <div className="knowledge-workspace__gpu-fallback" aria-hidden="true">
+      <KnowledgeGraphField connected />
+    </div>
+  );
 }
 
-function displayNodeLabel(node) {
-  const maximumLength = node.kind === "entry" ? 20 : 24;
-  const characters = Array.from(node.label ?? "");
-  return characters.length > maximumLength
-    ? `${characters.slice(0, maximumLength - 1).join("")}…`
-    : characters.join("");
+function getAccessibleNodeLabel(node) {
+  return node?.label ?? node?.title;
 }
 
-function nodeClassName(node, selectedNodeId) {
-  return [
-    "knowledge-node",
-    `is-${node.kind}`,
-    node.graphKind ? `is-kind-${node.graphKind}` : "",
-    node.selected ? "is-explorer-selected" : "",
-    node.id === selectedNodeId ? "is-selected" : "",
-    node.kind === "group" && !node.expanded ? "is-collapsed" : "",
-  ].filter(Boolean).join(" ");
+function getAccessibleNodeMeta(node) {
+  return node?.meta ?? node?.group ?? node?.kind;
+}
+
+function isAccessibleGroupNode(node) {
+  return node?.kind === "group";
+}
+
+function localizeKnowledgeGraph(graph, t) {
+  return Object.freeze({
+    ...graph,
+    nodes: Object.freeze(graph.nodes.map((node) => Object.freeze({
+      ...node,
+      label: node.labelKey ? t(node.labelKey) : node.label,
+      meta: node.metaKey ? t(node.metaKey, node.metaValues) : node.meta,
+    }))),
+  });
+}
+
+export function GraphAccessibleNavigator({
+  active = false,
+  nodes = EMPTY_SELECTION,
+  selectedNodeId = null,
+  connections = EMPTY_SELECTION,
+  onSelectNode,
+  onActivateNode = onSelectNode,
+  connectionHeadingId,
+  connectionSummaryId,
+  getNodeLabel = getAccessibleNodeLabel,
+  getNodeMeta = getAccessibleNodeMeta,
+  isExpandableNode = isAccessibleGroupNode,
+}) {
+  const { t } = useLanguage();
+  const generatedHeadingId = useId();
+  const generatedSummaryId = useId();
+  const [nodeIndex, setNodeIndex] = useState(0);
+  const [connectionIndex, setConnectionIndex] = useState(0);
+  const selectedNodeIndex = useMemo(
+    () => nodes.findIndex((node) => node.id === selectedNodeId),
+    [nodes, selectedNodeId],
+  );
+  const boundedNodeIndex = selectedNodeIndex >= 0
+    ? selectedNodeIndex
+    : nodes.length > 0 ? Math.min(nodes.length - 1, Math.max(0, nodeIndex)) : -1;
+  const activeNode = nodes[boundedNodeIndex] ?? null;
+  const selectedNode = nodes[selectedNodeIndex] ?? null;
+  const boundedConnectionIndex = connections.length > 0
+    ? Math.min(connections.length - 1, Math.max(0, connectionIndex))
+    : -1;
+  const activeConnection = connections[boundedConnectionIndex] ?? null;
+  const resolvedHeadingId = connectionHeadingId ?? generatedHeadingId;
+  const resolvedSummaryId = connectionSummaryId ?? generatedSummaryId;
+  const selectedRelationTypes = useMemo(
+    () => [...new Set(connections.map((connection) => connection.kind))],
+    [connections],
+  );
+
+  useEffect(() => {
+    setConnectionIndex(0);
+  }, [selectedNodeId]);
+
+  const selectNode = useCallback((node) => {
+    if (!node) return;
+    const nextIndex = nodes.findIndex((candidate) => candidate.id === node.id);
+    if (nextIndex >= 0) setNodeIndex(nextIndex);
+    setConnectionIndex(0);
+    onSelectNode?.(node);
+  }, [nodes, onSelectNode]);
+
+  const activateNode = useCallback((node) => {
+    if (!node) return;
+    onActivateNode?.(node);
+  }, [onActivateNode]);
+
+  const handleNodeKeyDown = useCallback((event) => {
+    const nextIndex = getKnowledgeGraphNavigationIndex(
+      boundedNodeIndex,
+      event.key,
+      nodes.length,
+    );
+    if (nextIndex >= 0) {
+      event.preventDefault();
+      selectNode(nodes[nextIndex]);
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      activateNode(activeNode);
+    }
+  }, [activeNode, activateNode, boundedNodeIndex, nodes, selectNode]);
+
+  const handleConnectionKeyDown = useCallback((event) => {
+    const nextIndex = getKnowledgeGraphNavigationIndex(
+      boundedConnectionIndex,
+      event.key,
+      connections.length,
+    );
+    if (nextIndex >= 0) {
+      event.preventDefault();
+      setConnectionIndex(nextIndex);
+      return;
+    }
+    if ((event.key === "Enter" || event.key === " ") && activeConnection) {
+      event.preventDefault();
+      selectNode(activeConnection.node);
+    }
+  }, [activeConnection, boundedConnectionIndex, connections.length, selectNode]);
+
+  if (!active || !activeNode) return null;
+
+  const resolveNodeLabel = (node) => getNodeLabel(node) || t("graph.navigator.node.untitled");
+  const activeNodeLabel = resolveNodeLabel(activeNode);
+  const activeNodeMeta = getNodeMeta(activeNode) || t("graph.navigator.node.local");
+  const selectedNodeLabel = selectedNode ? resolveNodeLabel(selectedNode) : "";
+  const expandable = isExpandableNode(activeNode);
+
+  return (
+    <div className="knowledge-workspace__accessible-nodes sr-only">
+      <div role="listbox" aria-label={t("graph.navigator.nodes.aria")}>
+        <button
+          type="button"
+          role="option"
+          aria-selected={selectedNodeId === activeNode.id}
+          aria-setsize={nodes.length}
+          aria-posinset={boundedNodeIndex + 1}
+          aria-expanded={expandable ? Boolean(activeNode.expanded) : undefined}
+          onClick={() => activateNode(activeNode)}
+          onFocus={() => selectNode(activeNode)}
+          onKeyDown={handleNodeKeyDown}
+        >
+          {t("graph.navigator.node.position", {
+            label: activeNodeLabel,
+            meta: activeNodeMeta,
+            position: boundedNodeIndex + 1,
+            count: nodes.length,
+          })}
+          {expandable
+            ? t(activeNode.expanded
+              ? "graph.navigator.group.expanded"
+              : "graph.navigator.group.collapsed")
+            : t("graph.navigator.node.selectHint")}
+        </button>
+      </div>
+
+      {selectedNode ? (
+        <section aria-labelledby={resolvedHeadingId}>
+          <strong id={resolvedHeadingId} className="sr-only">{t("graph.navigator.connections.title")}</strong>
+          <p id={resolvedSummaryId} className="sr-only">
+            {t(connections.length === 1
+              ? "graph.navigator.connections.summary.one"
+              : "graph.navigator.connections.summary.other", {
+              label: selectedNodeLabel,
+              count: connections.length,
+            })}
+            {selectedRelationTypes.length > 0
+              ? t("graph.navigator.connections.types", {
+                types: selectedRelationTypes.join(t("common.separator.list")),
+              })
+              : t("graph.navigator.connections.noTypes")}
+          </p>
+          {activeConnection ? (
+            <div
+              role="listbox"
+              aria-label={t("graph.navigator.connections.aria", { label: selectedNodeLabel })}
+            >
+              <button
+                type="button"
+                role="option"
+                aria-selected={true}
+                aria-setsize={connections.length}
+                aria-posinset={boundedConnectionIndex + 1}
+                onClick={() => selectNode(activeConnection.node)}
+                onKeyDown={handleConnectionKeyDown}
+              >
+                {t("graph.navigator.connection.position", {
+                  source: activeConnection.direction === "outgoing"
+                    ? selectedNodeLabel
+                    : resolveNodeLabel(activeConnection.node),
+                  relation: activeConnection.kind,
+                  target: activeConnection.direction === "outgoing"
+                    ? resolveNodeLabel(activeConnection.node)
+                    : selectedNodeLabel,
+                  position: boundedConnectionIndex + 1,
+                  count: connections.length,
+                })}
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+    </div>
+  );
 }
 
 export function KnowledgeGraphWorkspace({
@@ -80,66 +306,92 @@ export function KnowledgeGraphWorkspace({
   platformKind = "preview",
   onOpenPath,
   onLinkNodeToAgent,
+  onOpenVisualSettings,
+  visualSettingsOpen = false,
+  visualSettingsTriggerRef,
 }) {
-  const svgRef = useRef(null);
-  const dragRef = useRef(null);
-  const suppressClickRef = useRef(false);
-  const wheelFrameRef = useRef(0);
-  const wheelZoomDeltaRef = useRef(0);
+  const { language, t } = useLanguage();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [collapsedIds, setCollapsedIds] = useState([]);
-  const [nodeOffsets, setNodeOffsets] = useState(EMPTY_OFFSETS);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState(null);
+  const [exploreMode, setExploreMode] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [cameraCommand, setCameraCommand] = useState(null);
+  const cameraCommandIdRef = useRef(0);
+  const canvasRef = useRef(null);
+  const visualSettings = useSyncExternalStore(
+    subscribeGraphVisualSettings,
+    getGraphVisualSettingsSnapshot,
+    getGraphVisualSettingsSnapshot,
+  );
+  const connectionHeadingId = useId();
+  const connectionSummaryId = useId();
   const sourceKey = source?.currentPath ?? source?.CurrentPath ?? "";
-  const graph = useMemo(() => createKnowledgeGraphModel(source, {
+  const graphModel = useMemo(() => createKnowledgeGraphModel(source, {
     collapsedIds,
-    nodeOffsets,
+    nodeOffsets: EMPTY_OFFSETS,
     query: deferredQuery,
     selectedPaths: selectionPaths,
-  }), [collapsedIds, deferredQuery, nodeOffsets, selectionPaths, source]);
+  }), [collapsedIds, deferredQuery, selectionPaths, source]);
+  const graph = useMemo(
+    () => localizeKnowledgeGraph(graphModel, t),
+    [graphModel, t],
+  );
   const nodeMap = useMemo(
     () => new Map(graph.nodes.map((node) => [node.id, node])),
     [graph.nodes],
   );
+  const sceneGraph = useMemo(
+    () => createSceneGraph(graph, sourceKey),
+    [graph, sourceKey],
+  );
   const selectedNode = nodeMap.get(selectedNodeId) ?? null;
-  const transform = `translate(${VIEWBOX_WIDTH / 2} ${VIEWBOX_HEIGHT / 2}) scale(${zoom}) translate(${-VIEWBOX_WIDTH / 2} ${-VIEWBOX_HEIGHT / 2})`;
+  const selectedConnections = useMemo(
+    () => getKnowledgeGraphNodeConnections(graph, selectedNodeId),
+    [graph, selectedNodeId],
+  );
+  const selectedRelationTypes = useMemo(
+    () => [...new Set(selectedConnections.map((connection) => connection.kind))],
+    [selectedConnections],
+  );
 
   useEffect(() => {
     setQuery("");
     setCollapsedIds([]);
-    setNodeOffsets(EMPTY_OFFSETS);
     setSelectedNodeId(null);
+    setHoveredNodeId(null);
+    setExploreMode(false);
     setZoom(1);
   }, [sourceKey]);
-
-  useEffect(() => () => {
-    cancelAnimationFrame(wheelFrameRef.current);
-    wheelFrameRef.current = 0;
-    wheelZoomDeltaRef.current = 0;
-  }, []);
 
   const changeZoom = useCallback((delta) => {
     setZoom((current) => clampKnowledgeGraphZoom(current + delta));
   }, []);
 
+  const issueCameraCommand = useCallback((type) => {
+    cameraCommandIdRef.current += 1;
+    setCameraCommand({ id: cameraCommandIdRef.current, type });
+  }, []);
+
+  const toggleExploreMode = useCallback(() => {
+    setExploreMode((current) => {
+      const next = !current;
+      if (!next) {
+        setHoveredNodeId(null);
+        setSelectedNodeId(null);
+      }
+      return next;
+    });
+  }, []);
+
   const handleWheel = useCallback((event) => {
+    if (!exploreMode) return;
     event.preventDefault();
     const delta = getKnowledgeGraphWheelZoomDelta(event.deltaY, event.deltaMode);
-    if (delta === 0) return;
-    wheelZoomDeltaRef.current = Math.max(
-      -0.16,
-      Math.min(0.16, wheelZoomDeltaRef.current + delta),
-    );
-    if (wheelFrameRef.current) return;
-    wheelFrameRef.current = requestAnimationFrame(() => {
-      wheelFrameRef.current = 0;
-      const nextDelta = wheelZoomDeltaRef.current;
-      wheelZoomDeltaRef.current = 0;
-      changeZoom(nextDelta);
-    });
-  }, [changeZoom]);
+    if (delta !== 0) changeZoom(delta);
+  }, [changeZoom, exploreMode]);
 
   const toggleGroup = useCallback((nodeId) => {
     setCollapsedIds((current) => current.includes(nodeId)
@@ -147,79 +399,32 @@ export function KnowledgeGraphWorkspace({
       : [...current, nodeId]);
   }, []);
 
-  const activateNode = useCallback((node) => {
+  const focusNode = useCallback((node) => {
     if (!node) return;
-    if (node.kind === "group") {
-      toggleGroup(node.id);
-      return;
-    }
     setSelectedNodeId(node.id);
-  }, [toggleGroup]);
-
-  const handleNodeKeyDown = useCallback((event, node) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    activateNode(node);
-  }, [activateNode]);
-
-  const handleNodePointerDown = useCallback((event, node) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    const offset = nodeOffsets[node.id] ?? { x: 0, y: 0 };
-    dragRef.current = {
-      id: node.id,
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: offset.x,
-      originY: offset.y,
-      moved: false,
-    };
-  }, [nodeOffsets]);
-
-  const handlePointerMove = useCallback((event) => {
-    const drag = dragRef.current;
-    const svg = svgRef.current;
-    if (!drag || drag.pointerId !== event.pointerId || !svg) return;
-    const rect = svg.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
-    const deltaX = ((event.clientX - drag.startX) * VIEWBOX_WIDTH) / rect.width / zoom;
-    const deltaY = ((event.clientY - drag.startY) * VIEWBOX_HEIGHT) / rect.height / zoom;
-    if (Math.abs(deltaX) + Math.abs(deltaY) > 3) drag.moved = true;
-    setNodeOffsets((current) => ({
-      ...current,
-      [drag.id]: { x: drag.originX + deltaX, y: drag.originY + deltaY },
-    }));
-  }, [zoom]);
-
-  const handlePointerEnd = useCallback((event) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    suppressClickRef.current = drag.moved;
-    dragRef.current = null;
   }, []);
 
-  const handleNodeClick = useCallback((node) => {
-    if (suppressClickRef.current) {
-      suppressClickRef.current = false;
-      return;
+  const activateNode = useCallback((node) => {
+    if (!node) return;
+    focusNode(node);
+    if (node.kind === "group") {
+      toggleGroup(node.id);
     }
-    activateNode(node);
-  }, [activateNode]);
+  }, [focusNode, toggleGroup]);
 
   const resetView = useCallback(() => {
     setQuery("");
     setCollapsedIds([]);
-    setNodeOffsets(EMPTY_OFFSETS);
     setSelectedNodeId(null);
+    setHoveredNodeId(null);
     setZoom(1);
-  }, []);
+    issueCameraCommand("reset");
+  }, [issueCameraCommand]);
 
   const selectedContextItem = getKnowledgeGraphNodeContextItem(selectedNode);
   const sourceModeLabel = platformKind === "windows" && !graph.source.simulation
-    ? "WINDOWS HOST"
-    : "SIMULATED PREVIEW";
+    ? t("graph.workspace.source.windowsHost")
+    : t("graph.workspace.source.simulatedPreview");
   const nodeDensity = graph.visibleEntryCount <= 18
     ? "expanded"
     : graph.visibleEntryCount <= 30 ? "balanced" : "compact";
@@ -227,128 +432,134 @@ export function KnowledgeGraphWorkspace({
   return (
     <div className="knowledge-workspace" data-node-density={nodeDensity}>
       <header className="knowledge-workspace__toolbar">
+        <button
+          type="button"
+          className="knowledge-workspace__explore-toggle"
+          aria-pressed={exploreMode}
+          onClick={toggleExploreMode}
+        >
+          {exploreMode
+            ? t("graph.workspace.action.exitExplore")
+            : t("graph.workspace.action.explore")}
+        </button>
         <label>
           <SearchRegular aria-hidden="true" />
-          <span className="sr-only">Search connected graph nodes</span>
+          <span className="sr-only">{t("graph.workspace.search.aria")}</span>
           <input
             type="search"
             value={query}
+            disabled={!exploreMode}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="FILTER LOCAL GRAPH"
-            aria-label="Search connected graph nodes"
+            placeholder={t("graph.workspace.search.placeholder")}
+            aria-label={t("graph.workspace.search.aria")}
           />
         </label>
         <div className="knowledge-workspace__facts" aria-live="polite">
           <strong>{graph.source.sourceName}</strong>
-          <span>{graph.visibleEntryCount} VISIBLE</span>
-          <span>{graph.relationCount} RELATIONS</span>
+          <span>{t("graph.workspace.facts.visible", { count: graph.visibleEntryCount })}</span>
+          <span>{t("graph.workspace.facts.relations", { count: graph.relationCount })}</span>
           <span>{sourceModeLabel}</span>
         </div>
-        <div className="knowledge-workspace__zoom" aria-label="Graph view controls">
-          <button type="button" onClick={() => changeZoom(-0.12)} aria-label="Zoom out"><ZoomOutRegular /></button>
-          <output aria-label="Graph zoom">{Math.round(zoom * 100)}%</output>
-          <button type="button" onClick={() => changeZoom(0.12)} aria-label="Zoom in"><ZoomInRegular /></button>
-          <button type="button" onClick={resetView} aria-label="Reset graph view"><ArrowResetRegular /></button>
+        <div
+          className="knowledge-workspace__zoom"
+          role="group"
+          aria-label={t("graph.workspace.viewControls.aria")}
+        >
+          <button
+            type="button"
+            className={visualSettings.view.dimension === 2 ? "is-active" : ""}
+            onClick={() => setGraphVisualSetting("view", "dimension", 2)}
+            aria-pressed={visualSettings.view.dimension === 2}
+            aria-label={t("graph.workspace.action.switch2d")}
+          >2D</button>
+          <button
+            type="button"
+            className={visualSettings.view.dimension === 3 ? "is-active" : ""}
+            onClick={() => setGraphVisualSetting("view", "dimension", 3)}
+            aria-pressed={visualSettings.view.dimension === 3}
+            aria-label={t("graph.workspace.action.switch3d")}
+          >3D</button>
+          <button type="button" onClick={() => changeZoom(-0.12)} aria-label={t("graph.workspace.action.zoomOut")}><ZoomOutRegular /></button>
+          <output aria-label={t("graph.workspace.zoom.aria")}>{Math.round(zoom * 100)}%</output>
+          <button type="button" onClick={() => changeZoom(0.12)} aria-label={t("graph.workspace.action.zoomIn")}><ZoomInRegular /></button>
+          <button type="button" onClick={() => issueCameraCommand("fit")} aria-label={t("graph.workspace.action.fit")}>{t("graph.workspace.action.fitShort")}</button>
+          <button type="button" onClick={resetView} aria-label={t("graph.workspace.action.resetView")}><ArrowResetRegular /></button>
+          <button
+            ref={visualSettingsTriggerRef}
+            type="button"
+            onClick={onOpenVisualSettings}
+            aria-label={t(visualSettingsOpen
+              ? "graph.workspace.action.closeVisualSettings"
+              : "graph.workspace.action.openVisualSettings")}
+            aria-controls="graph-visual-settings-panel"
+            aria-expanded={visualSettingsOpen}
+          >
+            <SettingsRegular />
+          </button>
         </div>
       </header>
 
-      <svg
-        ref={svgRef}
-        className="knowledge-workspace__canvas"
-        viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
-        preserveAspectRatio="xMidYMid meet"
-        role="group"
-        aria-label={`Local knowledge graph for ${graph.source.sourceName}`}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerEnd}
-        onPointerCancel={handlePointerEnd}
+      <div
+        ref={canvasRef}
+        className={`knowledge-workspace__canvas ${exploreMode ? "is-exploring" : "is-passive"}`}
+        role={exploreMode ? "group" : undefined}
+        aria-label={exploreMode
+          ? t("graph.workspace.canvas.aria", { source: graph.source.sourceName })
+          : undefined}
+        data-graphics-input-owner={exploreMode ? "graph" : undefined}
         onWheel={handleWheel}
       >
-        <defs>
-          <pattern id="knowledge-dot-field" width="24" height="24" patternUnits="userSpaceOnUse">
-            <rect x="0" y="0" width="1" height="1" className="knowledge-workspace__dot" />
-          </pattern>
-        </defs>
-        <rect className="knowledge-workspace__field" x="0" y="0" width={VIEWBOX_WIDTH} height={VIEWBOX_HEIGHT} fill="url(#knowledge-dot-field)" />
-        <g transform={transform}>
-          <g className="knowledge-workspace__edges" aria-hidden="true">
-            {graph.edges.map((edge) => {
-              const from = nodeMap.get(edge.from);
-              const to = nodeMap.get(edge.to);
-              if (!from || !to) return null;
-              const midpoint = Math.round((from.x + to.x) / 2);
-              return (
-                <path
-                  key={edge.id}
-                  className={to.selected || to.id === selectedNodeId ? "is-active" : ""}
-                  d={`M${from.x} ${from.y}H${midpoint}V${to.y}H${to.x}`}
-                />
-              );
-            })}
-          </g>
-          <g className="knowledge-workspace__nodes">
-            {graph.nodes.map((node) => {
-              const radius = nodeRadius(node);
-              const groupNode = node.kind === "group";
-              const labelOnLeft = node.kind === "entry" && node.labelSide === "left";
-              const labelX = groupNode
-                ? node.x
-                : labelOnLeft ? node.x - radius - 8 : node.x + radius + 8;
-              const labelY = groupNode ? node.y - radius - 9 : node.y - 2;
-              const metaY = groupNode ? node.y + radius + 15 : node.y + 12;
-              const textAnchor = groupNode ? "middle" : labelOnLeft ? "end" : "start";
-              return (
-                <g
-                  key={node.id}
-                  className={nodeClassName(node, selectedNodeId)}
-                  role="button"
-                  tabIndex="0"
-                  aria-label={`${node.label}. ${node.meta ?? "Local graph node"}`}
-                  aria-expanded={node.kind === "group" ? node.expanded : undefined}
-                  onClick={() => handleNodeClick(node)}
-                  onKeyDown={(event) => handleNodeKeyDown(event, node)}
-                  onPointerDown={(event) => handleNodePointerDown(event, node)}
-                >
-                  {node.kind === "source" ? (
-                    <>
-                      <circle className="knowledge-node__orbit" cx={node.x} cy={node.y} r={radius + 13} />
-                      <path d={`M${node.x} ${node.y - radius}L${node.x + radius} ${node.y}L${node.x} ${node.y + radius}L${node.x - radius} ${node.y}Z`} />
-                    </>
-                  ) : (
-                    <rect x={node.x - radius} y={node.y - radius} width={radius * 2} height={radius * 2} />
-                  )}
-                  {node.kind === "group" ? (
-                    <path className="knowledge-node__state" d={node.expanded
-                      ? `M${node.x - 4} ${node.y}H${node.x + 4}`
-                      : `M${node.x - 4} ${node.y}H${node.x + 4}M${node.x} ${node.y - 4}V${node.y + 4}`}
-                    />
-                  ) : null}
-                  <text x={labelX} y={labelY} textAnchor={textAnchor}>{displayNodeLabel(node)}</text>
-                  <text className="knowledge-node__meta" x={labelX} y={metaY} textAnchor={textAnchor}>{node.meta}</text>
-                </g>
-              );
-            })}
-          </g>
-        </g>
-      </svg>
+        <Suspense fallback={<GraphFallback />}>
+          <CoreVisualCanvas
+            cameraCommand={cameraCommand}
+            fallback={<GraphFallback />}
+            graph={sceneGraph}
+            hoveredNodeId={hoveredNodeId}
+            interactive={exploreMode}
+            onNodeHover={(node) => setHoveredNodeId(node?.id ?? null)}
+            onNodeSelect={(node) => activateNode(nodeMap.get(node.id))}
+            selectedNodeId={selectedNodeId}
+            zoom={zoom}
+          />
+        </Suspense>
+      </div>
+
+      <GraphAccessibleNavigator
+        active={exploreMode}
+        nodes={graph.nodes}
+        selectedNodeId={selectedNodeId}
+        connections={selectedConnections}
+        onSelectNode={focusNode}
+        onActivateNode={activateNode}
+        connectionHeadingId={connectionHeadingId}
+        connectionSummaryId={connectionSummaryId}
+      />
 
       {graph.source.truncatedCount > 0 ? (
         <p className="knowledge-workspace__limit">
-          {graph.source.truncatedCount} MORE ITEMS REMAIN IN EXPLORER · GRAPH VIEW IS BOUNDED
+          {t("graph.workspace.limit", { count: graph.source.truncatedCount })}
         </p>
       ) : null}
 
       {deferredQuery && graph.visibleEntryCount === 0 ? (
-        <p className="knowledge-workspace__empty" role="status">NO LOCAL NODES MATCH “{query.trim()}”</p>
+        <p className="knowledge-workspace__empty" role="status">
+          {t("graph.workspace.empty", { query: query.trim() })}
+        </p>
       ) : null}
 
       {selectedNode ? (
-        <aside className="knowledge-workspace__inspector" aria-label="Selected graph node">
-          <header><span>{selectedNode.kind === "source" ? "SOURCE" : selectedNode.meta}</span><strong>{selectedNode.label}</strong></header>
+        <aside
+          className="knowledge-workspace__inspector"
+          aria-label={t("graph.workspace.inspector.aria")}
+          aria-describedby={connectionSummaryId}
+        >
+          <header><span>{selectedNode.kind === "source" ? t("graph.workspace.inspector.source") : selectedNode.meta}</span><strong>{selectedNode.label}</strong></header>
           <dl>
-            <div><dt>PATH</dt><dd title={selectedNode.path}>{selectedNode.path ?? "GROUPED LOCAL METADATA"}</dd></div>
-            <div><dt>SIZE</dt><dd>{formatFileSize(selectedNode.sizeBytes)}</dd></div>
-            <div><dt>MODIFIED</dt><dd>{formatModified(selectedNode.modified)}</dd></div>
+            <div><dt>{t("graph.workspace.inspector.path")}</dt><dd title={selectedNode.path}>{selectedNode.path ?? t("graph.workspace.inspector.groupedMetadata")}</dd></div>
+            <div><dt>{t("graph.workspace.inspector.size")}</dt><dd>{formatFileSize(selectedNode.sizeBytes)}</dd></div>
+            <div><dt>{t("graph.workspace.inspector.modified")}</dt><dd>{formatDateTime(selectedNode.modified, language)}</dd></div>
+            <div><dt>{t("graph.workspace.inspector.relations")}</dt><dd>{selectedConnections.length}</dd></div>
+            <div><dt>{t("graph.workspace.inspector.types")}</dt><dd>{selectedRelationTypes.join(" · ") || "—"}</dd></div>
           </dl>
           {selectedContextItem ? (
             <footer>
@@ -358,14 +569,18 @@ export function KnowledgeGraphWorkspace({
                   ? selectedContextItem.path
                   : graph.source.currentPath)}
               >
-                <OpenRegular /><span>SHOW IN EXPLORER</span>
+                <OpenRegular /><span>{t("graph.workspace.action.showInExplorer")}</span>
               </button>
-              <button type="button" onClick={() => onLinkNodeToAgent?.(selectedContextItem)}><LinkRegular /><span>ASK AGENT</span></button>
+              <button type="button" onClick={() => onLinkNodeToAgent?.(selectedContextItem)}><LinkRegular /><span>{t("graph.workspace.action.askAgent")}</span></button>
             </footer>
           ) : null}
         </aside>
       ) : (
-        <p className="knowledge-workspace__hint">SELECT A NODE · DRAG TO REPOSITION · WHEEL TO ZOOM</p>
+        <p className="knowledge-workspace__hint">
+          {exploreMode
+            ? t("graph.workspace.hint.explore")
+            : t("graph.workspace.hint.background")}
+        </p>
       )}
     </div>
   );

@@ -1,0 +1,208 @@
+.graph-profile-manager {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 0.5px solid var(--structure-weak);
+  background: #030303;
+  color: var(--ink-1);
+  font-family: var(--font-data);
+}
+
+.graph-profile-manager > header,
+.graph-profile-manager > header > span,
+.graph-profile-manager__save label {
+  display: grid;
+}
+
+.graph-profile-manager > header {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.graph-profile-manager > header > span,
+.graph-profile-manager__save label {
+  gap: 4px;
+  min-width: 0;
+}
+
+.graph-profile-manager > header strong {
+  color: var(--ink-1);
+  font: 600 12px/1.2 var(--font-data);
+  letter-spacing: 0.12em;
+}
+
+.graph-profile-manager > header small,
+.graph-profile-manager__save label > span,
+.graph-profile-manager__list small,
+.graph-profile-manager__status {
+  color: var(--ink-3);
+  font: 500 10px/1.4 var(--font-data);
+  letter-spacing: 0.08em;
+}
+
+.graph-profile-manager > header code {
+  color: var(--signal-pale);
+  font: 600 10px/1 var(--font-data);
+}
+
+.graph-profile-manager__scope,
+.graph-profile-manager__actions {
+  display: grid;
+  gap: 1px;
+  background: var(--structure);
+}
+
+.graph-profile-manager__scope {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.graph-profile-manager__actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.graph-profile-manager__scope button,
+.graph-profile-manager__actions button,
+.graph-profile-manager__save button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 0;
+  background: var(--void);
+  color: var(--ink-2);
+  font: 600 10px/1 var(--font-data);
+  letter-spacing: 0.08em;
+}
+
+.graph-profile-manager__scope button:hover,
+.graph-profile-manager__scope button:focus-visible,
+.graph-profile-manager__scope button.is-selected,
+.graph-profile-manager__actions button:hover,
+.graph-profile-manager__actions button:focus-visible,
+.graph-profile-manager__save button:hover,
+.graph-profile-manager__save button:focus-visible {
+  color: var(--signal-hot);
+  background: var(--signal-fill-strong);
+}
+
+.graph-profile-manager button:disabled {
+  color: var(--ink-3);
+  background: var(--void);
+}
+
+.graph-profile-manager__save {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.graph-profile-manager__save input {
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  border: 0.5px solid var(--structure);
+  border-radius: 0;
+  outline: none;
+  background: var(--void);
+  color: var(--ink-1);
+  font: 500 12px/1 var(--font-body);
+}
+
+.graph-profile-manager__save input:focus {
+  border-color: var(--signal);
+}
+
+.graph-profile-manager__save button {
+  border: 0.5px solid var(--structure);
+}
+
+.graph-profile-manager__list {
+  display: grid;
+  max-height: 220px;
+  overflow-y: auto;
+  border-block: 0.5px solid var(--structure-weak);
+}
+
+.graph-profile-manager__list > p {
+  margin: 0;
+  padding: 14px 8px;
+  color: var(--ink-3);
+  font: 400 12px/1.4 var(--font-body);
+}
+
+.graph-profile-manager__list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  border-bottom: 0.5px solid var(--structure-weak);
+}
+
+.graph-profile-manager__list article:last-child {
+  border-bottom: 0;
+}
+
+.graph-profile-manager__list article > button {
+  min-width: 0;
+  min-height: 42px;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 3px;
+  padding: 7px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  text-align: left;
+}
+
+.graph-profile-manager__list article > button:last-child {
+  place-items: center;
+  padding: 0;
+  border-left: 0.5px solid var(--structure-weak);
+}
+
+.graph-profile-manager__list article > button:hover,
+.graph-profile-manager__list article > button:focus-visible {
+  color: var(--signal-hot);
+  background: var(--signal-fill-strong);
+}
+
+.graph-profile-manager__list strong {
+  overflow: hidden;
+  max-width: 100%;
+  font: 600 11px/1.2 var(--font-data);
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-profile-manager__actions input[type="file"] {
+  display: none;
+}
+
+.graph-profile-manager__status {
+  min-height: 14px;
+  margin: 0;
+}
+
+@media (min-width: 1600px) and (min-height: 800px), (min-resolution: 144dpi) {
+  .graph-profile-manager__scope button,
+  .graph-profile-manager__actions button,
+  .graph-profile-manager__save button,
+  .graph-profile-manager__save input {
+    min-height: 40px;
+  }
+}
+
+@media (pointer: coarse) {
+  .graph-profile-manager__scope button,
+  .graph-profile-manager__actions button,
+  .graph-profile-manager__save button,
+  .graph-profile-manager__save input,
+  .graph-profile-manager__list article > button {
+    min-height: 44px;
+  }
+}

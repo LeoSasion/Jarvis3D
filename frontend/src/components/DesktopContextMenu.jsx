@@ -16,6 +16,7 @@ import {
   SettingsRegular,
 } from "@fluentui/react-icons";
 import { useEffect, useState } from "react";
+import { useLanguage } from "../i18n/language-system.js";
 
 function MenuItem({
   children,
@@ -80,6 +81,7 @@ export function DesktopContextMenu({
   sortMode,
   canPaste,
 }) {
+  const { t } = useLanguage();
   const [activeSubmenu, setActiveSubmenu] = useState(null);
 
   useEffect(() => {
@@ -98,6 +100,12 @@ export function DesktopContextMenu({
   };
 
   const handleKeyDown = (event) => {
+    if (event.key === "Escape" || event.key === "Tab") {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+      return;
+    }
     const currentItem = event.target.closest(".desktop-menu-item");
     const currentMenu = event.target.closest('[role="menu"]');
     if (!currentItem || !currentMenu) return;
@@ -127,10 +135,6 @@ export function DesktopContextMenu({
       menuRef.current?.querySelector(`[data-submenu="${submenuId}"]`)?.focus();
       return;
     }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-    }
   };
 
   const rootClassName = [
@@ -138,23 +142,20 @@ export function DesktopContextMenu({
     `is-submenu-${menu.submenuSide}`,
     menu.kind === "item" ? "is-item-menu" : "is-desktop-menu",
   ].join(" ");
+  const rootMenuLabel = menu.kind === "item"
+    ? t("desktop.context.accessibility.itemCommands", {
+      label: shortcut?.label ?? t("desktop.context.accessibility.item"),
+    })
+    : t("desktop.context.accessibility.desktopCommands");
 
   return (
     <section
       ref={menuRef}
       className={rootClassName}
-      aria-label={menu.kind === "item" ? `${shortcut?.label ?? "Desktop item"} commands` : "Desktop commands"}
       style={{ left: `${menu.x}px`, top: `${menu.y}px` }}
       onKeyDown={handleKeyDown}
     >
-      <header>
-        <span>{menu.kind === "item" ? "DESKTOP ITEM" : "DESKTOP"}</span>
-        <small>{menu.kind === "item"
-          ? selectionCount > 1 ? `${selectionCount} ITEMS` : shortcut?.label
-          : "WORKSPACE"}</small>
-      </header>
-
-      <div className="desktop-menu-root" role="menu">
+      <div className="desktop-menu-root" role="menu" aria-label={rootMenuLabel}>
         {menu.kind === "item" ? (
           <>
             <MenuItem
@@ -162,28 +163,32 @@ export function DesktopContextMenu({
               disabled={selectionCount !== 1}
               onClick={() => onOpen(shortcut)}
             >
-              Open
+              {t("desktop.context.action.open")}
             </MenuItem>
             <MenuItem
               icon={FolderOpenRegular}
               disabled={selectionCount !== 1 || !shortcut?.path}
               onClick={() => onOpenLocation(shortcut)}
             >
-              Open file location
+              {t("desktop.context.action.openLocation")}
             </MenuItem>
             <MenuSeparator />
-            <MenuItem icon={CutRegular} disabled={!shortcut?.path} onClick={onCut}>Cut</MenuItem>
-            <MenuItem icon={CopyRegular} disabled={!shortcut?.path} onClick={onCopy}>Copy</MenuItem>
+            <MenuItem icon={CutRegular} disabled={!shortcut?.path} onClick={onCut}>
+              {t("desktop.context.action.cut")}
+            </MenuItem>
+            <MenuItem icon={CopyRegular} disabled={!shortcut?.path} onClick={onCopy}>
+              {t("desktop.context.action.copy")}
+            </MenuItem>
             <MenuSeparator />
             <MenuItem
               icon={RenameRegular}
               disabled={selectionCount !== 1 || !shortcut?.path}
               onClick={() => onRename(shortcut)}
             >
-              Rename
+              {t("desktop.context.action.rename")}
             </MenuItem>
             <MenuItem icon={DeleteRegular} disabled={!shortcut?.path} onClick={onDelete}>
-              Delete
+              {t("desktop.context.action.delete")}
             </MenuItem>
             <MenuSeparator />
             <MenuItem
@@ -191,21 +196,23 @@ export function DesktopContextMenu({
               disabled={selectionCount !== 1 || !shortcut?.path}
               onClick={() => onCopyPath(shortcut)}
             >
-              Copy path
+              {t("desktop.context.action.copyPath")}
             </MenuItem>
             <MenuItem
               icon={InfoRegular}
               disabled={selectionCount !== 1 || !shortcut?.path}
               onClick={() => onProperties(shortcut)}
             >
-              Properties
+              {t("desktop.context.action.properties")}
             </MenuItem>
           </>
         ) : (
           <>
-            <MenuItem icon={FolderAddRegular} onClick={onNewFolder}>New folder</MenuItem>
+            <MenuItem icon={FolderAddRegular} onClick={onNewFolder}>
+              {t("desktop.context.action.newFolder")}
+            </MenuItem>
             <MenuItem icon={ClipboardPasteRegular} disabled={!canPaste} onClick={onPaste}>
-              Paste
+              {t("desktop.context.action.paste")}
             </MenuItem>
             <MenuSeparator />
             <MenuItem
@@ -217,7 +224,7 @@ export function DesktopContextMenu({
               }}
               onClick={() => setActiveSubmenu("view")}
             >
-              View
+              {t("desktop.context.action.view")}
             </MenuItem>
             <MenuItem
               icon={ArrowSortRegular}
@@ -228,34 +235,38 @@ export function DesktopContextMenu({
               }}
               onClick={() => setActiveSubmenu("sort")}
             >
-              Sort by
+              {t("desktop.context.action.sortBy")}
             </MenuItem>
-            <MenuItem icon={ArrowClockwiseRegular} onClick={onRefresh}>Refresh</MenuItem>
+            <MenuItem icon={ArrowClockwiseRegular} onClick={onRefresh}>
+              {t("desktop.context.action.refresh")}
+            </MenuItem>
             <MenuSeparator />
             <MenuItem checked={autoArrange} checkType="checkbox" onClick={onToggleAutoArrange}>
-              Auto arrange icons
+              {t("desktop.context.action.autoArrange")}
             </MenuItem>
             <MenuItem checked={alignToGrid} checkType="checkbox" onClick={onToggleAlignToGrid}>
-              Align icons to grid
+              {t("desktop.context.action.alignToGrid")}
             </MenuItem>
             <MenuSeparator />
-            <MenuItem icon={SettingsRegular} onClick={onOpenSettings}>JARVIS settings</MenuItem>
+            <MenuItem icon={SettingsRegular} onClick={onOpenSettings}>
+              {t("desktop.context.action.settings")}
+            </MenuItem>
 
             {activeSubmenu === "view" ? (
               <div
                 className="desktop-context-submenu is-view-submenu"
                 role="menu"
-                aria-label="Icon size"
+                aria-label={t("desktop.context.accessibility.iconSize")}
                 data-submenu-panel="view"
               >
                 <MenuItem checked={iconSize === "large"} onClick={() => onSetIconSize("large")}>
-                  Large icons
+                  {t("desktop.context.view.large")}
                 </MenuItem>
                 <MenuItem checked={iconSize === "medium"} onClick={() => onSetIconSize("medium")}>
-                  Medium icons
+                  {t("desktop.context.view.medium")}
                 </MenuItem>
                 <MenuItem checked={iconSize === "small"} onClick={() => onSetIconSize("small")}>
-                  Small icons
+                  {t("desktop.context.view.small")}
                 </MenuItem>
               </div>
             ) : null}
@@ -264,24 +275,24 @@ export function DesktopContextMenu({
               <div
                 className="desktop-context-submenu is-sort-submenu"
                 role="menu"
-                aria-label="Sort desktop icons"
+                aria-label={t("desktop.context.accessibility.sort")}
                 data-submenu-panel="sort"
               >
                 <MenuItem checked={sortMode === "name"} onClick={() => onSetSortMode("name")}>
-                  Name
+                  {t("desktop.context.sort.name")}
                 </MenuItem>
                 <MenuItem checked={sortMode === "type"} onClick={() => onSetSortMode("type")}>
-                  Item type
+                  {t("desktop.context.sort.type")}
                 </MenuItem>
                 <MenuItem checked={sortMode === "source"} onClick={() => onSetSortMode("source")}>
-                  Source
+                  {t("desktop.context.sort.source")}
                 </MenuItem>
                 {sortMode === "none" ? (
                   <>
                     <MenuSeparator />
                     <div className="desktop-menu-hint">
                       <GridRegular aria-hidden="true" />
-                      <span>Using the Windows source order</span>
+                      <span>{t("desktop.context.sort.windowsOrder")}</span>
                     </div>
                   </>
                 ) : null}

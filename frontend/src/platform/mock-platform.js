@@ -1,4 +1,5 @@
 import { processes, resources, shortcuts } from "../data.js";
+import { createMockObsidianGraph } from "../graph/mock-obsidian-graph.js";
 import { normalizeWindowAppearanceProcessName } from "../window-appearance-model.js";
 
 const DECIMAL_MB = 1_000_000;
@@ -1286,6 +1287,49 @@ export function createMockPlatform() {
       },
       async requestAccess() {
         return this.getState();
+      },
+    },
+    knowledgeGraph: {
+      async getDefaultSource() {
+        return createMockObsidianGraph();
+      },
+      async getDefaultManifest() {
+        const graph = createMockObsidianGraph();
+        return {
+          schemaVersion: graph.schemaVersion,
+          available: graph.available,
+          revision: graph.source.revision,
+          source: graph.source,
+          stats: graph.stats,
+          nodeCount: graph.nodes.length,
+          edgeCount: graph.edges.length,
+          nodeChunkSize: 32,
+          edgeChunkSize: 64,
+        };
+      },
+      async getDefaultChunk(params = {}) {
+        const graph = createMockObsidianGraph();
+        if (params.revision !== graph.source.revision) {
+          const error = new Error("The simulated graph revision changed.");
+          error.code = "GRAPH_REVISION_STALE";
+          throw error;
+        }
+        const nodeOffset = Math.max(0, Number(params.nodeOffset) || 0);
+        const edgeOffset = Math.max(0, Number(params.edgeOffset) || 0);
+        const nodeLimit = Math.max(0, Number(params.nodeLimit) || 0);
+        const edgeLimit = Math.max(0, Number(params.edgeLimit) || 0);
+        const nodes = graph.nodes.slice(nodeOffset, nodeOffset + nodeLimit);
+        const edges = graph.edges.slice(edgeOffset, edgeOffset + edgeLimit);
+        return {
+          revision: graph.source.revision,
+          nodes,
+          edges,
+          nextNodeOffset: nodeOffset + nodes.length,
+          nextEdgeOffset: edgeOffset + edges.length,
+        };
+      },
+      async chooseVault() {
+        return { canceled: true, simulation: true };
       },
     },
     explorer: {

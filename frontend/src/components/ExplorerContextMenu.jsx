@@ -13,6 +13,7 @@ import {
 } from "@fluentui/react-icons";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { getExplorerContextMenuKeyboardTarget } from "../explorer-context-menu-model.js";
+import { useLanguage } from "../i18n/language-system.js";
 
 const actionIcons = Object.freeze({
   open: OpenRegular,
@@ -27,13 +28,13 @@ const actionIcons = Object.freeze({
   paste: ClipboardPasteRegular,
   refresh: ArrowClockwiseRegular,
 });
-
 export function ExplorerContextMenu({
   menu,
   actions,
   onAction,
   onDismiss,
 }) {
+  const { t } = useLanguage();
   const itemRefs = useRef(new Map());
   const [activeIndex, setActiveIndex] = useState(() =>
     getExplorerContextMenuKeyboardTarget(actions, -1, "Home"));
@@ -75,18 +76,12 @@ export function ExplorerContextMenu({
       className="explorer-context-menu"
       role="menu"
       aria-label={menu.kind === "item"
-        ? "Selected file commands"
-        : "Current folder commands"}
+        ? t("explorer.context.accessibility.selectedCommands")
+        : t("explorer.context.accessibility.folderCommands")}
       style={{ left: menu.x, top: menu.y }}
       onContextMenu={(event) => event.preventDefault()}
       onKeyDown={handleKeyDown}
     >
-      <header>
-        <strong>{menu.kind === "item" ? "ITEM COMMANDS" : "FOLDER COMMANDS"}</strong>
-        <small>{menu.kind === "item"
-          ? `${menu.paths.length} SELECTED`
-          : "CURRENT LOCATION"}</small>
-      </header>
       <div className="explorer-context-menu__items">
         {actions.map((action, index) => {
           const Icon = actionIcons[action.id] ?? DocumentRegular;
@@ -111,7 +106,7 @@ export function ExplorerContextMenu({
                 onClick={() => onAction(action.id)}
               >
                 <Icon aria-hidden="true" />
-                <span>{action.label}</span>
+                <span>{t(action.labelKey)}</span>
                 {action.shortcut ? <kbd>{action.shortcut}</kbd> : null}
               </button>
             </Fragment>

@@ -1,0 +1,731 @@
+.graph-visual-settings {
+  --graph-settings-panel-width: clamp(420px, 24vw, 480px);
+  --graph-settings-layout-control-size: 36px;
+  --graph-settings-density-control-size: 36px;
+  --graph-settings-control-size: max(
+    var(--graph-settings-layout-control-size),
+    var(--graph-settings-density-control-size)
+  );
+  --graph-settings-layout-meta-size: 11px;
+  --graph-settings-density-meta-size: 11px;
+  --graph-settings-meta-size: max(
+    var(--graph-settings-layout-meta-size),
+    var(--graph-settings-density-meta-size)
+  );
+  --graph-settings-layout-label-size: 11px;
+  --graph-settings-density-label-size: 11px;
+  --graph-settings-label-size: max(
+    var(--graph-settings-layout-label-size),
+    var(--graph-settings-density-label-size)
+  );
+  --graph-settings-layout-title-size: 15px;
+  --graph-settings-density-title-size: 15px;
+  --graph-settings-title-size: max(
+    var(--graph-settings-layout-title-size),
+    var(--graph-settings-density-title-size)
+  );
+  color: var(--ink-1);
+  background: color-mix(in srgb, var(--void) 97%, transparent);
+  font-family: var(--font-data);
+  container: graph-visual-settings / inline-size;
+}
+
+.graph-visual-settings.is-overlay {
+  position: absolute;
+  z-index: 18;
+  top: 54px;
+  right: 12px;
+  bottom: 12px;
+  width: min(var(--graph-settings-panel-width), calc(100% - 24px));
+  overflow-y: auto;
+  border-block: var(--stroke) solid var(--structure-strong);
+  border-left: var(--stroke) solid var(--structure);
+  box-shadow: -18px 0 42px rgb(0 0 0 / 48%);
+  scrollbar-color: var(--structure-strong) var(--void);
+}
+
+.graph-visual-settings.is-embedded {
+  position: relative;
+  width: 100%;
+  border-block: var(--stroke) solid var(--structure-strong);
+}
+
+.graph-visual-settings__header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: var(--stroke) solid var(--structure-strong);
+  background: color-mix(in srgb, var(--void) 98%, transparent);
+}
+
+.graph-visual-settings__header > span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.graph-visual-settings__header small,
+.graph-visual-settings__group small,
+.graph-visual-settings__presets small,
+.graph-visual-settings__footer p {
+  color: var(--ink-3);
+  font: var(--graph-settings-meta-size)/1.35 var(--font-data);
+  letter-spacing: 0.045em;
+}
+
+.graph-visual-settings__header strong {
+  font: 650 var(--graph-settings-title-size)/1 var(--font-display);
+  letter-spacing: 0.09em;
+}
+
+.graph-visual-settings__header code,
+.graph-visual-settings__group summary code {
+  color: var(--signal-pale);
+  font: var(--graph-settings-meta-size)/1 var(--font-data);
+  letter-spacing: 0.055em;
+}
+
+.graph-visual-settings__header > button {
+  width: var(--graph-settings-control-size);
+  height: var(--graph-settings-control-size);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-left: var(--stroke) solid var(--structure);
+  color: var(--ink-2);
+  background: transparent;
+}
+
+.graph-visual-settings__header > button:hover,
+.graph-visual-settings__header > button:focus-visible {
+  color: var(--signal-hot);
+  background: var(--signal-fill-strong);
+}
+
+.graph-visual-settings__presets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  padding: 12px;
+  background: var(--structure);
+}
+
+.graph-visual-settings__presets > button {
+  min-height: 64px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 0;
+  border-left: 2px solid transparent;
+  color: var(--ink-2);
+  background: var(--void);
+  text-align: left;
+}
+
+.graph-visual-settings__presets > button:last-child {
+  grid-column: 1 / -1;
+}
+
+.graph-visual-settings__presets > button strong {
+  font: 650 var(--graph-settings-label-size)/1 var(--font-data);
+  letter-spacing: 0.075em;
+}
+
+.graph-visual-settings__presets > button:hover,
+.graph-visual-settings__presets > button:focus-visible,
+.graph-visual-settings__presets > button.is-selected {
+  border-left-color: var(--signal-hot);
+  color: var(--ink-1);
+  background: var(--signal-fill-strong);
+}
+
+.graph-visual-settings__presets > button.is-selected small {
+  color: var(--signal-pale);
+}
+
+.graph-visual-settings__group {
+  border-top: var(--stroke) solid var(--structure);
+}
+
+.graph-visual-settings__group > summary {
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  color: var(--ink-2);
+  cursor: pointer;
+  list-style: none;
+}
+
+.graph-visual-settings__group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.graph-visual-settings__group > summary::before {
+  content: "+";
+  width: 12px;
+  color: var(--ink-3);
+  font: var(--graph-settings-label-size)/1 var(--font-data);
+}
+
+.graph-visual-settings__group[open] > summary::before {
+  content: "−";
+  color: var(--signal-hot);
+}
+
+.graph-visual-settings__group > summary {
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+}
+
+.graph-visual-settings__group > summary strong {
+  font: 650 var(--graph-settings-label-size)/1 var(--font-data);
+  letter-spacing: 0.075em;
+}
+
+.graph-visual-settings__group > div {
+  display: grid;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.graph-visual-settings__control-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.graph-visual-settings__profile-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-left: var(--stroke) solid var(--signal-hot);
+  background: var(--signal-fill-strong);
+}
+
+.graph-visual-settings__profile-intro > span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.graph-visual-settings__profile-intro strong {
+  color: var(--ink-1);
+  font: 650 var(--graph-settings-label-size)/1 var(--font-data);
+  letter-spacing: 0.075em;
+}
+
+.graph-visual-settings__profile-intro > button {
+  min-height: var(--graph-settings-control-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: var(--stroke) solid var(--structure-strong);
+  color: var(--ink-2);
+  background: var(--void);
+  font: 600 var(--graph-settings-label-size)/1 var(--font-data);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.graph-visual-settings__profile-intro > button:hover,
+.graph-visual-settings__profile-intro > button:focus-visible {
+  border-color: var(--signal-hot);
+  color: var(--signal-hot);
+}
+
+.graph-visual-settings__layer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--structure);
+}
+
+.graph-visual-settings__layer-grid > button {
+  min-width: 0;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 0;
+  color: var(--ink-3);
+  background: var(--void);
+  text-align: left;
+}
+
+.graph-visual-settings__layer-grid > button strong {
+  min-width: 0;
+  color: inherit;
+  font: 600 var(--graph-settings-label-size)/1.15 var(--font-data);
+  letter-spacing: 0.055em;
+}
+
+.graph-visual-settings__layer-grid > button > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: inherit;
+}
+
+.graph-visual-settings__layer-grid > button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.graph-visual-settings__layer-grid > button code {
+  font: var(--graph-settings-meta-size)/1 var(--font-data);
+}
+
+.graph-visual-settings__layer-grid > button:hover,
+.graph-visual-settings__layer-grid > button:focus-visible,
+.graph-visual-settings__layer-grid > button.is-enabled {
+  color: var(--ink-1);
+  background: var(--signal-fill-strong);
+}
+
+.graph-visual-settings__layer-grid > button.is-enabled {
+  box-shadow: 0 -1px var(--signal-hot) inset;
+}
+
+@media (max-width: 420px) {
+  .graph-visual-settings__profile-intro {
+    grid-template-columns: 1fr;
+  }
+
+  .graph-visual-settings__profile-intro > button {
+    justify-self: start;
+  }
+}
+
+.graph-visual-settings__fx-category {
+  border-top: var(--stroke) solid var(--structure-strong);
+}
+
+.graph-visual-settings__fx-category > summary {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
+  cursor: pointer;
+  list-style: none;
+}
+
+.graph-visual-settings__fx-category > summary::-webkit-details-marker {
+  display: none;
+}
+
+.graph-visual-settings__fx-category > summary::before {
+  content: "+";
+  color: var(--ink-3);
+  font: var(--graph-settings-label-size)/1 var(--font-data);
+}
+
+.graph-visual-settings__fx-category[open] > summary::before {
+  content: "−";
+  color: var(--signal-hot);
+}
+
+.graph-visual-settings__fx-category > summary strong {
+  font: 650 var(--graph-settings-label-size)/1 var(--font-data);
+  letter-spacing: 0.075em;
+}
+
+.graph-visual-settings__fx-category > summary code {
+  color: var(--ink-3);
+  font: var(--graph-settings-meta-size)/1 var(--font-data);
+  letter-spacing: 0.055em;
+}
+
+.graph-visual-settings__fx-category > div {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 8px;
+}
+
+.graph-visual-settings__range {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 4px 10px;
+  padding: 8px 0 5px;
+  border-bottom: var(--stroke) solid var(--structure);
+}
+
+.graph-visual-settings__range > span,
+.graph-visual-settings__color > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.graph-visual-settings__range strong,
+.graph-visual-settings__color strong {
+  color: var(--ink-2);
+  font: 600 var(--graph-settings-label-size)/1 var(--font-data);
+  letter-spacing: 0.06em;
+}
+
+.graph-visual-settings__range output {
+  min-width: 50px;
+  color: var(--signal-pale);
+  font: var(--graph-settings-meta-size)/1 var(--font-data);
+  text-align: right;
+}
+
+.graph-visual-settings__range input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  accent-color: var(--signal-hot);
+  cursor: pointer;
+}
+
+.graph-visual-settings__range.is-disabled {
+  opacity: 0.42;
+}
+
+.graph-visual-settings__range input[type="range"]:disabled {
+  cursor: not-allowed;
+}
+
+.graph-visual-settings__color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--structure);
+}
+
+.graph-visual-settings__color-grid.is-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.graph-visual-settings__contrast-status {
+  display: grid;
+  gap: 6px;
+  padding: 9px 10px;
+  border-left: 2px solid var(--structure-strong);
+  color: var(--ink-2);
+  background: var(--surface-0);
+}
+
+.graph-visual-settings__contrast-status > span {
+  display: grid;
+  gap: 3px;
+}
+
+.graph-visual-settings__contrast-status strong {
+  color: var(--ink-1);
+  font: 600 var(--graph-settings-label-size)/1 var(--font-data);
+  letter-spacing: 0.06em;
+}
+
+.graph-visual-settings__contrast-status small,
+.graph-visual-settings__contrast-status code {
+  color: var(--ink-3);
+  font: var(--graph-settings-meta-size)/1.35 var(--font-data);
+  letter-spacing: 0.045em;
+}
+
+.graph-visual-settings__contrast-status code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.graph-visual-settings__contrast-status.is-warning {
+  border-left-color: var(--status-warning);
+}
+
+.graph-visual-settings__contrast-status.is-warning :where(strong, code) {
+  color: var(--status-warning);
+}
+
+@container graph-visual-settings (min-width: 540px) {
+  .graph-visual-settings__color-grid:not(.is-single) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.graph-visual-settings__color {
+  min-width: 0;
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--graph-settings-control-size);
+  align-items: center;
+  gap: 5px;
+  padding: 8px;
+  background: var(--void);
+}
+
+.graph-visual-settings__color code {
+  grid-column: 1 / -1;
+  color: var(--ink-3);
+  font: var(--graph-settings-meta-size)/1 var(--font-data);
+}
+
+.graph-visual-settings__color input[type="color"] {
+  width: var(--graph-settings-control-size);
+  height: var(--graph-settings-control-size);
+  padding: 2px;
+  border: var(--stroke) solid var(--structure-strong);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.graph-visual-settings__choices {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.graph-visual-settings__choices legend {
+  padding: 0;
+  color: var(--ink-3);
+  font: var(--graph-settings-meta-size)/1 var(--font-data);
+  letter-spacing: 0.08em;
+}
+
+.graph-visual-settings__choices > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+  gap: 1px;
+  background: var(--structure);
+}
+
+.graph-visual-settings__choices button {
+  min-height: var(--graph-settings-control-size);
+  padding: 0 7px;
+  border: 0;
+  color: var(--ink-3);
+  background: var(--void);
+  font: 600 var(--graph-settings-label-size)/1 var(--font-data);
+  letter-spacing: 0.045em;
+}
+
+.graph-visual-settings__choices button:hover,
+.graph-visual-settings__choices button:focus-visible,
+.graph-visual-settings__choices button.is-selected {
+  color: var(--ink-1);
+  background: var(--signal-fill-strong);
+  box-shadow: 0 -1px var(--signal-hot) inset;
+}
+
+.graph-visual-settings__view-help {
+  margin: 0;
+  color: var(--ink-3);
+  font: var(--graph-settings-meta-size)/1.4 var(--font-data);
+  letter-spacing: 0.045em;
+}
+
+.graph-visual-settings__footer {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-top: var(--stroke) solid var(--structure-strong);
+}
+
+.graph-visual-settings__footer p {
+  margin: 0;
+}
+
+.graph-visual-settings__footer button {
+  min-height: var(--graph-settings-control-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: var(--stroke) solid var(--structure-strong);
+  color: var(--ink-2);
+  background: transparent;
+  font: 600 var(--graph-settings-label-size)/1 var(--font-data);
+  letter-spacing: 0.06em;
+}
+
+.graph-visual-settings__footer button:hover,
+.graph-visual-settings__footer button:focus-visible {
+  border-color: var(--signal-hot);
+  color: var(--signal-hot);
+  background: var(--signal-fill-strong);
+}
+
+@media (max-width: 720px) {
+  .graph-visual-settings.is-overlay {
+    top: 48px;
+    right: 8px;
+    bottom: 8px;
+    width: calc(100% - 16px);
+  }
+
+  .graph-visual-settings__color-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .graph-visual-settings.is-overlay {
+    position: fixed;
+    z-index: 210;
+    inset: var(--top-height, 48px) 0 var(--taskbar-height, 52px);
+    width: auto;
+    max-width: none;
+    border-left: 0;
+    box-shadow: none;
+  }
+
+  .graph-visual-settings__header {
+    padding-inline: 16px;
+  }
+
+  .graph-visual-settings__presets,
+  .graph-visual-settings__group > div,
+  .graph-visual-settings__footer {
+    padding-inline: 16px;
+  }
+}
+
+@media (min-width: 1600px) and (min-height: 800px) {
+  .graph-visual-settings {
+    --graph-settings-panel-width: clamp(460px, 24vw, 520px);
+    --graph-settings-layout-control-size: 40px;
+    --graph-settings-layout-meta-size: 12px;
+    --graph-settings-layout-label-size: 12px;
+    --graph-settings-layout-title-size: 17px;
+  }
+
+  .graph-visual-settings.is-overlay {
+    top: 64px;
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .graph-visual-settings__header {
+    min-height: 72px;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+
+  .graph-visual-settings__presets {
+    padding: 16px;
+  }
+
+  .graph-visual-settings__presets > button {
+    min-height: 72px;
+    padding: 12px;
+  }
+
+  .graph-visual-settings__group > summary {
+    min-height: 48px;
+    padding-inline: 16px;
+  }
+
+  .graph-visual-settings__group > div {
+    gap: 12px;
+    padding: 0 16px 16px;
+  }
+
+  .graph-visual-settings__range {
+    padding-block: 10px 7px;
+  }
+
+  .graph-visual-settings__color {
+    min-height: 72px;
+    padding: 10px;
+  }
+
+  .graph-visual-settings__footer {
+    padding: 16px;
+  }
+}
+
+@media (min-width: 2400px) and (min-height: 1100px) {
+  .graph-visual-settings {
+    --graph-settings-panel-width: clamp(540px, 22vw, 600px);
+    --graph-settings-layout-control-size: 44px;
+    --graph-settings-layout-meta-size: 13px;
+    --graph-settings-layout-label-size: 13px;
+    --graph-settings-layout-title-size: 19px;
+  }
+
+  .graph-visual-settings.is-overlay {
+    top: 72px;
+    right: 20px;
+    bottom: 20px;
+  }
+}
+
+@media (min-width: 3200px) and (min-height: 1600px) {
+  .graph-visual-settings {
+    --graph-settings-panel-width: 640px;
+    --graph-settings-layout-control-size: 48px;
+    --graph-settings-layout-meta-size: 14px;
+    --graph-settings-layout-label-size: 14px;
+    --graph-settings-layout-title-size: 21px;
+  }
+
+  .graph-visual-settings.is-overlay {
+    top: 80px;
+    right: 24px;
+    bottom: 24px;
+  }
+}
+
+@media (min-resolution: 144dpi) {
+  .graph-visual-settings {
+    --graph-settings-density-control-size: 40px;
+    --graph-settings-density-meta-size: 12px;
+    --graph-settings-density-label-size: 12px;
+    --graph-settings-density-title-size: 17px;
+  }
+}
+
+@media (min-resolution: 192dpi) {
+  .graph-visual-settings {
+    --graph-settings-density-control-size: 44px;
+    --graph-settings-density-meta-size: 13px;
+    --graph-settings-density-label-size: 13px;
+    --graph-settings-density-title-size: 19px;
+  }
+}
+
+@media (pointer: coarse) {
+  .graph-visual-settings {
+    --graph-settings-density-control-size: 44px;
+  }
+
+  .graph-visual-settings__group > summary,
+  .graph-visual-settings__presets > button {
+    min-height: 48px;
+  }
+
+  .graph-visual-settings__range input[type="range"] {
+    height: 44px;
+  }
+}
+
+@media (forced-colors: active) {
+  .graph-visual-settings,
+  .graph-visual-settings__header {
+    background: Canvas;
+    color: CanvasText;
+  }
+}

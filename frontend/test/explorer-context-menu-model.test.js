@@ -28,6 +28,11 @@ test("item context actions preserve single and multi-selection boundaries", () =
   });
   assert.equal(single.find((action) => action.id === "open").disabled, false);
   assert.equal(single.find((action) => action.id === "properties").disabled, false);
+  assert.equal(
+    single.find((action) => action.id === "open").labelKey,
+    "explorer.context.action.open",
+  );
+  assert.equal(single.some((action) => Object.hasOwn(action, "label")), false);
 
   const multiple = getExplorerContextMenuActions({
     kind: "item",

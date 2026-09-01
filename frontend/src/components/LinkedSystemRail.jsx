@@ -7,6 +7,8 @@ import {
 } from "../hooks/usePlatformData.js";
 import { getAgentProviderLabel } from "../agent-provider-model.js";
 import { canUseAgentChat } from "../agent-session-model.js";
+import { useLanguage } from "../i18n/language-system.js";
+import { formatTime } from "../i18n/locale-format.js";
 import {
   createLinkedSystemRailState,
   getLinkedAgentStatusPresentation,
@@ -25,6 +27,24 @@ function Meter({ segments = 0 }) {
   );
 }
 
+const STATUS_KEYS = Object.freeze({
+  ACTIVE: "linkedSystem.state.active",
+  ATTENTION: "linkedSystem.state.attention",
+  "CHAT ONLY": "linkedSystem.state.chatOnly",
+  "CHAT UNAVAILABLE": "linkedSystem.state.chatUnavailable",
+  CONNECTED: "linkedSystem.state.connected",
+  DEGRADED: "linkedSystem.state.degraded",
+  OFFLINE: "linkedSystem.state.offline",
+  READY: "linkedSystem.state.ready",
+  RETRY: "linkedSystem.state.retry",
+  "STATUS ONLY": "linkedSystem.state.statusOnly",
+});
+
+function localizeStatus(value, t) {
+  const key = STATUS_KEYS[String(value ?? "").trim().toUpperCase()];
+  return key ? t(key) : value;
+}
+
 export function LinkedSystemRail({
   agentState,
   expanded: controlledExpanded,
@@ -32,13 +52,14 @@ export function LinkedSystemRail({
   onInspect,
   onNotification,
 }) {
+  const { language, t } = useLanguage();
   const clock = usePlatformClock();
   const platformKind = usePlatformKind();
   const { processes, resources } = useSystemSnapshot();
   const feed = useSystemFeed();
   const agentChatAvailable = canUseAgentChat(agentState);
   const agentStatus = getLinkedAgentStatusPresentation(agentState, agentChatAvailable);
-  const agentLabel = agentStatus.agentLabel;
+  const agentLabel = localizeStatus(agentStatus.agentLabel, t);
   const providerLabel = getAgentProviderLabel(agentState);
   const contentId = useId();
   const presentation = useMemo(
@@ -95,25 +116,33 @@ export function LinkedSystemRail({
   const notificationItem = presentation.attentionCount > 0
     ? presentation.priorityItem
     : feed.items[0] ?? null;
+  const localizedPriorityTitle = presentation.priorityTitle ||
+    t(presentation.priorityTitleKey);
+  const localizedPriorityDetail = presentation.priorityDetail ||
+    (presentation.priorityDetailKey
+      ? t(presentation.priorityDetailKey, presentation.priorityDetailValues)
+      : "");
   const notificationTitle = presentation.attentionCount > 0
-    ? presentation.priorityTitle
-    : notificationItem?.title ?? "NO NEW ALERTS";
+    ? localizedPriorityTitle
+    : notificationItem?.title ?? t("linkedSystem.notification.none");
 
   return (
     <aside
       className={railClassName}
-      aria-label="Linked workspace system status"
+      aria-label={t("linkedSystem.accessibility.rail")}
       data-attention-count={presentation.attentionCount}
       data-attention-level={presentation.level}
       data-rail-state={expanded ? "expanded" : "collapsed"}
     >
       <header>
         <span className="linked-system-rail-heading">
-          <strong>SYSTEM</strong>
+          <strong>{t("linkedSystem.title")}</strong>
           <small aria-live="polite">
             {presentation.attentionCount
-              ? `${presentation.attentionCount} ATTENTION`
-              : presentation.level === "syncing" ? "SYNCING" : "NOMINAL"}
+              ? t("linkedSystem.attention.count", { count: presentation.attentionCount })
+              : presentation.level === "syncing"
+                ? t("linkedSystem.state.syncing")
+                : t("linkedSystem.state.nominal")}
           </small>
         </span>
         <i aria-hidden="true" />
@@ -122,20 +151,22 @@ export function LinkedSystemRail({
           className="linked-system-rail-toggle"
           aria-controls={controlledSectionIds}
           aria-expanded={expanded}
-          aria-label={`${expanded ? "Collapse" : "Expand"} system status rail`}
+          aria-label={t(expanded
+            ? "linkedSystem.action.collapseAria"
+            : "linkedSystem.action.expandAria")}
           onClick={toggleExpanded}
         >
-          {expanded ? "COLLAPSE" : "EXPAND"}
+          {expanded ? t("linkedSystem.action.collapse") : t("linkedSystem.action.expand")}
         </button>
       </header>
 
       <section id={`${contentId}-summary`} className="linked-system-rail-summary" hidden={expanded}>
-        <h2>STATUS</h2>
+        <h2>{t("linkedSystem.section.status")}</h2>
         <dl>
-          <div><dt>HOST</dt><dd>{platformKind === "windows" ? "WINDOWS" : "PREVIEW"}</dd></div>
-          <div><dt>AGENT</dt><dd className={agentLabel === "OFFLINE" ? "is-muted" : "is-signal"}>{agentLabel}</dd></div>
+          <div><dt>{t("linkedSystem.field.host")}</dt><dd>{platformKind === "windows" ? "WINDOWS" : t("linkedSystem.state.preview")}</dd></div>
+          <div><dt>AGENT</dt><dd className={agentStatus.agentLabel === "OFFLINE" ? "is-muted" : "is-signal"}>{agentLabel}</dd></div>
           <div>
-            <dt>ATTENTION</dt>
+            <dt>{t("linkedSystem.field.attention")}</dt>
             <dd className={presentation.attentionCount ? "is-signal" : undefined}>
               {presentation.attentionCount}
             </dd>
@@ -147,28 +178,30 @@ export function LinkedSystemRail({
             className="linked-system-notification is-compact"
             onClick={() => onNotification?.(presentation.priorityItem)}
           >
-            <span>{presentation.priorityTitle}</span>
-            <small>{presentation.priorityDetail || `${presentation.attentionCount} NEED ATTENTION`}</small>
+            <span>{localizedPriorityTitle}</span>
+            <small>{localizedPriorityDetail || t("linkedSystem.attention.needs", {
+              count: presentation.attentionCount,
+            })}</small>
           </button>
         ) : (
           <p className="linked-system-rail-priority" role="status">
-            <strong>{presentation.priorityTitle}</strong>
-            {presentation.priorityDetail ? <small>{presentation.priorityDetail}</small> : null}
+            <strong>{localizedPriorityTitle}</strong>
+            {localizedPriorityDetail ? <small>{localizedPriorityDetail}</small> : null}
           </p>
         )}
       </section>
 
       <section id={`${contentId}-host`} hidden={!expanded}>
-        <h2>HOST</h2>
+        <h2>{t("linkedSystem.section.host")}</h2>
         <dl>
-          <div><dt>MODE</dt><dd>{platformKind === "windows" ? "WINDOWS HOST" : "LOCAL PREVIEW"}</dd></div>
-          <div><dt>FRAME</dt><dd>OWN PROCESS</dd></div>
-          <div><dt>TIME</dt><dd>{clock.time}</dd></div>
+          <div><dt>{t("linkedSystem.field.mode")}</dt><dd>{platformKind === "windows" ? "WINDOWS HOST" : t("linkedSystem.state.localPreview")}</dd></div>
+          <div><dt>{t("linkedSystem.field.frame")}</dt><dd>{t("linkedSystem.state.ownProcess")}</dd></div>
+          <div><dt>{t("linkedSystem.field.time")}</dt><dd>{formatTime(clock.dateTime, language)}</dd></div>
         </dl>
       </section>
 
       <section id={`${contentId}-performance`} hidden={!expanded}>
-        <h2>PERFORMANCE</h2>
+        <h2>{t("linkedSystem.section.performance")}</h2>
         <div className="linked-system-resources">
           {resources.slice(0, 5).map((resource) => (
             <button key={resource.id} type="button" onClick={() => onInspect?.(resource.label)}>
@@ -179,16 +212,16 @@ export function LinkedSystemRail({
       </section>
 
       <section id={`${contentId}-connections`} hidden={!expanded}>
-        <h2>CONNECTIONS</h2>
+        <h2>{t("linkedSystem.section.connections")}</h2>
         <dl>
-          <div><dt>AGENT · {providerLabel}</dt><dd className={agentLabel === "OFFLINE" ? "is-muted" : "is-signal"}>{agentLabel}</dd></div>
-          <div><dt>COMMAND BUS</dt><dd>{agentStatus.commandBusLabel}</dd></div>
-          <div><dt>DATA ACCESS</dt><dd>{agentStatus.dataAccessLabel}</dd></div>
+          <div><dt>AGENT · {providerLabel}</dt><dd className={agentStatus.agentLabel === "OFFLINE" ? "is-muted" : "is-signal"}>{agentLabel}</dd></div>
+          <div><dt>CHAT</dt><dd>{localizeStatus(agentStatus.commandBusLabel, t)}</dd></div>
+          <div><dt>{t("linkedSystem.field.dataAccess")}</dt><dd>{localizeStatus(agentStatus.dataAccessLabel, t)}</dd></div>
         </dl>
       </section>
 
       <section id={`${contentId}-notifications`} hidden={!expanded}>
-        <h2>NOTIFICATIONS</h2>
+        <h2>{t("linkedSystem.section.notifications")}</h2>
         {notificationItem ? (
           <button
             type="button"
@@ -198,23 +231,27 @@ export function LinkedSystemRail({
             <span>{notificationTitle}</span>
             <small>
               {presentation.attentionCount
-                ? presentation.priorityDetail || `${presentation.attentionCount} NEED ATTENTION`
-                : `${feed.unreadCount} UNREAD`}
+                ? localizedPriorityDetail || t("linkedSystem.attention.needs", {
+                  count: presentation.attentionCount,
+                })
+                : t("linkedSystem.notification.unread", { count: feed.unreadCount })}
             </small>
           </button>
         ) : (
           <p className="linked-system-rail-priority" role="status">
             <strong>{notificationTitle}</strong>
-            <small>{presentation.priorityDetail || `${feed.unreadCount} UNREAD`}</small>
+            <small>{localizedPriorityDetail || t("linkedSystem.notification.unread", {
+              count: feed.unreadCount,
+            })}</small>
           </p>
         )}
       </section>
 
       <section id={`${contentId}-tasks`} hidden={!expanded}>
-        <h2>TASKS</h2>
+        <h2>{t("linkedSystem.section.tasks")}</h2>
         <dl>
-          <div><dt>ACTIVE GROUPS</dt><dd>{processes.length}</dd></div>
-          <div><dt>AGENT RUN</dt><dd>{agentState?.status === "running" ? "1" : "0"}</dd></div>
+          <div><dt>{t("linkedSystem.field.activeGroups")}</dt><dd>{processes.length}</dd></div>
+          <div><dt>{t("linkedSystem.field.agentRun")}</dt><dd>{agentState?.status === "running" ? "1" : "0"}</dd></div>
         </dl>
       </section>
     </aside>

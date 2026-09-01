@@ -164,69 +164,36 @@ function New-TestManifest {
     return $manifestPath
 }
 
-if ([string]::IsNullOrWhiteSpace($ArchivePath)) {
-    $ArchivePath = Join-Path $repositoryRoot 'artifacts\vendor\pi\0.83.0\pi-windows-x64.zip'
+$archivePathWasExplicit = -not [string]::IsNullOrWhiteSpace($ArchivePath)
+$manifest = ConvertFrom-JsonPreservingDates -Json ([System.IO.File]::ReadAllText($sourceManifestPath))
+if (-not $archivePathWasExplicit) {
+    $ArchivePath = Join-Path $repositoryRoot "artifacts\vendor\pi\$($manifest.version)\$($manifest.archive.fileName)"
 }
 elseif (-not [System.IO.Path]::IsPathRooted($ArchivePath)) {
     $ArchivePath = Join-Path $repositoryRoot $ArchivePath
 }
 $ArchivePath = [System.IO.Path]::GetFullPath($ArchivePath)
-
-if (-not (Test-Path -LiteralPath $ArchivePath -PathType Leaf)) {
-    [pscustomobject]@{
-        Status = 'skipped'
-        Reason = 'The ignored pinned Pi archive is not available.'
-        ArchivePath = $ArchivePath
-    }
-    return
+$officialArchiveAvailable = Test-Path -LiteralPath $ArchivePath -PathType Leaf
+if ($archivePathWasExplicit -and -not $officialArchiveAvailable) {
+    throw "The explicitly supplied Pi archive does not exist: $ArchivePath"
 }
 
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Directory]::CreateDirectory($testRoot) | Out-Null
 $passed = [System.Collections.Generic.List[string]]::new()
+$syntheticPassed = [System.Collections.Generic.List[string]]::new()
+$officialPassed = [System.Collections.Generic.List[string]]::new()
 try {
-    $manifest = ConvertFrom-JsonPreservingDates -Json ([System.IO.File]::ReadAllText($sourceManifestPath))
-    $destination = Join-Path $testRoot 'AgentRuntime'
-
-    $result = & $stageScript `
-        -Runtime 'win-x64' `
-        -Destination $destination `
-        -ArchivePath $ArchivePath `
-        -CacheDirectory '' `
-        -Offline
-    Assert-True ($result.Version -eq $manifest.version) 'Staging result did not report the pinned Pi version.'
-    Assert-True (Test-Path -LiteralPath (Join-Path $destination 'pi.exe') -PathType Leaf) 'Staged pi.exe is missing.'
-    Assert-True (Test-Path -LiteralPath (Join-Path $destination 'runtime.json') -PathType Leaf) 'Staged runtime.json is missing.'
-    Assert-True (Test-Path -LiteralPath (Join-Path $destination 'LICENSE-Pi.txt') -PathType Leaf) 'Staged Pi license is missing.'
-    Assert-True (Test-Path -LiteralPath (Join-Path $destination 'PROVENANCE.txt') -PathType Leaf) 'Staged provenance is missing.'
-    $treeReceiptPath = Join-Path $destination $manifest.archive.treeReceiptFile
-    Assert-True (Test-Path -LiteralPath $treeReceiptPath -PathType Leaf) 'Staged runtime tree receipt is missing.'
-    Assert-True (Test-Path -LiteralPath (Join-Path $destination 'docs\rpc.md') -PathType Leaf) 'Full archive extraction omitted docs/rpc.md.'
-    Assert-True (Test-Path -LiteralPath (Join-Path $destination 'package.json') -PathType Leaf) 'Full archive extraction omitted package.json.'
-    Assert-True (
-        (Get-Sha256Hex -Path (Join-Path $destination 'pi.exe')) -eq $manifest.executable.sha256) `
-        'Staged pi.exe hash does not match the pinned receipt.'
-    Assert-True ((Get-Item -LiteralPath $treeReceiptPath).Length -eq $manifest.archive.treeReceiptBytes) `
-        'Runtime tree receipt byte length does not match the manifest.'
-    Assert-True ((Get-Sha256Hex -Path $treeReceiptPath) -eq $manifest.archive.treeSha256) `
-        'Runtime tree receipt hash does not match the manifest.'
-    Assert-True (@([System.IO.File]::ReadLines($treeReceiptPath)).Count -eq $manifest.archive.fileCount) `
-        'Runtime tree receipt does not contain one line per upstream file.'
-    $passed.Add('verified full-archive offline staging')
-
-    if ([System.IO.Path]::GetFileName($ArchivePath) -eq $manifest.archive.fileName) {
-        $cacheDestination = Join-Path $testRoot 'AgentRuntimeFromCache'
-        $cacheResult = & $stageScript `
-            -Runtime 'win-x64' `
-            -Destination $cacheDestination `
-            -CacheDirectory ([System.IO.Path]::GetDirectoryName($ArchivePath)) `
-            -Offline
-        Assert-True ($cacheResult.Acquisition -eq 'verified-cache') 'Offline cache staging did not report a verified-cache receipt.'
-        Assert-True (
-            (Get-Sha256Hex -Path (Join-Path $cacheDestination 'pi.exe')) -eq $manifest.executable.sha256) `
-            'Offline cache staging produced the wrong executable.'
-        $passed.Add('verified optional offline cache staging')
-    }
+    $probeDirectory = Join-Path $testRoot 'synthetic-probe'
+    [System.IO.Directory]::CreateDirectory($probeDirectory) | Out-Null
+    $probeArchive = Join-Path $probeDirectory 'probe.zip'
+    New-TestZip `
+        -Path $probeArchive `
+        -Entries @([pscustomobject]@{ Name = 'probe.txt'; Content = 'synthetic safety probe' })
+    $probeManifest = New-TestManifest `
+        -Archive $probeArchive `
+        -Directory (Join-Path $probeDirectory 'manifest')
 
     $missingCacheDestination = Join-Path $testRoot 'MissingCacheDestination'
     Invoke-ExpectedFailure `
@@ -241,22 +208,18 @@ try {
         }
     Assert-True (-not (Test-Path -LiteralPath $missingCacheDestination)) 'Offline cache miss created a destination.'
     $passed.Add('offline cache miss failed without network access')
+    $syntheticPassed.Add('offline cache miss failed without network access')
 
-    $stalePath = Join-Path $destination 'stale.test'
-    [System.IO.File]::WriteAllText($stalePath, 'remove me')
-    $null = & $stageScript `
-        -Runtime 'win-x64' `
-        -Destination $destination `
-        -ArchivePath $ArchivePath `
-        -CacheDirectory '' `
-        -Offline
-    Assert-True (-not (Test-Path -LiteralPath $stalePath)) 'Atomic replacement retained a stale destination file.'
-    $passed.Add('atomic managed-destination replacement')
-
-    $preservePath = Join-Path $destination 'preserve-on-failure.test'
+    $preserveDestination = Join-Path $testRoot 'PreservedManagedDestination'
+    [System.IO.Directory]::CreateDirectory($preserveDestination) | Out-Null
+    [System.IO.File]::WriteAllText(
+        (Join-Path $preserveDestination 'runtime.json'),
+        "{`"id`":`"pi-coding-agent`"}`n",
+        [System.Text.UTF8Encoding]::new($false))
+    $preservePath = Join-Path $preserveDestination 'preserve-on-failure.test'
     [System.IO.File]::WriteAllText($preservePath, 'preserve me')
     $corruptArchive = Join-Path $testRoot 'corrupt.zip'
-    [System.IO.File]::Copy($ArchivePath, $corruptArchive, $false)
+    [System.IO.File]::Copy($probeArchive, $corruptArchive, $false)
     $corruptStream = [System.IO.File]::Open($corruptArchive, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite)
     try {
         $corruptStream.Position = [System.Math]::Max(0, $corruptStream.Length - 1)
@@ -273,13 +236,15 @@ try {
         -Action {
             & $stageScript `
                 -Runtime 'win-x64' `
-                -Destination $destination `
+                -Destination $preserveDestination `
+                -ManifestPath $probeManifest `
                 -ArchivePath $corruptArchive `
                 -CacheDirectory '' `
                 -Offline | Out-Null
         }
     Assert-True (Test-Path -LiteralPath $preservePath -PathType Leaf) 'Failed staging modified the existing destination.'
     $passed.Add('corrupt archive rejected before replacement')
+    $syntheticPassed.Add('corrupt archive rejected before replacement')
 
     $strictManifestDirectory = Join-Path $testRoot 'strict-manifest'
     [System.IO.Directory]::CreateDirectory($strictManifestDirectory) | Out-Null
@@ -299,11 +264,12 @@ try {
                 -Runtime 'win-x64' `
                 -Destination (Join-Path $strictManifestDirectory 'AgentRuntime') `
                 -ManifestPath $strictManifestPath `
-                -ArchivePath $ArchivePath `
+                -ArchivePath $probeArchive `
                 -CacheDirectory '' `
                 -Offline | Out-Null
         }
     $passed.Add('strict manifest rejected unknown fields')
+    $syntheticPassed.Add('strict manifest rejected unknown fields')
 
     $licenseManifestDirectory = Join-Path $testRoot 'license-mismatch'
     [System.IO.Directory]::CreateDirectory($licenseManifestDirectory) | Out-Null
@@ -320,11 +286,12 @@ try {
                 -Runtime 'win-x64' `
                 -Destination (Join-Path $licenseManifestDirectory 'AgentRuntime') `
                 -ManifestPath (Join-Path $licenseManifestDirectory 'runtime.json') `
-                -ArchivePath $ArchivePath `
+                -ArchivePath $probeArchive `
                 -CacheDirectory '' `
                 -Offline | Out-Null
         }
     $passed.Add('tampered license rejected before extraction')
+    $syntheticPassed.Add('tampered license rejected before extraction')
 
     $outsideEscape = Join-Path $testRoot 'escape.txt'
     $symlinkAttributes = [System.BitConverter]::ToInt32(
@@ -388,14 +355,89 @@ try {
         Assert-True (-not (Test-Path -LiteralPath $caseDestination)) "$($case.Name) archive created a destination."
         Assert-True (-not (Test-Path -LiteralPath $outsideEscape)) "$($case.Name) archive wrote outside staging."
         $passed.Add("rejected $($case.Name) archive")
+        $syntheticPassed.Add("rejected $($case.Name) archive")
     }
 
+    Assert-True ($syntheticPassed.Count -gt 0) 'Pi staging validation ran zero synthetic safety tests.'
+
+    if ($officialArchiveAvailable) {
+        $destination = Join-Path $testRoot 'AgentRuntime'
+        $result = & $stageScript `
+            -Runtime 'win-x64' `
+            -Destination $destination `
+            -ArchivePath $ArchivePath `
+            -CacheDirectory '' `
+            -Offline
+        Assert-True ($result.Version -eq $manifest.version) 'Staging result did not report the pinned Pi version.'
+        Assert-True (Test-Path -LiteralPath (Join-Path $destination 'pi.exe') -PathType Leaf) 'Staged pi.exe is missing.'
+        Assert-True (Test-Path -LiteralPath (Join-Path $destination 'runtime.json') -PathType Leaf) 'Staged runtime.json is missing.'
+        Assert-True (Test-Path -LiteralPath (Join-Path $destination 'LICENSE-Pi.txt') -PathType Leaf) 'Staged Pi license is missing.'
+        Assert-True (Test-Path -LiteralPath (Join-Path $destination 'PROVENANCE.txt') -PathType Leaf) 'Staged provenance is missing.'
+        $treeReceiptPath = Join-Path $destination $manifest.archive.treeReceiptFile
+        Assert-True (Test-Path -LiteralPath $treeReceiptPath -PathType Leaf) 'Staged runtime tree receipt is missing.'
+        Assert-True (Test-Path -LiteralPath (Join-Path $destination 'docs\rpc.md') -PathType Leaf) 'Full archive extraction omitted docs/rpc.md.'
+        Assert-True (Test-Path -LiteralPath (Join-Path $destination 'package.json') -PathType Leaf) 'Full archive extraction omitted package.json.'
+        Assert-True (
+            (Get-Sha256Hex -Path (Join-Path $destination 'pi.exe')) -eq $manifest.executable.sha256) `
+            'Staged pi.exe hash does not match the pinned receipt.'
+        Assert-True ((Get-Item -LiteralPath $treeReceiptPath).Length -eq $manifest.archive.treeReceiptBytes) `
+            'Runtime tree receipt byte length does not match the manifest.'
+        Assert-True ((Get-Sha256Hex -Path $treeReceiptPath) -eq $manifest.archive.treeSha256) `
+            'Runtime tree receipt hash does not match the manifest.'
+        Assert-True (@([System.IO.File]::ReadLines($treeReceiptPath)).Count -eq $manifest.archive.fileCount) `
+            'Runtime tree receipt does not contain one line per upstream file.'
+        $passed.Add('verified full-archive offline staging')
+        $officialPassed.Add('verified full-archive offline staging')
+
+        if ([System.IO.Path]::GetFileName($ArchivePath) -eq $manifest.archive.fileName) {
+            $cacheDestination = Join-Path $testRoot 'AgentRuntimeFromCache'
+            $cacheResult = & $stageScript `
+                -Runtime 'win-x64' `
+                -Destination $cacheDestination `
+                -CacheDirectory ([System.IO.Path]::GetDirectoryName($ArchivePath)) `
+                -Offline
+            Assert-True ($cacheResult.Acquisition -eq 'verified-cache') 'Offline cache staging did not report a verified-cache receipt.'
+            Assert-True (
+                (Get-Sha256Hex -Path (Join-Path $cacheDestination 'pi.exe')) -eq $manifest.executable.sha256) `
+                'Offline cache staging produced the wrong executable.'
+            $passed.Add('verified optional offline cache staging')
+            $officialPassed.Add('verified optional offline cache staging')
+        }
+
+        $stalePath = Join-Path $destination 'stale.test'
+        [System.IO.File]::WriteAllText($stalePath, 'remove me')
+        $null = & $stageScript `
+            -Runtime 'win-x64' `
+            -Destination $destination `
+            -ArchivePath $ArchivePath `
+            -CacheDirectory '' `
+            -Offline
+        Assert-True (-not (Test-Path -LiteralPath $stalePath)) 'Atomic replacement retained a stale destination file.'
+        $passed.Add('atomic managed-destination replacement')
+        $officialPassed.Add('atomic managed-destination replacement')
+    }
+
+    $archiveHash = if ($officialArchiveAvailable) {
+        Get-Sha256Hex -Path $ArchivePath
+    }
+    else {
+        $null
+    }
     [pscustomobject]@{
-        Status = 'passed'
+        Status = if ($officialArchiveAvailable) { 'passed' } else { 'passed-synthetic-only' }
         Tests = $passed.Count
+        SyntheticTests = $syntheticPassed.Count
+        OfficialArchiveTests = $officialPassed.Count
+        OfficialArchiveStatus = if ($officialArchiveAvailable) { 'passed' } else { 'not-run' }
+        OfficialArchiveReason = if ($officialArchiveAvailable) {
+            $null
+        }
+        else {
+            'No official Pi archive was supplied; no archive was downloaded or cached.'
+        }
         Receipts = @($passed)
         ArchivePath = $ArchivePath
-        ArchiveSha256 = Get-Sha256Hex -Path $ArchivePath
+        ArchiveSha256 = $archiveHash
         ExecutableWasRun = $false
     }
 }

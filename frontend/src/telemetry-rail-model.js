@@ -10,8 +10,6 @@ export function getTelemetryPriorityPresentation({ events = [], feedError = null
     return {
       kind: "warning",
       className: "has-warning",
-      title: "TELEMETRY DISCONNECTED",
-      detail: "System feed unavailable",
       meta: feedError?.message ?? String(feedError),
     };
   }
@@ -19,19 +17,14 @@ export function getTelemetryPriorityPresentation({ events = [], feedError = null
     return {
       kind: "connecting",
       className: "is-connecting",
-      title: "STATUS SYNCHRONIZING",
-      detail: "System feed connecting",
-      meta: events.length > 0
-        ? `${events.length} cached session events retained`
-        : "Waiting for the first host snapshot",
+      cachedEventCount: events.length,
     };
   }
   return {
     kind: hasWarning ? "warning" : "nominal",
     className: hasWarning ? "has-warning" : "is-nominal",
-    title: hasWarning ? "ATTENTION REQUIRED" : "SYSTEM NOMINAL",
-    detail: priorityEvent?.title ?? "No critical session events",
-    meta: priorityEvent?.detail || `${events.length} session events available`,
+    detail: priorityEvent?.title ?? null,
+    meta: priorityEvent?.detail || null,
   };
 }
 
@@ -44,6 +37,5 @@ export function getCompactTelemetrySummary(resources = []) {
   return {
     cpu: findValue("cpu", "—"),
     memory: findValue("memory", "—"),
-    label: `System nominal. CPU ${findValue("cpu", "unavailable")}. Memory ${findValue("memory", "unavailable")}. Open System Health.`,
   };
 }

@@ -1,6 +1,8 @@
 param(
     [string]$HostPath = (Join-Path $PSScriptRoot '..\host\Jarvis.Host\bin\Debug\net8.0-windows\Jarvis.Host.exe'),
-    [int]$TimeoutSeconds = 45
+    [int]$TimeoutSeconds = 45,
+    [ValidateSet('en-US', 'zh-CN')]
+    [string]$Culture = 'en-US'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -60,6 +62,7 @@ try {
         "--renderer-smoke-data-root=`"$dataRoot`""
         "--renderer-smoke-receipt=`"$receiptPath`""
         "--renderer-smoke-nonce=$nonce"
+        "--renderer-smoke-culture=$Culture"
     ) -join ' '
 
     $process = [System.Diagnostics.Process]::Start($startInfo)
@@ -92,6 +95,7 @@ try {
     if ($receipt.schemaVersion -ne 1 -or
         $receipt.mode -ne 'renderer-smoke' -or
         $receipt.nonce -ne $nonce -or
+        $receipt.culture -ne $Culture -or
         $receipt.success -ne $true -or
         $receipt.mainWindowCreated -ne $true -or
         $receipt.taskbarTouched -ne $false -or
@@ -107,6 +111,7 @@ try {
         'agentOpened',
         'linkedWorkspaceReady',
         'noticeAvoidsCriticalControls',
+        'graphSurfaceResolved',
         'reducedMotionStylesApplied'
     )
     foreach ($assertion in $requiredAssertions) {
@@ -120,7 +125,7 @@ try {
         throw 'Renderer smoke host remained alive after producing its receipt.'
     }
 
-    Write-Output 'renderer-smoke: PASS'
+    Write-Output "renderer-smoke: PASS ($Culture)"
 }
 finally {
     if ($null -ne $process -and -not $process.HasExited) {

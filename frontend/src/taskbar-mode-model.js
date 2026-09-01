@@ -27,18 +27,11 @@ export function getTaskbarTransitionToast(previous, current) {
   }
 
   if (current.transitionStatus === "settled") {
-    if (current.simulation) {
-      return {
-        source: "taskbar",
-        severity: "ok",
-        title: `Preview selection saved: ${current.requestedMode.toUpperCase()}`,
-        detail: "The Windows taskbar was not changed.",
-      };
-    }
     return {
       source: "taskbar",
       severity: "ok",
-      title: `Taskbar mode switched to ${current.effectiveMode.toUpperCase()}`,
+      kind: current.simulation ? "preview-saved" : "switched",
+      mode: (current.simulation ? current.requestedMode : current.effectiveMode).toUpperCase(),
     };
   }
 
@@ -46,14 +39,14 @@ export function getTaskbarTransitionToast(previous, current) {
     return {
       source: "taskbar",
       severity: "warning",
-      title: "The Windows taskbar has been restored",
-      detail: "Automatic takeover is cooling down.",
+      kind: "cooldown",
     };
   }
 
   return {
     source: "taskbar",
     severity: "warning",
-    title: `Taskbar safely fell back to ${current.effectiveMode.toUpperCase()}`,
+    kind: "fallback",
+    mode: current.effectiveMode.toUpperCase(),
   };
 }

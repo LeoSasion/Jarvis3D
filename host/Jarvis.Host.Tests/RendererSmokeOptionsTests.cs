@@ -30,6 +30,7 @@ public sealed class RendererSmokeOptionsTests
         Assert.Equal(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar), options.DataRoot);
         Assert.Equal(Path.GetFullPath(receipt), options.ReceiptPath);
         Assert.Equal(Nonce, options.Nonce);
+        Assert.Equal("zh-CN", options.CultureName);
     }
 
     [Fact]
@@ -80,6 +81,30 @@ public sealed class RendererSmokeOptionsTests
     }
 
     [Fact]
+    public void MissingCultureUsesStableEnglishDefault()
+    {
+        var root = CreateIsolatedRoot();
+        var receipt = Path.Combine(root, "renderer.json");
+        var arguments = CreateArguments(root, receipt).Take(4).ToArray();
+
+        Assert.True(RendererSmokeOptions.TryParse(arguments, out var options, out var error), error);
+        Assert.Equal(RendererSmokeOptions.DefaultCultureName, options!.CultureName);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not a culture")]
+    public void InvalidCultureIsRejected(string culture)
+    {
+        var root = CreateIsolatedRoot();
+        var receipt = Path.Combine(root, "renderer.json");
+        var arguments = CreateArguments(root, receipt);
+        arguments[4] = $"--renderer-smoke-culture={culture}";
+
+        Assert.False(RendererSmokeOptions.TryParse(arguments, out _, out _));
+    }
+
+    [Fact]
     public void ReceiptRecordsVerifiedSafeSurfaceResult()
     {
         var root = CreateIsolatedRoot();
@@ -95,6 +120,7 @@ public sealed class RendererSmokeOptionsTests
                 AgentOpened: true,
                 LinkedWorkspaceReady: true,
                 NoticeAvoidsCriticalControls: true,
+                GraphSurfaceResolved: true,
                 ReducedMotionStylesApplied: true);
 
             RendererSmokeReceipt.Write(
@@ -108,6 +134,8 @@ public sealed class RendererSmokeOptionsTests
             Assert.True(rootElement.GetProperty("success").GetBoolean());
             Assert.False(rootElement.GetProperty("taskbarTouched").GetBoolean());
             Assert.Equal("renderer-smoke", rootElement.GetProperty("mode").GetString());
+            Assert.Equal("en-US", rootElement.GetProperty("culture").GetString());
+            Assert.True(rootElement.GetProperty("result").GetProperty("graphSurfaceResolved").GetBoolean());
             Assert.False(File.Exists(receiptPath + "." + Nonce + ".tmp"));
         }
         finally
@@ -117,6 +145,55 @@ public sealed class RendererSmokeOptionsTests
                 Directory.Delete(root, recursive: true);
             }
         }
+    }
+
+    [Fact]
+    public void GraphSurfaceResolutionIsRequiredForSuccess()
+    {
+        var result = new RendererSmokeResult(
+            ShellReady: true,
+            HelpOpened: true,
+            HelpClosed: true,
+            ExplorerOpened: true,
+            AgentOpened: true,
+            LinkedWorkspaceReady: true,
+            NoticeAvoidsCriticalControls: true,
+            GraphSurfaceResolved: false,
+            ReducedMotionStylesApplied: true);
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
+    public void StableDisconnectedGraphSurfaceRequiresAReadyRuntime()
+    {
+        Assert.True(RendererSmokeGraphSurfacePolicy.IsResolved(
+            runtimeReady: true,
+            graphSourceReady: false,
+            stableDisconnectedReady: true,
+            stableRuntimeFallback: false));
+        Assert.False(RendererSmokeGraphSurfacePolicy.IsResolved(
+            runtimeReady: false,
+            graphSourceReady: false,
+            stableDisconnectedReady: true,
+            stableRuntimeFallback: false));
+        Assert.True(RendererSmokeGraphSurfacePolicy.IsResolved(
+            runtimeReady: false,
+            graphSourceReady: false,
+            stableDisconnectedReady: false,
+            stableRuntimeFallback: true));
+        Assert.False(RendererSmokeGraphSurfacePolicy.IsResolved(
+            runtimeReady: false,
+            graphSourceReady: false,
+            stableDisconnectedReady: false,
+            stableRuntimeFallback: false));
+        Assert.Contains("is-neural-fallback", RendererSmokeGraphSurfacePolicy.BrowserExpression);
+        Assert.Contains(
+            "[data-runtime-fallback=\"resolved\"]",
+            RendererSmokeGraphSurfacePolicy.BrowserExpression);
+        Assert.DoesNotContain(
+            "core-stage__graphics-fallback",
+            RendererSmokeGraphSurfacePolicy.BrowserExpression);
     }
 
     [Fact]
@@ -152,7 +229,8 @@ public sealed class RendererSmokeOptionsTests
         "--renderer-smoke",
         $"--renderer-smoke-data-root={root}",
         $"--renderer-smoke-receipt={receipt}",
-        $"--renderer-smoke-nonce={Nonce}"
+        $"--renderer-smoke-nonce={Nonce}",
+        "--renderer-smoke-culture=zh-CN"
     ];
 
     private static string CreateIsolatedRoot() => Path.Combine(

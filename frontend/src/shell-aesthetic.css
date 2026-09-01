@@ -1,0 +1,2278 @@
+/*
+ * OpenClaw-inspired shell grammar: quiet hierarchy, stable reading scale,
+ * sparse containers, and progressive disclosure. Colors come only from the
+ * active theme pack in theme-system.js.
+ */
+
+:root {
+  --shell-font: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --shell-code-font: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  --shell-control-radius: 8px;
+  --shell-panel-radius: 12px;
+  --shell-message-radius: 10px;
+}
+
+html,
+body,
+button,
+input,
+select,
+textarea {
+  font-family: var(--shell-font);
+}
+
+body {
+  color: var(--shell-text);
+  background: var(--shell-bg);
+}
+
+::selection {
+  color: var(--shell-text-strong);
+  background: var(--shell-selection);
+}
+
+:where(button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--shell-focus) !important;
+  outline-offset: 2px !important;
+}
+
+/* Stable application frame */
+
+.topbar {
+  min-height: 48px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center;
+  gap: 16px;
+  padding: 0 12px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--shell-border-subtle) !important;
+  color: var(--shell-text);
+  background: color-mix(in srgb, var(--shell-surface) 96%, transparent) !important;
+  box-shadow: none !important;
+}
+
+.topbar::before,
+.topbar::after,
+.top-cluster::before,
+.top-cluster::after {
+  display: none !important;
+}
+
+.topbar__zone,
+.topbar__identity {
+  width: auto !important;
+  min-width: 0;
+  display: flex !important;
+  align-items: center;
+  gap: 10px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.brand-cluster {
+  flex: 0 0 auto;
+  min-width: 0 !important;
+  height: 32px !important;
+  gap: 8px !important;
+  padding: 0 8px 0 2px !important;
+  border: 0 !important;
+  color: var(--shell-text-strong) !important;
+  background: transparent !important;
+}
+
+.brand-orb {
+  width: 18px !important;
+  height: 18px !important;
+  color: var(--shell-accent) !important;
+}
+
+.brand-name {
+  color: var(--shell-text-strong) !important;
+  font: 650 13px/1 var(--shell-font) !important;
+  letter-spacing: 0.015em !important;
+}
+
+.search-cluster {
+  width: min(420px, 34vw) !important;
+  height: 34px !important;
+  display: grid !important;
+  grid-template-columns: 18px minmax(0, 1fr) auto !important;
+  gap: 8px !important;
+  padding: 0 10px !important;
+  border: 1px solid var(--shell-border) !important;
+  border-radius: var(--shell-control-radius) !important;
+  color: var(--shell-muted) !important;
+  background: var(--shell-card) !important;
+  box-shadow: none !important;
+  text-align: left;
+}
+
+.search-cluster:hover,
+.search-cluster:focus-visible {
+  color: var(--shell-text) !important;
+  border-color: var(--shell-border-strong) !important;
+  background: var(--shell-hover) !important;
+}
+
+.search-cluster > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.search-cluster > span {
+  overflow: hidden;
+  font: 13px/1 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-cluster kbd {
+  color: var(--shell-muted) !important;
+  font: 11px/1 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.topbar__command-bus {
+  justify-self: end;
+}
+
+.stop-cluster {
+  min-height: 32px !important;
+  gap: 7px !important;
+  padding: 0 10px !important;
+  border: 1px solid color-mix(in srgb, var(--shell-danger) 45%, var(--shell-border)) !important;
+  border-radius: var(--shell-control-radius) !important;
+  color: var(--shell-danger) !important;
+  background: color-mix(in srgb, var(--shell-danger) 8%, transparent) !important;
+  font: 12px/1 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.topbar__spacer {
+  min-width: 1px;
+}
+
+/* Desktop: content first, controls stay quiet */
+
+.desktop-workspace {
+  --telemetry-rail-width: clamp(260px, 17vw, 320px);
+  top: var(--top-height) !important;
+  bottom: var(--taskbar-height) !important;
+  grid-template-columns: 104px minmax(0, 1fr) var(--telemetry-rail-width) !important;
+  background: var(--shell-bg) !important;
+}
+
+.desktop-shortcuts {
+  gap: 6px !important;
+  padding: 12px 10px !important;
+  border-right: 0 !important;
+  background: var(--shell-transient-backdrop) !important;
+}
+
+.desktop-shortcut {
+  width: 84px !important;
+  min-height: 72px !important;
+  gap: 6px !important;
+  padding: 8px 4px !important;
+  border: 0 !important;
+  border-radius: var(--shell-control-radius) !important;
+  color: var(--shell-text) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.desktop-shortcut:hover,
+.desktop-shortcut.is-selected,
+.desktop-shortcut:focus-visible {
+  color: var(--shell-text-strong) !important;
+  background: var(--shell-hover) !important;
+  box-shadow: none !important;
+}
+
+.shortcut-icon {
+  width: 38px !important;
+  height: 38px !important;
+}
+
+.shortcut-label {
+  max-width: 78px;
+  color: inherit !important;
+  font: 11px/1.25 var(--shell-font) !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  text-shadow: none !important;
+}
+
+.core-stage {
+  border: 0 !important;
+  background: var(--shell-bg) !important;
+}
+
+.telemetry-rail {
+  gap: 8px !important;
+  padding: 10px !important;
+  border-left: 1px solid var(--shell-border-subtle) !important;
+  background: color-mix(in srgb, var(--shell-surface) 90%, transparent) !important;
+}
+
+.telemetry-rail__chrome {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 0 6px 8px;
+  border-bottom: 1px solid var(--shell-border-subtle);
+}
+
+.telemetry-rail__chrome-label {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--shell-text);
+}
+
+.telemetry-rail__chrome-label > i {
+  width: 4px;
+  height: 4px;
+  flex: 0 0 auto;
+  background: var(--shell-accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--shell-accent) 74%, transparent);
+}
+
+.telemetry-rail__chrome-label > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 650 9px/1 var(--shell-font);
+  letter-spacing: 0.08em;
+}
+
+.telemetry-rail__visibility {
+  min-width: 52px;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--shell-control-radius);
+  color: var(--shell-text);
+  background: transparent;
+  font: 650 9px/1 var(--shell-font);
+  letter-spacing: 0.08em;
+}
+
+.telemetry-rail__visibility > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.telemetry-rail__visibility:hover,
+.telemetry-rail__visibility:focus-visible {
+  border-color: var(--shell-border-subtle);
+  color: var(--shell-text-strong);
+  background: var(--shell-hover);
+  outline: none;
+}
+
+.telemetry-rail.is-rail-collapsed {
+  place-items: start center;
+  align-content: start;
+  gap: 0 !important;
+  overflow: hidden !important;
+  padding: 10px 4px !important;
+}
+
+.telemetry-rail__visibility.is-restore {
+  width: 34px;
+  min-width: 34px;
+  min-height: 112px;
+  flex-direction: column;
+  gap: 9px;
+  padding: 8px 0;
+  border-color: var(--shell-border-subtle);
+  color: var(--shell-text);
+  background: var(--shell-card);
+}
+
+.telemetry-rail__visibility.is-restore > svg {
+  transform: rotate(180deg);
+}
+
+.telemetry-rail__visibility.is-restore > span {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+.telemetry-rail .hud-panel {
+  padding: 0 0 8px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--shell-border-subtle) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.telemetry-rail .hud-panel::after {
+  display: none !important;
+}
+
+.telemetry-rail .hud-panel__header,
+.telemetry-rail .hud-panel__toggle {
+  min-height: 32px !important;
+  color: var(--shell-muted) !important;
+  font: 600 11px/1 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.telemetry-rail :where(.resource-row, .process-grid, .notification-row, .telemetry-priority) {
+  border-radius: 7px !important;
+}
+
+.telemetry-rail :where(.resource-row, .process-grid, .notification-row, .telemetry-priority):hover,
+.telemetry-rail :where(.resource-row, .process-grid, .notification-row, .telemetry-priority):focus-visible {
+  background: var(--shell-hover) !important;
+}
+
+/* Taskbar */
+
+.taskbar,
+.jarvis-taskbar-surface .taskbar {
+  border: 0 !important;
+  border-top: 1px solid var(--shell-border-subtle) !important;
+  color: var(--shell-text);
+  background: color-mix(in srgb, var(--shell-surface) 97%, transparent) !important;
+  box-shadow: none !important;
+}
+
+.taskbar::before,
+.taskbar::after,
+.taskbar-edge-track {
+  display: none !important;
+}
+
+.taskbar :where(button, .jarvis-agent-launcher) {
+  border-radius: 7px !important;
+  color: var(--shell-muted) !important;
+  box-shadow: none !important;
+}
+
+.taskbar :where(button:hover, button:focus-visible, button.is-active),
+.taskbar-apps > button.is-active {
+  color: var(--shell-text-strong) !important;
+  background: var(--shell-hover) !important;
+}
+
+.jarvis-agent-launcher {
+  min-width: 112px !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.jarvis-agent-launcher.is-active,
+.jarvis-agent-launcher.is-working {
+  background: var(--shell-hover) !important;
+}
+
+.jarvis-agent-launcher__copy strong {
+  color: var(--shell-text-strong) !important;
+  font: 600 12px/1.15 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.jarvis-agent-launcher__copy small {
+  color: var(--shell-muted) !important;
+  font: 10px/1.2 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+/* Agent Harness */
+
+.agent-workbench {
+  --agent-thread-width: 48rem;
+  grid-template-rows: 44px minmax(0, 1fr) auto !important;
+  border: 1px solid var(--shell-border) !important;
+  border-radius: var(--shell-panel-radius) !important;
+  color: var(--shell-text);
+  background: var(--shell-bg) !important;
+  box-shadow: var(--shell-shadow-float) !important;
+}
+
+.workspace-window:is(.is-maximized, .is-docked) .agent-workbench,
+.workspace-window.is-layout-explorer-agent-linked .agent-workbench {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.agent-titlebar {
+  min-height: 44px !important;
+  grid-template-columns: minmax(0, 1fr) auto repeat(4, 34px) !important;
+  gap: 2px !important;
+  padding: 0 6px 0 14px !important;
+  border-bottom: 1px solid var(--shell-border-subtle) !important;
+  background: var(--shell-surface) !important;
+}
+
+.agent-titlebar__mark {
+  display: none !important;
+}
+
+.agent-titlebar__identity {
+  min-width: 0;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 0 !important;
+}
+
+.agent-titlebar__identity strong {
+  flex: 0 0 auto;
+  color: var(--shell-text-strong) !important;
+  font: 600 14px/1 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.agent-titlebar__identity small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--shell-muted) !important;
+  font: 12px/1 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-runtime-state {
+  gap: 6px !important;
+  padding: 0 8px !important;
+  color: var(--shell-muted) !important;
+  font: 12px/1 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.agent-runtime-state i {
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  box-shadow: none !important;
+}
+
+.agent-titlebar > button {
+  width: 32px !important;
+  height: 32px !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.agent-titlebar > button:hover:not(:disabled),
+.agent-titlebar > button:focus-visible:not(:disabled) {
+  color: var(--shell-text-strong) !important;
+  background: var(--shell-hover) !important;
+}
+
+.agent-transcript {
+  min-height: 0;
+  overflow-y: auto;
+  padding: clamp(20px, 3vh, 28px) clamp(14px, 2vw, 28px) 8px !important;
+  color: var(--shell-text);
+  background: var(--shell-bg) !important;
+  scrollbar-color: var(--shell-border-strong) transparent !important;
+}
+
+.agent-message {
+  position: relative;
+  width: min(100%, 61rem) !important;
+  max-width: 61rem !important;
+  display: grid !important;
+  grid-template-columns: 36px minmax(0, var(--agent-thread-width)) !important;
+  justify-content: start !important;
+  align-items: start;
+  gap: 10px !important;
+  margin: 0 auto 14px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  color: var(--shell-text);
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.agent-message::before {
+  display: none !important;
+}
+
+.agent-message__avatar {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--shell-border-subtle);
+  border-radius: 50%;
+  color: var(--shell-muted);
+  background: var(--shell-surface);
+}
+
+.agent-message__avatar svg {
+  width: 18px;
+  height: 18px;
+}
+
+.agent-message__group {
+  min-width: 0;
+  width: fit-content;
+  max-width: var(--agent-thread-width);
+}
+
+.agent-message__bubble {
+  width: fit-content;
+  max-width: 100%;
+  padding: 14px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--shell-message-radius);
+  color: var(--shell-text-strong);
+  background: var(--shell-card);
+}
+
+.agent-message__bubble p {
+  max-width: 72ch;
+  margin: 0;
+  color: inherit !important;
+  font: 14px/1.55 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.agent-message__meta {
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 3px 0;
+  color: var(--shell-muted);
+  font: 11px/1.2 var(--shell-font);
+}
+
+.agent-message__meta time {
+  opacity: 0.78;
+}
+
+.agent-message__meta code {
+  margin-left: auto;
+  color: var(--shell-muted);
+  font: 10px/1 var(--shell-font);
+}
+
+.agent-message.is-user {
+  grid-template-columns: minmax(0, var(--agent-thread-width)) 36px !important;
+  justify-content: end !important;
+}
+
+.agent-message.is-user .agent-message__avatar {
+  grid-column: 2;
+  grid-row: 1;
+  color: var(--shell-accent);
+  border-color: color-mix(in srgb, var(--shell-accent) 32%, var(--shell-border));
+  background: var(--shell-accent-subtle);
+}
+
+.agent-message.is-user .agent-message__group {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.agent-message.is-user .agent-message__bubble {
+  margin-left: auto;
+  border-color: color-mix(in srgb, var(--shell-accent) 18%, transparent);
+  background: var(--shell-accent-subtle);
+}
+
+.agent-message.is-user .agent-message__meta {
+  justify-content: flex-end;
+}
+
+.agent-message.is-system {
+  grid-template-columns: 36px minmax(0, 36rem) !important;
+}
+
+.agent-message-reuse {
+  min-height: 26px !important;
+  margin-left: auto;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+  font: 11px/1 var(--shell-font) !important;
+}
+
+.agent-message-reuse:hover,
+.agent-message-reuse:focus-visible {
+  color: var(--shell-text-strong) !important;
+  background: var(--shell-hover) !important;
+}
+
+.agent-message-actions {
+  opacity: 0;
+}
+
+.agent-message:hover .agent-message-actions,
+.agent-message:focus-within .agent-message-actions {
+  opacity: 1;
+}
+
+.agent-empty-state,
+.agent-alert-region.has-alert {
+  width: min(100%, var(--agent-thread-width)) !important;
+  margin-inline: auto !important;
+}
+
+.agent-empty-state {
+  min-height: 100%;
+  display: grid;
+  place-content: center start !important;
+  padding: 32px 4px !important;
+}
+
+.agent-empty-state__copy {
+  max-width: 40rem;
+  gap: 9px !important;
+}
+
+.agent-empty-state small {
+  color: var(--shell-accent) !important;
+  font: 12px/1.2 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.agent-empty-state strong {
+  color: var(--shell-text-strong) !important;
+  font: 650 22px/1.25 var(--shell-font) !important;
+  letter-spacing: -0.012em !important;
+}
+
+.agent-empty-state p {
+  max-width: 60ch;
+  color: var(--shell-text) !important;
+  font: 14px/1.55 var(--shell-font) !important;
+}
+
+.agent-alert-region.has-alert {
+  margin-bottom: 14px !important;
+  padding: 11px 13px !important;
+  border: 1px solid color-mix(in srgb, var(--shell-danger) 42%, var(--shell-border)) !important;
+  border-radius: var(--shell-message-radius) !important;
+  color: var(--shell-text);
+  background: color-mix(in srgb, var(--shell-danger) 7%, var(--shell-card)) !important;
+  box-shadow: none !important;
+  font: 12px/1.4 var(--shell-font) !important;
+}
+
+.agent-composer {
+  width: min(calc(100% - 28px), var(--agent-thread-width)) !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column;
+  gap: 0 !important;
+  margin: 8px auto 14px !important;
+  padding: 0 !important;
+  overflow: hidden;
+  border: 1px solid var(--shell-border) !important;
+  border-radius: var(--shell-message-radius) !important;
+  color: var(--shell-text);
+  background: var(--shell-card) !important;
+  box-shadow: var(--shell-shadow-soft) !important;
+}
+
+.agent-composer:focus-within {
+  border-color: var(--shell-border-strong) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--shell-focus) 14%, transparent), var(--shell-shadow-soft) !important;
+}
+
+.agent-composer__attachments {
+  padding: 8px 8px 0;
+}
+
+.agent-link-cue,
+.agent-linked-context {
+  width: 100% !important;
+  min-height: 42px;
+  margin: 0 !important;
+  padding: 7px 9px !important;
+  border: 1px solid var(--shell-border-subtle) !important;
+  border-radius: 7px !important;
+  color: var(--shell-text);
+  background: var(--shell-surface) !important;
+  box-shadow: none !important;
+}
+
+.agent-link-cue :where(small, strong, p),
+.agent-linked-context :where(small, strong, code) {
+  color: inherit;
+  font-family: var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.agent-link-cue p,
+.agent-linked-context code {
+  color: var(--shell-muted) !important;
+}
+
+.agent-link-cue button,
+.agent-linked-context button {
+  min-height: 28px !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  color: var(--shell-text) !important;
+  background: var(--shell-hover) !important;
+  font: 11px/1 var(--shell-font) !important;
+}
+
+.agent-composer__input-row {
+  grid-column: auto !important;
+  grid-row: auto !important;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  padding: 6px 7px 6px 12px;
+}
+
+.agent-composer textarea {
+  grid-column: auto !important;
+  grid-row: auto !important;
+  width: 100% !important;
+  min-height: 36px !important;
+  max-height: 7em !important;
+  field-sizing: content;
+  resize: none !important;
+  padding: 8px 0 6px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  color: var(--shell-text-strong) !important;
+  caret-color: var(--shell-accent) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font: 14px/1.45 var(--shell-font) !important;
+}
+
+.agent-composer textarea::placeholder {
+  color: var(--shell-muted) !important;
+}
+
+.agent-composer__input-row > button {
+  grid-column: auto !important;
+  grid-row: auto !important;
+  align-self: center !important;
+  justify-self: auto !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font: 12px/1 var(--shell-font) !important;
+}
+
+.agent-composer__input-row > button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.agent-composer__input-row > button.is-send:not(:disabled) {
+  color: var(--shell-accent-foreground) !important;
+  background: var(--shell-accent) !important;
+}
+
+.agent-composer__input-row > button.is-send:not(:disabled):hover,
+.agent-composer__input-row > button.is-send:not(:disabled):focus-visible {
+  background: var(--shell-accent-hover) !important;
+}
+
+.agent-composer__input-row > button.is-stop:not(:disabled) {
+  color: var(--shell-danger) !important;
+  background: color-mix(in srgb, var(--shell-danger) 10%, transparent) !important;
+}
+
+.agent-footer {
+  grid-column: auto !important;
+  grid-row: auto !important;
+  min-height: 36px !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px !important;
+  border-top: 1px solid var(--shell-border-subtle) !important;
+  color: var(--shell-muted) !important;
+  background: var(--shell-surface) !important;
+  font: 11px/1 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.agent-footer__status {
+  display: flex;
+  gap: 10px;
+}
+
+.agent-footer :where(small, code) {
+  display: inline !important;
+  color: inherit !important;
+  font: inherit !important;
+  letter-spacing: 0 !important;
+}
+
+/* Panels, menus, and command surfaces */
+
+.overlay-layer,
+.shell-panel-layer {
+  background: var(--shell-transient-backdrop) !important;
+  animation: none !important;
+}
+
+.explorer-dialog-layer {
+  background: var(--shell-modal-scrim) !important;
+}
+
+.shell-panel,
+.command-palette,
+.window-switcher-chassis {
+  border: 1px solid var(--shell-border) !important;
+  border-radius: var(--shell-panel-radius) !important;
+  color: var(--shell-text) !important;
+  background: var(--shell-surface) !important;
+  background-image: none !important;
+  box-shadow: var(--shell-shadow-float) !important;
+  clip-path: none !important;
+}
+
+.shell-panel::after,
+.command-palette::after,
+.window-switcher-chassis::before,
+.window-switcher-chassis::after {
+  display: none !important;
+}
+
+.shell-panel-layer > div {
+  transform-origin: left bottom;
+}
+
+.shell-panel-layer:is(
+  .is-quick-settings,
+  .is-date-time,
+  .is-notifications,
+  .is-session
+) > div {
+  transform-origin: right bottom;
+}
+
+.shell-panel-layer.is-settings > div {
+  transform-origin: right center;
+}
+
+.shell-panel-layer.is-help > div {
+  transform-origin: center;
+}
+
+.shell-panel-layer[data-state="entering"] > div {
+  animation: shell-menu-rise-in 160ms var(--ease-out) both;
+}
+
+.shell-panel-layer[data-state="closing"] > div {
+  animation: shell-menu-collapse-out 110ms ease-in both;
+}
+
+.shell-panel-layer.is-settings[data-state="entering"] > div {
+  animation-name: shell-drawer-in;
+}
+
+.shell-panel-layer.is-settings[data-state="closing"] > div {
+  animation-name: shell-drawer-out;
+}
+
+.command-palette {
+  transform-origin: center top;
+}
+
+.command-palette[data-state="entering"] {
+  animation: command-palette-expand-in 150ms var(--ease-out) both;
+}
+
+.command-palette[data-state="closing"] {
+  animation: command-palette-collapse-out 100ms ease-in both;
+}
+
+@keyframes shell-menu-rise-in {
+  from {
+    opacity: 0.72;
+    transform: translateY(12px) scale(0.985, 0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes shell-menu-collapse-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99, 0.96);
+  }
+}
+
+@keyframes shell-drawer-in {
+  from {
+    opacity: 0.72;
+    transform: translateX(18px) scaleX(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scaleX(1);
+  }
+}
+
+@keyframes shell-drawer-out {
+  from {
+    opacity: 1;
+    transform: translateX(0) scaleX(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(14px) scaleX(0.99);
+  }
+}
+
+@keyframes command-palette-expand-in {
+  from {
+    opacity: 0.72;
+    transform: translateY(-8px) scale(0.985, 0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes command-palette-collapse-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.99, 0.96);
+  }
+}
+
+.shell-panel-header {
+  min-height: 50px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 32px !important;
+  align-items: center;
+  gap: 10px;
+  padding: 0 9px 0 14px !important;
+  border-bottom: 1px solid var(--shell-border-subtle) !important;
+  background: transparent !important;
+}
+
+.shell-panel-header > span {
+  display: flex !important;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.shell-panel-header strong {
+  color: var(--shell-text-strong) !important;
+  font: 600 15px/1.2 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.shell-panel-header small {
+  color: var(--shell-muted) !important;
+  font: 11px/1.2 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.shell-panel-header > button {
+  width: 30px !important;
+  height: 30px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+}
+
+.shell-panel-header > button:hover,
+.shell-panel-header > button:focus-visible {
+  color: var(--shell-text-strong) !important;
+  background: var(--shell-hover) !important;
+}
+
+.shell-panel :where(button, input, select, textarea) {
+  font-family: var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.start-panel {
+  width: min(620px, calc(100vw - 24px)) !important;
+  max-height: min(760px, calc(100dvh - var(--top-height) - var(--taskbar-height) - 24px)) !important;
+}
+
+.start-search {
+  min-height: 42px !important;
+  margin: 12px 14px 8px !important;
+  padding: 0 11px !important;
+  border: 1px solid var(--shell-border) !important;
+  border-radius: var(--shell-control-radius) !important;
+  color: var(--shell-muted) !important;
+  background: var(--shell-card) !important;
+}
+
+.start-search input {
+  min-height: 40px !important;
+  border: 0 !important;
+  color: var(--shell-text-strong) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.start-view-switch {
+  min-height: 38px !important;
+  margin: 0 14px !important;
+  border-bottom: 1px solid var(--shell-border-subtle) !important;
+}
+
+.start-view-switch > button:not(.start-catalog-refresh) {
+  min-height: 38px !important;
+  padding: 0 10px !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+}
+
+.start-view-switch > button.is-active {
+  color: var(--shell-text-strong) !important;
+  border-bottom-color: var(--shell-accent) !important;
+}
+
+.start-view-switch > span {
+  margin-left: auto;
+  color: var(--shell-muted) !important;
+  font: 11px/1 var(--shell-font) !important;
+}
+
+.start-catalog-refresh {
+  width: 30px !important;
+  height: 30px !important;
+  border: 0 !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+}
+
+.start-panel-content {
+  padding: 8px 14px 14px !important;
+}
+
+.start-section-heading {
+  min-height: 32px !important;
+  margin-top: 7px !important;
+  color: var(--shell-muted) !important;
+  font: 600 11px/1 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.start-app-grid {
+  gap: 4px !important;
+}
+
+.start-pinned-tile,
+.start-pinned-launch,
+.start-recent-list > *,
+.start-running-list > *,
+.start-application-row,
+.start-virtual-application-row {
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.start-pinned-tile:hover,
+.start-pinned-tile:focus-within,
+.start-recent-list > :hover,
+.start-recent-list > :focus-within,
+.start-running-list > :hover,
+.start-running-list > :focus-visible,
+.start-application-row:hover,
+.start-application-row:focus-within,
+.start-virtual-application-row:hover,
+.start-virtual-application-row:focus-within {
+  background: var(--shell-hover) !important;
+}
+
+.start-pinned-launch strong,
+.start-recent-list strong,
+.start-running-list strong,
+.start-application-copy strong {
+  color: var(--shell-text-strong) !important;
+  font-family: var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.start-pinned-remove {
+  border: 0 !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+  opacity: 0;
+}
+
+.start-pinned-tile:hover .start-pinned-remove,
+.start-pinned-tile:focus-within .start-pinned-remove {
+  opacity: 1;
+}
+
+.start-footer {
+  min-height: 52px !important;
+  padding: 7px 10px 7px 14px !important;
+  border-top: 1px solid var(--shell-border-subtle) !important;
+  background: transparent !important;
+}
+
+.start-footer > button {
+  min-width: 34px !important;
+  height: 34px !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+}
+
+.start-footer > button:hover,
+.start-footer > button:focus-visible {
+  color: var(--shell-text-strong) !important;
+  background: var(--shell-hover) !important;
+}
+
+.quick-settings-panel {
+  width: min(440px, calc(100vw - 24px)) !important;
+}
+
+.quick-status-strip {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 0 !important;
+  margin: 8px 14px 0 !important;
+  padding: 4px 0 10px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--shell-border-subtle) !important;
+  background: transparent !important;
+}
+
+.quick-status-strip > span {
+  min-height: 42px !important;
+  padding: 6px 8px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  color: var(--shell-text) !important;
+  background: transparent !important;
+}
+
+.quick-status-strip > span.is-offline :where(svg, strong) {
+  color: var(--shell-danger) !important;
+}
+
+.quick-volume-card {
+  margin: 8px 14px !important;
+  padding: 8px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  color: var(--shell-text);
+  background: transparent !important;
+}
+
+.quick-setting-grid {
+  grid-template-columns: 1fr !important;
+  gap: 2px !important;
+  margin: 0 14px 8px !important;
+  padding-top: 8px;
+  border-top: 1px solid var(--shell-border-subtle);
+}
+
+.quick-setting-grid > button {
+  min-height: 44px !important;
+  display: grid !important;
+  grid-template-columns: 28px minmax(0, 1fr) auto !important;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  color: var(--shell-text) !important;
+  background: transparent !important;
+  text-align: left;
+}
+
+.quick-setting-grid > button:hover,
+.quick-setting-grid > button:focus-visible {
+  background: var(--shell-hover) !important;
+}
+
+.quick-setting-grid > button small {
+  color: var(--shell-muted) !important;
+}
+
+.quick-settings-footer {
+  min-height: 38px !important;
+  padding: 0 14px !important;
+  border-top: 1px solid var(--shell-border-subtle) !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+}
+
+/* Quick search */
+
+.command-palette {
+  width: min(580px, calc(100vw - 24px)) !important;
+  max-height: min(560px, calc(100dvh - 32px)) !important;
+  overflow: hidden;
+}
+
+.command-palette > form {
+  min-height: 52px !important;
+  grid-template-columns: 20px minmax(0, 1fr) 32px 32px !important;
+  gap: 7px !important;
+  margin: 0 !important;
+  padding: 0 10px 0 14px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--shell-border-subtle) !important;
+  border-radius: 0 !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.command-palette > form:focus-within {
+  border-bottom-color: var(--shell-border) !important;
+  box-shadow: none !important;
+}
+
+.command-palette input {
+  min-height: 50px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  color: var(--shell-text-strong) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font: 14px/1 var(--shell-font) !important;
+}
+
+.command-palette form > button {
+  width: 30px !important;
+  height: 30px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+}
+
+.command-palette form > button:hover:not(:disabled),
+.command-palette form > button:focus-visible:not(:disabled) {
+  color: var(--shell-text-strong) !important;
+  background: var(--shell-hover) !important;
+}
+
+.command-palette .run-command:not(:disabled) {
+  color: var(--shell-accent-foreground) !important;
+  background: var(--shell-accent) !important;
+}
+
+.command-results-surface {
+  background: transparent !important;
+}
+
+.command-query-history {
+  min-height: 36px !important;
+  gap: 6px !important;
+  padding: 6px 10px !important;
+  border-bottom: 1px solid var(--shell-border-subtle) !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+}
+
+.command-query-history button {
+  min-height: 26px !important;
+  padding: 0 7px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  color: var(--shell-text) !important;
+  background: var(--shell-card) !important;
+}
+
+.command-results {
+  padding: 6px !important;
+}
+
+.command-results > button {
+  min-height: 42px !important;
+  grid-template-columns: 28px minmax(0, 1fr) auto !important;
+  gap: 9px !important;
+  padding: 5px 9px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  color: var(--shell-text) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.command-results > button.is-active,
+.command-results > button:hover {
+  color: var(--shell-text-strong) !important;
+  background: var(--shell-hover) !important;
+}
+
+.command-result-icon {
+  width: 28px !important;
+  height: 28px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+}
+
+.command-result-copy strong {
+  color: inherit !important;
+  font: 600 13px/1.25 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.command-result-copy small,
+.command-result-category {
+  color: var(--shell-muted) !important;
+  font: 11px/1.2 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.command-result-arrow {
+  display: none !important;
+}
+
+.command-shortcut-bar {
+  min-height: 38px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 10px !important;
+  padding: 0 10px !important;
+  border-top: 1px solid var(--shell-border-subtle) !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+}
+
+.command-search-tools {
+  min-width: 0;
+  display: flex !important;
+  gap: 2px !important;
+  overflow: hidden;
+}
+
+.command-search-tools > button {
+  min-height: 26px !important;
+  padding: 0 6px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+  font: 11px/1 var(--shell-font) !important;
+}
+
+.command-search-tools > button.is-active {
+  color: var(--shell-text-strong) !important;
+  background: var(--shell-hover) !important;
+}
+
+.command-shortcut-hint {
+  color: var(--shell-muted) !important;
+  font: 11px/1 var(--shell-font) !important;
+}
+
+.command-shortcut-bar > small {
+  grid-column: 1 / -1;
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* Context menus */
+
+:where(.desktop-context-menu, .explorer-context-menu, .taskbar-flyout-mock.is-context) {
+  padding: 5px !important;
+  border: 1px solid var(--shell-border) !important;
+  border-radius: 10px !important;
+  color: var(--shell-text) !important;
+  background: var(--shell-card) !important;
+  box-shadow: var(--shell-shadow-soft) !important;
+  clip-path: none !important;
+}
+
+:where(.desktop-context-menu, .explorer-context-menu, .taskbar-flyout-mock.is-context)::before,
+:where(.desktop-context-menu, .explorer-context-menu, .taskbar-flyout-mock.is-context)::after {
+  display: none !important;
+}
+
+:where(.desktop-context-menu, .explorer-context-menu, .taskbar-flyout-mock.is-context) [role^="menuitem"] {
+  min-height: 32px !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  color: var(--shell-text) !important;
+  background: transparent !important;
+  font: 12px/1 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+:where(.desktop-context-menu, .explorer-context-menu, .taskbar-flyout-mock.is-context) [role^="menuitem"]:hover,
+:where(.desktop-context-menu, .explorer-context-menu, .taskbar-flyout-mock.is-context) [role^="menuitem"]:focus-visible {
+  color: var(--shell-text-strong) !important;
+  background: var(--shell-hover) !important;
+}
+
+:where(.desktop-context-menu, .explorer-context-menu, .taskbar-flyout-mock.is-context) [role="separator"] {
+  margin: 4px 7px !important;
+  border-color: var(--shell-border-subtle) !important;
+}
+
+/* Alt + Tab */
+
+.jarvis-window-switcher {
+  padding: 12px !important;
+  background: var(--shell-transient-backdrop) !important;
+}
+
+.window-switcher-chassis {
+  width: min(640px, calc(100vw - 24px)) !important;
+  max-height: calc(100dvh - 24px) !important;
+  display: grid !important;
+  grid-template-rows: 44px minmax(0, 1fr) 38px !important;
+  overflow: hidden;
+}
+
+.window-switcher-header {
+  min-height: 44px !important;
+  padding: 0 12px !important;
+  border-bottom: 1px solid var(--shell-border-subtle) !important;
+  color: var(--shell-text);
+  background: transparent !important;
+}
+
+.window-switcher-header :where(span, small) {
+  color: var(--shell-muted) !important;
+  font: 11px/1 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.window-switcher-brand span {
+  color: var(--shell-text-strong) !important;
+  font: 600 14px/1 var(--shell-font) !important;
+}
+
+.window-switcher-rail {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  align-content: start;
+  gap: 2px !important;
+  padding: 6px !important;
+}
+
+.window-switcher-card {
+  min-height: 54px !important;
+  display: grid !important;
+  grid-template-columns: 34px minmax(0, 1fr) !important;
+  gap: 10px !important;
+  padding: 6px 9px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  color: var(--shell-text) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.window-switcher-card.is-selected,
+.window-switcher-card:hover,
+.window-switcher-card:focus-visible {
+  color: var(--shell-text-strong) !important;
+  background: var(--shell-hover) !important;
+  box-shadow: 2px 0 0 var(--shell-accent) inset !important;
+}
+
+.window-switcher-icon {
+  width: 32px !important;
+  height: 32px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  color: var(--shell-muted) !important;
+  background: var(--shell-surface) !important;
+}
+
+.window-switcher-copy strong {
+  color: inherit !important;
+  font: 600 13px/1.25 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.window-switcher-copy small {
+  color: var(--shell-muted) !important;
+  font: 11px/1.2 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.window-switcher-footer {
+  min-height: 38px !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+  padding: 0 12px !important;
+  border-top: 1px solid var(--shell-border-subtle) !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+}
+
+.window-switcher-instructions {
+  margin-left: auto;
+  color: var(--shell-muted) !important;
+  font: 11px/1 var(--shell-font) !important;
+}
+
+/* Appearance themes */
+
+.shell-panel.runtime-settings-panel {
+  width: min(1120px, calc(100vw - 64px)) !important;
+  max-height: calc(100dvh - var(--top-height) - var(--taskbar-height) - 20px) !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+  overflow: hidden !important;
+  border: 1px solid var(--shell-border) !important;
+  border-radius: var(--shell-panel-radius) !important;
+  color: var(--shell-text) !important;
+  background: var(--shell-bg) !important;
+  box-shadow: var(--shell-shadow-float) !important;
+  scrollbar-color: var(--shell-border-strong) transparent !important;
+}
+
+.runtime-settings-workspace {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 184px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.shell-panel.runtime-settings-panel > .shell-panel-header {
+  min-height: 50px !important;
+  border-bottom: 1px solid var(--shell-border-subtle) !important;
+  color: var(--shell-text) !important;
+  background: color-mix(in srgb, var(--shell-bg) 96%, transparent) !important;
+  box-shadow: none !important;
+}
+
+.runtime-settings-nav {
+  position: relative !important;
+  top: auto !important;
+  min-height: 0 !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 2px !important;
+  padding: 12px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  border-right: 1px solid var(--shell-border-subtle) !important;
+  border-bottom: 0 !important;
+  background: color-mix(in srgb, var(--shell-bg) 96%, transparent) !important;
+  box-shadow: none !important;
+}
+
+.runtime-settings-nav button {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 42px !important;
+  flex: 0 0 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  padding: 0 12px !important;
+  border: 0 !important;
+  border-left: 2px solid transparent !important;
+  border-radius: 0 !important;
+  color: var(--shell-muted) !important;
+  background: transparent !important;
+  font: 600 12px/1.2 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+  text-align: left !important;
+  text-transform: none !important;
+}
+
+.runtime-settings-nav button:hover,
+.runtime-settings-nav button[aria-current="location"] {
+  color: var(--shell-text-strong) !important;
+  border-left-color: var(--shell-accent) !important;
+  background: var(--shell-hover) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.runtime-settings-section-anchor {
+  min-width: 0;
+}
+
+.runtime-settings-detail {
+  min-width: 0;
+  min-height: 0;
+  padding: 16px;
+  overflow-y: auto;
+  scrollbar-color: var(--shell-border-strong) transparent;
+}
+
+.runtime-settings-detail > .runtime-settings-section-anchor {
+  width: 100%;
+  margin-inline: 0 !important;
+}
+
+.runtime-settings-detail .runtime-identity {
+  margin: 0 0 12px !important;
+}
+
+.runtime-settings-detail .runtime-setting-list {
+  padding: 0 !important;
+}
+
+.runtime-settings-detail .window-appearance-settings {
+  margin: 0 0 16px !important;
+}
+
+.runtime-settings-panel .runtime-setting-copy strong {
+  font: 600 13px/1.25 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.runtime-settings-panel .runtime-setting-copy small,
+.runtime-settings-panel .window-appearance-header small,
+.runtime-settings-panel .window-appearance-copy small {
+  font: 12px/1.4 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+  white-space: normal !important;
+}
+
+.runtime-settings-panel .window-appearance-header strong {
+  font: 650 14px/1.25 var(--shell-font) !important;
+}
+
+.runtime-settings-panel .window-appearance-settings legend,
+.runtime-settings-panel .window-appearance-copy strong {
+  font: 600 12px/1.25 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.runtime-settings-panel .window-appearance-copy strong b {
+  font: 650 13px/1.25 var(--shell-font) !important;
+}
+
+.runtime-settings-panel :where(.window-appearance-level, .window-appearance-tag) {
+  font-size: 11px !important;
+}
+
+.runtime-settings-panel :where(.runtime-identity small, .runtime-identity code) {
+  font-size: 11px !important;
+}
+
+.runtime-settings-panel :where(
+  .runtime-switch,
+  .runtime-state-ok,
+  .runtime-state-attention,
+  .runtime-settings-footer,
+  .runtime-settings-footer strong
+) {
+  font: 600 12px/1.25 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.runtime-settings-panel :where(
+  .native-integration-settings p,
+  .native-integration-settings small,
+  .native-integration-settings dt,
+  .native-integration-settings dd,
+  .native-integration-settings button,
+  .runtime-help-entry small,
+  .runtime-help-entry p,
+  .runtime-help-entry button,
+  .runtime-diagnostics p,
+  .runtime-diagnostics small,
+  .runtime-diagnostics button
+) {
+  font-size: 12px !important;
+  line-height: 1.4 !important;
+  letter-spacing: 0 !important;
+}
+
+.runtime-settings-panel :where(
+  .native-integration-settings strong,
+  .runtime-help-entry strong,
+  .runtime-diagnostics strong
+) {
+  font-size: 13px !important;
+  line-height: 1.3 !important;
+  letter-spacing: 0 !important;
+}
+
+.shell-panel.runtime-settings-panel .interface-preferences {
+  margin: 16px !important;
+  padding: 20px !important;
+  border: 1px solid var(--shell-border-subtle) !important;
+  border-radius: var(--shell-panel-radius) !important;
+  color: var(--shell-text) !important;
+  background: var(--shell-surface) !important;
+  box-shadow: none !important;
+}
+
+.interface-preferences > header,
+.interface-option-group > header {
+  color: var(--shell-text);
+  font-family: var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.interface-preferences > header strong,
+.interface-option-group > header strong {
+  color: var(--shell-text-strong) !important;
+  text-transform: none !important;
+}
+
+.interface-preferences > header {
+  min-height: 44px;
+  margin-bottom: 14px !important;
+}
+
+.interface-preferences > header strong {
+  font: 650 18px/1.2 var(--shell-font) !important;
+  letter-spacing: -0.01em !important;
+}
+
+.interface-preferences > header small {
+  margin-top: 4px;
+  color: var(--shell-muted) !important;
+  font: 12px/1.3 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.interface-preferences > header code,
+.interface-option-group > header code {
+  color: var(--shell-accent) !important;
+  font: 12px/1 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.theme-draft-status {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--shell-border-subtle);
+  border-radius: var(--shell-control-radius);
+  color: var(--shell-muted);
+  background: var(--shell-card);
+  font: 12px/1.35 var(--shell-font);
+}
+
+.theme-draft-status code {
+  color: var(--shell-muted);
+  font: 600 11px/1 var(--shell-code-font);
+  white-space: nowrap;
+}
+
+.theme-draft-status.is-dirty {
+  color: var(--shell-text);
+  border-color: color-mix(in srgb, var(--shell-accent) 38%, var(--shell-border));
+  background: var(--shell-accent-subtle);
+}
+
+.theme-draft-status.is-dirty code {
+  color: var(--shell-accent);
+}
+
+.theme-choice-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+.theme-choice-grid > button {
+  min-height: 76px !important;
+  display: grid !important;
+  grid-template-columns: 72px minmax(0, 1fr) !important;
+  gap: 10px !important;
+  padding: 8px !important;
+  border: 1px solid var(--shell-border-subtle) !important;
+  border-radius: var(--shell-control-radius) !important;
+  color: var(--shell-text) !important;
+  background: transparent !important;
+  text-align: left;
+}
+
+.theme-choice-grid > button > span:last-child {
+  min-width: 0;
+  display: grid !important;
+  gap: 5px !important;
+}
+
+.theme-choice-grid > button strong {
+  color: var(--shell-text-strong) !important;
+  font: 600 13px/1.2 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.theme-choice-grid > button small {
+  overflow: hidden;
+  color: var(--shell-muted) !important;
+  font: 11px/1.3 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-choice-grid > button:hover,
+.theme-choice-grid > button:focus-visible {
+  background: var(--shell-hover) !important;
+}
+
+.theme-choice-grid > button.is-selected {
+  border-color: var(--shell-accent) !important;
+  background: var(--shell-accent-subtle) !important;
+}
+
+.shell-panel.runtime-settings-panel .theme-swatch {
+  width: 72px !important;
+  height: 54px !important;
+  display: grid !important;
+  grid-template-columns: 18px minmax(0, 1fr) !important;
+  grid-template-rows: 1fr 10px !important;
+  gap: 0 !important;
+  overflow: hidden;
+  border: 1px solid var(--theme-swatch-border) !important;
+  border-radius: 7px !important;
+  background: var(--theme-swatch-bg) !important;
+  box-shadow: none !important;
+}
+
+.theme-swatch i {
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  display: block !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--theme-swatch-surface) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.theme-swatch i:nth-child(1) {
+  grid-row: 1 / -1;
+}
+
+.theme-swatch i:nth-child(2) {
+  background: var(--theme-swatch-card) !important;
+}
+
+.theme-swatch i:nth-child(3) {
+  background: var(--theme-swatch-accent) !important;
+}
+
+.theme-customizer {
+  margin: 14px 0 0;
+  padding: 12px;
+  border: 1px solid var(--shell-border-subtle);
+  border-radius: var(--shell-control-radius);
+  color: var(--shell-text);
+}
+
+.theme-customizer legend {
+  padding: 0 5px;
+  color: var(--shell-text-strong);
+  font: 600 13px/1 var(--shell-font);
+}
+
+.theme-customizer > p {
+  margin: 0 0 10px;
+  color: var(--shell-muted);
+  font: 12px/1.4 var(--shell-font);
+}
+
+.theme-customizer__fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px 12px;
+}
+
+.theme-customizer__fields label {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--shell-text);
+  font: 12px/1 var(--shell-font);
+}
+
+.theme-customizer__fields input[type="color"] {
+  width: 34px;
+  height: 26px;
+  padding: 2px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  background: var(--shell-card);
+}
+
+.theme-customizer__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.theme-customizer__actions button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  color: var(--shell-text);
+  background: var(--shell-card);
+}
+
+.shell-panel.runtime-settings-panel .theme-customizer__actions button.is-primary {
+  color: var(--shell-accent-foreground);
+  border-color: var(--shell-accent);
+  background: var(--shell-accent);
+}
+
+.theme-customizer__actions button:disabled {
+  color: var(--shell-muted);
+  opacity: 0.48;
+}
+
+.theme-customizer > .theme-contrast-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--shell-warning) 46%, var(--shell-border));
+  border-radius: var(--shell-control-radius);
+  color: var(--shell-text);
+  background: color-mix(in srgb, var(--shell-warning) 9%, var(--shell-card));
+}
+
+.theme-contrast-warning svg {
+  flex: 0 0 auto;
+  color: var(--shell-warning);
+}
+
+.interface-option-group {
+  margin-top: 14px !important;
+  padding-top: 14px !important;
+  border-top: 1px solid var(--shell-border-subtle) !important;
+}
+
+.interface-option-group > header {
+  min-height: 34px;
+  margin-bottom: 8px !important;
+}
+
+.interface-option-group > header strong {
+  font: 600 13px/1.2 var(--shell-font) !important;
+}
+
+.interface-option-group > header small {
+  margin-top: 3px;
+  color: var(--shell-muted) !important;
+  font: 11px/1.3 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.interface-option-grid {
+  gap: 8px !important;
+}
+
+.interface-option-grid > button {
+  min-height: 56px !important;
+  padding: 9px 11px !important;
+  border: 1px solid var(--shell-border-subtle) !important;
+  border-radius: var(--shell-control-radius) !important;
+  color: var(--shell-text) !important;
+  background: var(--shell-card) !important;
+}
+
+.interface-option-grid > button strong {
+  color: var(--shell-text-strong) !important;
+  font: 600 12px/1.2 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.interface-option-grid > button small {
+  color: var(--shell-muted) !important;
+  font: 11px/1.3 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.interface-option-grid > button.is-selected {
+  border-color: var(--shell-accent) !important;
+  background: var(--shell-accent-subtle) !important;
+}
+
+.shell-panel.runtime-settings-panel .audio-preference-row,
+.shell-panel.runtime-settings-panel .interface-reset-button {
+  border-color: var(--shell-border-subtle) !important;
+  border-radius: var(--shell-control-radius) !important;
+  color: var(--shell-text) !important;
+  background: var(--shell-card) !important;
+}
+
+/* Resolution strategy: keep the reading scale stable; only reflow containers. */
+
+@media (max-width: 1365px) {
+  .desktop-workspace {
+    --telemetry-rail-width: 248px;
+    grid-template-columns: 92px minmax(0, 1fr) var(--telemetry-rail-width) !important;
+  }
+
+  .desktop-shortcut {
+    width: 72px !important;
+  }
+
+  .shortcut-label {
+    max-width: 68px;
+  }
+
+  .agent-titlebar__identity small {
+    display: none;
+  }
+
+  .agent-footer__status code:last-child {
+    display: none;
+  }
+
+  .shell-panel.runtime-settings-panel {
+    width: min(980px, calc(100vw - 40px)) !important;
+  }
+
+  .theme-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .theme-customizer__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .runtime-settings-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .runtime-settings-nav {
+    flex-direction: row !important;
+    padding: 0 10px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--shell-border-subtle) !important;
+  }
+
+  .runtime-settings-nav button {
+    width: auto !important;
+    min-width: max-content !important;
+    border-left: 0 !important;
+    border-bottom: 2px solid transparent !important;
+  }
+
+  .runtime-settings-nav button:hover,
+  .runtime-settings-nav button[aria-current="location"] {
+    border-bottom-color: var(--shell-accent) !important;
+  }
+
+  .runtime-settings-detail {
+    padding: 12px;
+  }
+}
+
+@container agent-window (max-width: 720px) {
+  .agent-titlebar {
+    grid-template-columns: minmax(0, 1fr) repeat(4, 34px) !important;
+  }
+
+  .agent-runtime-state {
+    display: none !important;
+  }
+
+  .agent-message {
+    grid-template-columns: 30px minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .agent-message.is-user {
+    grid-template-columns: minmax(0, 1fr) 30px !important;
+  }
+
+  .agent-message__avatar {
+    width: 30px;
+    height: 30px;
+  }
+
+  .agent-message__bubble {
+    padding: 11px 12px;
+  }
+
+  .agent-composer__input-row > button span {
+    display: none;
+  }
+}
+
+@media (max-height: 760px) {
+  .agent-transcript {
+    padding-top: 14px !important;
+  }
+
+  .agent-composer {
+    margin-bottom: 8px !important;
+  }
+
+  .start-panel-content {
+    padding-bottom: 8px !important;
+  }
+}
+
+/* 3D neural desktop: one GPU field shifts between the idle orb and graph. */
+
+.jarvis-shell.is-layout-desktop .desktop-workspace {
+  isolation: isolate;
+}
+
+.jarvis-shell.is-layout-desktop .core-stage {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  z-index: 0;
+  border-inline: 0 !important;
+  background: transparent !important;
+}
+
+.jarvis-shell.is-layout-desktop :where(.desktop-shortcuts, .telemetry-rail) {
+  position: relative;
+  z-index: 2;
+  transition: opacity 320ms ease;
+}
+
+.jarvis-shell.is-layout-desktop .desktop-shortcuts {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.jarvis-shell.is-layout-desktop .telemetry-rail {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.jarvis-shell.is-layout-desktop .desktop-workspace:has(> .telemetry-rail.is-rail-collapsed) {
+  --telemetry-rail-width: 44px;
+}
+
+.jarvis-shell.is-layout-desktop .core-stage.is-graph-exploring {
+  z-index: 4;
+}
+
+.jarvis-shell.is-layout-desktop .desktop-workspace:has(> .core-stage.is-graph-exploring)
+  > :where(.desktop-shortcuts, .telemetry-rail) {
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.jarvis-shell.is-layout-desktop .core-stage:not(.is-graph-exploring)
+  .core-stage__graph-toolbar,
+.jarvis-shell.is-layout-desktop .core-stage:not(.is-graph-exploring)
+  .core-stage__readout.is-graph-source {
+  right: calc(var(--telemetry-rail-width) + 20px);
+}
+
+@media (min-width: 721px) {
+  .jarvis-shell.is-layout-desktop
+    .desktop-workspace:has(> .telemetry-rail.is-rail-collapsed)
+    .graph-visual-settings.is-overlay {
+    right: calc(var(--telemetry-rail-width) + 16px) !important;
+  }
+}
+
+.jarvis-shell.is-layout-desktop .core-stage.is-graph-exploring
+  :where(.core-stage__graph-toolbar, .core-stage__readout.is-graph-source) {
+  right: 20px;
+}
+
+.jarvis-shell.is-layout-desktop .core-stage.is-neural-idle .core-stage__readout {
+  opacity: 0.74;
+}
+
+.jarvis-shell.is-layout-desktop .core-stage__media.is-neural-fallback,
+.jarvis-shell.is-layout-desktop .core-stage__media.is-graphics {
+  inset: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jarvis-shell.is-layout-desktop :where(.desktop-shortcuts, .telemetry-rail) {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  :where(.topbar, .agent-workbench, .agent-composer, .shell-panel, .command-palette, .window-switcher-chassis) {
+    color: CanvasText !important;
+    border-color: CanvasText !important;
+    background: Canvas !important;
+    box-shadow: none !important;
+  }
+
+  :where(button, input, select, textarea):focus-visible,
+  :where(.agent-titlebar > button, .agent-composer textarea, .command-palette input):focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px !important;
+  }
+
+  :where(.agent-message__bubble, .window-switcher-card.is-selected, .command-results > button.is-active) {
+    border: 1px solid CanvasText !important;
+  }
+}

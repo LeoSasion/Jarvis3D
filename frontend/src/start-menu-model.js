@@ -1,9 +1,5 @@
 import { normalizeSearchText } from "./quick-search.js";
 
-const applicationNameCollator = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: "base",
-});
 const latinInitialPattern = /^[A-Z]$/;
 const digitInitialPattern = /^\d$/;
 const eastAsianInitialPattern = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u;
@@ -63,7 +59,19 @@ function prepareMenuApplication(application) {
   };
 }
 
-export function buildStartMenuApplications(pinnedApplications, installedApplications) {
+function createApplicationNameCollator(language) {
+  return new Intl.Collator(language, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+export function buildStartMenuApplications(
+  pinnedApplications,
+  installedApplications,
+  language = undefined,
+) {
+  const applicationNameCollator = createApplicationNameCollator(language);
   const seenLabels = new Set();
   const applications = [];
 
@@ -106,7 +114,8 @@ export function buildStartMenuApplications(pinnedApplications, installedApplicat
   ));
 }
 
-export function filterStartMenuApplications(applications, query) {
+export function filterStartMenuApplications(applications, query, language = undefined) {
+  const applicationNameCollator = createApplicationNameCollator(language);
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) return applications;
   const queryTokens = normalizedQuery.split(" ").filter(Boolean);

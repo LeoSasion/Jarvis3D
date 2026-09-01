@@ -1,6 +1,5 @@
 import {
-  getVisualThemeSnapshot,
-  visualThemes,
+  getVisualThemeDefinition,
 } from "./theme-system.js";
 
 const STORAGE_KEY = "jarvis.interface-preferences.v1";
@@ -70,8 +69,7 @@ function applyPreferences() {
   const root = document.documentElement;
   root.dataset.motion = preferences.motion;
   root.dataset.emission = preferences.emission;
-  const theme = visualThemes.find((candidate) =>
-    candidate.id === getVisualThemeSnapshot()) ?? visualThemes[0];
+  const theme = getVisualThemeDefinition();
   const variables = getEmissionVariables(theme.variables, preferences.emission);
   Object.entries(variables).forEach(([name, value]) => {
     if (value) root.style.setProperty(name, value);

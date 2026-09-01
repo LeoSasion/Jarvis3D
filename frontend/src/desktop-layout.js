@@ -1,6 +1,7 @@
 export const DESKTOP_ICON_CELL_WIDTH = 96;
 export const DESKTOP_ICON_CELL_HEIGHT = 88;
 export const DESKTOP_ICON_GRID_PADDING = 18;
+export const MAX_VISIBLE_DESKTOP_SHORTCUTS = 6;
 
 export const DESKTOP_ICON_SIZES = {
   small: {
@@ -23,12 +24,44 @@ export const DESKTOP_ICON_SIZES = {
   },
 };
 
+const DESKTOP_DENSITY_OFFSETS = Object.freeze({
+  compact: Object.freeze({ cellWidth: 0, cellHeight: 0, iconSize: 0, labelSize: 0 }),
+  comfortable: Object.freeze({ cellWidth: 12, cellHeight: 8, iconSize: 8, labelSize: 1 }),
+  spacious: Object.freeze({ cellWidth: 24, cellHeight: 20, iconSize: 16, labelSize: 2 }),
+  ultra: Object.freeze({ cellWidth: 56, cellHeight: 48, iconSize: 32, labelSize: 3 }),
+});
+
 export function clampDesktopCoordinate(value, minimum, maximum) {
   return Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
 }
 
-export function getDesktopIconMetrics(size = "medium") {
-  return DESKTOP_ICON_SIZES[size] ?? DESKTOP_ICON_SIZES.medium;
+export function getDesktopDensityTier(width, height) {
+  const safeWidth = Number.isFinite(width) ? width : 0;
+  const safeHeight = Number.isFinite(height) ? height : 0;
+  if (safeWidth >= 1_600 && safeHeight >= 1_500) return "ultra";
+  if (safeWidth >= 1_200 && safeHeight >= 1_100) return "spacious";
+  if (safeWidth >= 800 && safeHeight >= 620) return "comfortable";
+  return "compact";
+}
+
+export function getDesktopLayoutProfileId(width, height, devicePixelRatio = 1) {
+  const density = getDesktopDensityTier(width, height);
+  const dpr = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0
+    ? devicePixelRatio
+    : 1;
+  const dprBucket = Math.min(250, Math.max(100, Math.round(dpr * 4) * 25));
+  return `${density}@${dprBucket}`;
+}
+
+export function getDesktopIconMetrics(size = "medium", density = "compact") {
+  const base = DESKTOP_ICON_SIZES[size] ?? DESKTOP_ICON_SIZES.medium;
+  const offset = DESKTOP_DENSITY_OFFSETS[density] ?? DESKTOP_DENSITY_OFFSETS.compact;
+  return Object.freeze({
+    cellWidth: base.cellWidth + offset.cellWidth,
+    cellHeight: base.cellHeight + offset.cellHeight,
+    iconSize: base.iconSize + offset.iconSize,
+    labelSize: base.labelSize + offset.labelSize,
+  });
 }
 
 export function getDesktopFallbackPosition(index, height, metrics = DESKTOP_ICON_SIZES.medium) {
@@ -48,26 +81,40 @@ export function getDesktopFallbackPosition(index, height, metrics = DESKTOP_ICON
   };
 }
 
-export function sortDesktopEntries(entries, sortMode = "none") {
+export function sortDesktopEntries(entries, sortMode = "none", language = undefined) {
   if (sortMode === "none") return entries;
-  const compare = (left, right) => String(left ?? "").localeCompare(
+  const compareTechnical = (left, right) => String(left ?? "").localeCompare(
     String(right ?? ""),
     undefined,
     { numeric: true, sensitivity: "base" },
   );
-  const compareLabel = (left, right) => compare(left.label, right.label);
+  const compareLabel = (left, right) => String(left.label ?? "").localeCompare(
+    String(right.label ?? ""),
+    language,
+    { numeric: true, sensitivity: "base" },
+  );
   return [...entries].sort((left, right) => {
     if (sortMode === "type") {
-      return compare(left.kind, right.kind) ||
-        compare(left.extension, right.extension) ||
+      return compareTechnical(left.kind, right.kind) ||
+        compareTechnical(left.extension, right.extension) ||
         compareLabel(left, right);
     }
     if (sortMode === "source") {
-      return compare(left.source, right.source) ||
+      return compareTechnical(left.source, right.source) ||
         compareLabel(left, right);
     }
     return compareLabel(left, right);
   });
+}
+
+export function getVisibleDesktopEntries(
+  entries,
+  limit = MAX_VISIBLE_DESKTOP_SHORTCUTS,
+) {
+  const maximum = Number.isInteger(limit) && limit > 0
+    ? limit
+    : MAX_VISIBLE_DESKTOP_SHORTCUTS;
+  return entries.length <= maximum ? entries : entries.slice(0, maximum);
 }
 
 export function snapDesktopPosition(position, metrics, containerSize) {

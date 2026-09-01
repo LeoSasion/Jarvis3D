@@ -179,9 +179,18 @@ test("taskbar transition feedback waits for the owned terminal outcome", () => {
 
   assert.equal(getTaskbarTransitionToast(previous, applying), null);
   assert.equal(getTaskbarTransitionToast(previous, staleFallback), null);
-  assert.match(getTaskbarTransitionToast(previous, settled).title, /FULL/u);
-  assert.equal(getTaskbarTransitionToast(previous, settled).severity, "ok");
-  assert.equal(getTaskbarTransitionToast(previous, currentFallback).severity, "warning");
+  assert.deepEqual(getTaskbarTransitionToast(previous, settled), {
+    source: "taskbar",
+    severity: "ok",
+    kind: "switched",
+    mode: "FULL",
+  });
+  assert.deepEqual(getTaskbarTransitionToast(previous, currentFallback), {
+    source: "taskbar",
+    severity: "warning",
+    kind: "fallback",
+    mode: "NATIVE",
+  });
 });
 
 test("taskbar transition feedback names a simulated selection without claiming Windows changed", () => {
@@ -196,8 +205,12 @@ test("taskbar transition feedback names a simulated selection without claiming W
     }),
   );
 
-  assert.match(toast.title, /Preview selection saved: FULL/u);
-  assert.match(toast.detail, /Windows taskbar was not changed/u);
+  assert.deepEqual(toast, {
+    source: "taskbar",
+    severity: "ok",
+    kind: "preview-saved",
+    mode: "FULL",
+  });
 });
 
 test("taskbar retry becomes eligible when local cooldown reaches zero", () => {

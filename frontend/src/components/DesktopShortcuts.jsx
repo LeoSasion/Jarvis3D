@@ -11,17 +11,23 @@ import {
   WindowConsoleRegular,
 } from "@fluentui/react-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getDesktopShortcutLabelKey } from "../desktop-shortcut-labels.js";
+import { useLanguage } from "../i18n/language-system.js";
 import {
   clampDesktopCoordinate as clamp,
   getDesktopContextMenuPosition,
+  getDesktopDensityTier,
   getDesktopFallbackPosition as getFallbackPosition,
   getDesktopIconMetrics,
+  getDesktopLayoutProfileId,
+  getVisibleDesktopEntries,
   snapDesktopPosition,
   sortDesktopEntries,
 } from "../desktop-layout.js";
 import {
   advanceDesktopTypeahead,
   getDesktopKeyboardTarget,
+  isDesktopContextMenuTrigger,
 } from "../desktop-keyboard-model.js";
 import {
   refreshDesktopEntries,
@@ -39,6 +45,7 @@ import { DesktopOperationDialog } from "./DesktopOperationDialog.jsx";
 
 const AUTO_ARRANGE_STORAGE_KEY = "jarvis.desktop.auto-arrange.v1";
 const MANUAL_POSITIONS_STORAGE_KEY = "jarvis.desktop.icon-positions.v1";
+const MANUAL_POSITION_PROFILES_STORAGE_KEY = "jarvis.desktop.icon-position-profiles.v2";
 const ALIGN_TO_GRID_STORAGE_KEY = "jarvis.desktop.align-to-grid.v1";
 const ICON_SIZE_STORAGE_KEY = "jarvis.desktop.icon-size.v1";
 const SORT_MODE_STORAGE_KEY = "jarvis.desktop.sort-mode.v1";
@@ -51,10 +58,16 @@ function readAutoArrangePreference() {
   }
 }
 
-function readManualPositions() {
+function readManualPositionProfiles() {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(MANUAL_POSITIONS_STORAGE_KEY) ?? "null");
-    return parsed && typeof parsed === "object" ? parsed : {};
+    const profiles = JSON.parse(
+      window.localStorage.getItem(MANUAL_POSITION_PROFILES_STORAGE_KEY) ?? "null",
+    );
+    if (profiles?.version === 2 && profiles.profiles && typeof profiles.profiles === "object") {
+      return profiles.profiles;
+    }
+    const legacy = JSON.parse(window.localStorage.getItem(MANUAL_POSITIONS_STORAGE_KEY) ?? "null");
+    return legacy && typeof legacy === "object" ? { legacy } : {};
   } catch {
     return {};
   }
@@ -91,6 +104,11 @@ const iconMap = {
   settings: SettingsRegular,
 };
 
+function localizeDesktopShortcut(shortcut, t) {
+  const labelKey = getDesktopShortcutLabelKey(shortcut.id);
+  return labelKey ? { ...shortcut, label: t(labelKey) } : shortcut;
+}
+
 export function DesktopShortcuts({
   selectedId,
   onSelect,
@@ -100,12 +118,14 @@ export function DesktopShortcuts({
   onOpenSettings,
   onNotify,
 }) {
+  const { language, t } = useLanguage();
   const {
     entries,
     userDesktopPath,
   } = useDesktopEntries();
   const containerRef = useRef(null);
   const menuRef = useRef(null);
+  const contextMenuReturnFocusRef = useRef(null);
   const shortcutRefs = useRef(new Map());
   const dragRef = useRef(null);
   const selectionAnchorRef = useRef(null);
@@ -122,7 +142,7 @@ export function DesktopShortcuts({
   const [sortMode, setSortMode] = useState(
     () => readEnumPreference(SORT_MODE_STORAGE_KEY, ["none", "name", "type", "source"], "none"),
   );
-  const [manualPositions, setManualPositions] = useState(readManualPositions);
+  const [manualPositionProfiles, setManualPositionProfiles] = useState(readManualPositionProfiles);
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => selectedId ? [selectedId] : []);
   const [focusedId, setFocusedId] = useState(selectedId ?? null);
@@ -130,11 +150,41 @@ export function DesktopShortcuts({
   const [clipboardState, setClipboardState] = useState({ paths: [], mode: "copy" });
   const [marquee, setMarquee] = useState(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const iconMetrics = useMemo(() => getDesktopIconMetrics(iconSize), [iconSize]);
-  const orderedEntries = useMemo(
-    () => sortDesktopEntries(entries, sortMode),
-    [entries, sortMode],
+  const [displayScale, setDisplayScale] = useState(
+    () => typeof window === "undefined" ? 1 : window.devicePixelRatio,
   );
+  const desktopDensity = getDesktopDensityTier(containerSize.width, containerSize.height);
+  const layoutProfileId = getDesktopLayoutProfileId(
+    containerSize.width,
+    containerSize.height,
+    displayScale,
+  );
+  const manualPositions = manualPositionProfiles[layoutProfileId]
+    ?? manualPositionProfiles.legacy
+    ?? {};
+  const setManualPositions = useCallback((updater) => {
+    setManualPositionProfiles((currentProfiles) => {
+      const current = currentProfiles[layoutProfileId] ?? currentProfiles.legacy ?? {};
+      const next = typeof updater === "function" ? updater(current) : updater;
+      if (next === current) return currentProfiles;
+      return { ...currentProfiles, [layoutProfileId]: next };
+    });
+  }, [layoutProfileId]);
+  const iconMetrics = useMemo(
+    () => getDesktopIconMetrics(iconSize, desktopDensity),
+    [desktopDensity, iconSize],
+  );
+  const localizedEntries = useMemo(
+    () => entries.map((entry) => localizeDesktopShortcut(entry, t)),
+    [entries, t],
+  );
+  const orderedEntries = useMemo(
+    () => getVisibleDesktopEntries(
+      sortDesktopEntries(localizedEntries, sortMode, language),
+    ),
+    [language, localizedEntries, sortMode],
+  );
+  const hiddenEntryCount = Math.max(0, localizedEntries.length - orderedEntries.length);
   const selectedShortcuts = useMemo(
     () => orderedEntries.filter((entry) => selectedIds.includes(entry.id)),
     [orderedEntries, selectedIds],
@@ -215,7 +265,19 @@ export function DesktopShortcuts({
     if (contextMenu?.kind === "desktop") void refreshClipboardState();
   }, [contextMenu?.kind, refreshClipboardState]);
 
-  const openContextMenu = useCallback((clientX, clientY, kind = "desktop", shortcutId = null) => {
+  const openContextMenu = useCallback((
+    clientX,
+    clientY,
+    kind = "desktop",
+    shortcutId = null,
+    returnFocusElement = null,
+  ) => {
+    contextMenuReturnFocusRef.current = returnFocusElement &&
+      typeof returnFocusElement.focus === "function"
+      ? returnFocusElement
+      : shortcutId
+        ? shortcutRefs.current.get(shortcutId) ?? containerRef.current
+        : containerRef.current;
     setContextMenu({
       ...getDesktopContextMenuPosition({
         clientX,
@@ -260,11 +322,20 @@ export function DesktopShortcuts({
       const next = { width: container.clientWidth, height: container.clientHeight };
       setContainerSize((current) =>
         current.width === next.width && current.height === next.height ? current : next);
+      setDisplayScale((current) => (
+        current === window.devicePixelRatio ? current : window.devicePixelRatio
+      ));
     };
     updateSize();
     const observer = new ResizeObserver(updateSize);
     observer.observe(container);
-    return () => observer.disconnect();
+    window.addEventListener("resize", updateSize);
+    window.visualViewport?.addEventListener("resize", updateSize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateSize);
+      window.visualViewport?.removeEventListener("resize", updateSize);
+    };
   }, []);
 
   useEffect(() => {
@@ -289,13 +360,16 @@ export function DesktopShortcuts({
     if (autoArrange) return;
     const persistTimer = window.setTimeout(() => {
       try {
-        window.localStorage.setItem(MANUAL_POSITIONS_STORAGE_KEY, JSON.stringify(manualPositions));
+        window.localStorage.setItem(MANUAL_POSITION_PROFILES_STORAGE_KEY, JSON.stringify({
+          version: 2,
+          profiles: manualPositionProfiles,
+        }));
       } catch {
         // Manual positions can remain session-only when storage is unavailable.
       }
     }, 120);
     return () => window.clearTimeout(persistTimer);
-  }, [autoArrange, manualPositions]);
+  }, [autoArrange, manualPositionProfiles]);
 
   useEffect(() => {
     if (autoArrange || containerSize.width <= 0 || containerSize.height <= 0) return;
@@ -324,6 +398,7 @@ export function DesktopShortcuts({
     containerSize,
     iconMetrics,
     orderedEntries,
+    setManualPositions,
   ]);
 
   useEffect(() => {
@@ -340,18 +415,37 @@ export function DesktopShortcuts({
     const closeDesktopMenu = (event) => {
       if (!menuRef.current?.contains(event.target)) setContextMenu(null);
     };
-    const closeOnEscape = (event) => {
+    const handleDesktopKeyboard = (event) => {
+      if (isDesktopContextMenuTrigger(event) && !event.defaultPrevented) {
+        if (!(event.target instanceof Element)) return;
+        const workspace = event.target.closest(".desktop-workspace");
+        const isInteractive = event.target.closest(
+          ".desktop-shortcut, .telemetry-rail, .explorer-window, button, input, textarea, "
+          + "select, a, [contenteditable='true'], [role='dialog'], [role='menu']",
+        );
+        if (!workspace || isInteractive) return;
+        event.preventDefault();
+        const rect = event.target.getBoundingClientRect();
+        openContextMenu(
+          rect.left + Math.min(24, rect.width / 2),
+          rect.top + Math.min(24, rect.height / 2),
+          "desktop",
+          null,
+          event.target,
+        );
+        return;
+      }
       if (event.key === "Escape") setContextMenu(null);
     };
     const closeOnResize = () => setContextMenu(null);
     window.addEventListener("contextmenu", openDesktopMenu);
     window.addEventListener("pointerdown", closeDesktopMenu);
-    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("keydown", handleDesktopKeyboard);
     window.addEventListener("resize", closeOnResize);
     return () => {
       window.removeEventListener("contextmenu", openDesktopMenu);
       window.removeEventListener("pointerdown", closeDesktopMenu);
-      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("keydown", handleDesktopKeyboard);
       window.removeEventListener("resize", closeOnResize);
     };
   }, [openContextMenu]);
@@ -361,7 +455,7 @@ export function DesktopShortcuts({
       if (event.button !== 0 || !(event.target instanceof Element)) return;
       if (!event.target.closest(".desktop-workspace")) return;
       if (event.target.closest(
-        ".desktop-shortcut, .telemetry-rail, .core-voice-button, .desktop-context-menu, "
+        ".desktop-shortcut, .telemetry-rail, .desktop-context-menu, "
         + ".desktop-operation-dialog, .explorer-window, button, input, [role='dialog'], [role='menu']",
       )) return;
       const container = containerRef.current;
@@ -450,7 +544,7 @@ export function DesktopShortcuts({
       };
     });
     setManualPositions(nextPositions);
-  }, [orderedEntries]);
+  }, [orderedEntries, setManualPositions]);
 
   const toggleAutoArrange = useCallback(() => {
     if (autoArrange) captureArrangedPositions();
@@ -470,7 +564,7 @@ export function DesktopShortcuts({
     }
     setAlignToGrid(nextAlignToGrid);
     setContextMenu(null);
-  }, [alignToGrid, autoArrange, containerSize, iconMetrics]);
+  }, [alignToGrid, autoArrange, containerSize, iconMetrics, setManualPositions]);
 
   const setDesktopIconSize = useCallback((size) => {
     setIconSize(size);
@@ -486,12 +580,12 @@ export function DesktopShortcuts({
   const refreshDesktop = useCallback(async () => {
     setContextMenu(null);
     await refreshDesktopEntries();
-    onNotify("Desktop refreshed");
-  }, [onNotify]);
+    onNotify(t("desktop.notice.refreshed"));
+  }, [onNotify, t]);
 
   const startDesktopTransfer = useCallback(async (paths, mode = "copy") => {
     if (!userDesktopPath) {
-      throw new Error("The Windows Desktop directory is unavailable.");
+      throw new Error(t("desktop.error.windowsDesktopUnavailable"));
     }
     const normalizedPaths = [...new Set(paths.filter(Boolean))]
       .filter((path) => path.toLocaleLowerCase() !== userDesktopPath.toLocaleLowerCase());
@@ -503,9 +597,14 @@ export function DesktopShortcuts({
       mode,
       "rename",
     );
-    onNotify(`${mode === "move" ? "Move" : "Copy"} started · ${normalizedPaths.length} item${normalizedPaths.length === 1 ? "" : "s"}`);
+    onNotify(t("desktop.notice.transferStarted", {
+      action: mode === "move"
+        ? t("desktop.action.move")
+        : t("desktop.action.copy"),
+      count: normalizedPaths.length,
+    }));
     return job;
-  }, [onNotify, userDesktopPath]);
+  }, [onNotify, t, userDesktopPath]);
 
   const writeClipboard = useCallback(async (mode) => {
     if (selectedPaths.length === 0) return;
@@ -513,18 +612,20 @@ export function DesktopShortcuts({
       await platform.clipboard.write(selectedPaths, mode);
       await refreshClipboardState();
       setContextMenu(null);
-      onNotify(`${mode === "move" ? "Cut" : "Copied"} ${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"}`);
+      onNotify(t(mode === "move"
+        ? "desktop.notice.itemsCut"
+        : "desktop.notice.itemsCopied", { count: selectedPaths.length }));
     } catch (error) {
-      onNotify(error?.message ?? "The Windows clipboard is temporarily unavailable");
+      onNotify(error?.message ?? t("desktop.error.clipboardUnavailable"));
     }
-  }, [onNotify, refreshClipboardState, selectedPaths]);
+  }, [onNotify, refreshClipboardState, selectedPaths, t]);
 
   const pasteDesktop = useCallback(async () => {
     setContextMenu(null);
     const state = await platform.clipboard.read();
     const paths = Array.isArray(state?.paths) ? state.paths : [];
     if (paths.length === 0) {
-      onNotify("The clipboard has no files to paste");
+      onNotify(t("desktop.notice.clipboardEmpty"));
       return;
     }
     await startDesktopTransfer(paths, state?.mode === "move" ? "move" : "copy");
@@ -532,59 +633,59 @@ export function DesktopShortcuts({
       await platform.clipboard.clear();
       await refreshClipboardState();
     }
-  }, [onNotify, refreshClipboardState, startDesktopTransfer]);
+  }, [onNotify, refreshClipboardState, startDesktopTransfer, t]);
 
   const showNewFolderDialog = useCallback(() => {
     setContextMenu(null);
     setOperationDialog({
       type: "new-folder",
-      title: "NEW FOLDER",
-      inputLabel: "Name",
-      initialValue: "New folder",
+      title: t("desktop.dialog.newFolder.title"),
+      inputLabel: t("desktop.dialog.newFolder.nameLabel"),
+      initialValue: t("desktop.dialog.newFolder.defaultName"),
     });
-  }, []);
+  }, [t]);
 
   const showRenameDialog = useCallback((shortcut) => {
     if (!shortcut?.path) return;
     setContextMenu(null);
     setOperationDialog({
       type: "rename",
-      title: "RENAME",
-      inputLabel: "New name",
+      title: t("desktop.dialog.rename.title"),
+      inputLabel: t("desktop.dialog.rename.nameLabel"),
       initialValue: shortcut.name ?? shortcut.label,
       shortcut,
     });
-  }, []);
+  }, [t]);
 
   const showDeleteDialog = useCallback(() => {
     if (selectedPaths.length === 0) return;
     setContextMenu(null);
     setOperationDialog({
       type: "delete",
-      title: "MOVE TO RECYCLE BIN",
-      description: `Move ${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"} to the Windows Recycle Bin?`,
-      confirmLabel: "MOVE",
+      title: t("desktop.dialog.recycle.title"),
+      description: t("desktop.dialog.recycle.description", { count: selectedPaths.length }),
+      confirmLabel: t("desktop.action.move"),
       danger: true,
     });
-  }, [selectedPaths.length]);
+  }, [selectedPaths.length, t]);
 
   const confirmOperation = useCallback(async (value) => {
     if (!operationDialog) return;
     if (operationDialog.type === "new-folder") {
-      if (!userDesktopPath) throw new Error("The Windows Desktop directory is unavailable.");
+      if (!userDesktopPath) throw new Error(t("desktop.error.windowsDesktopUnavailable"));
       await platform.explorer.createFolder(userDesktopPath, value);
-      onNotify(`Folder created · ${value}`);
+      onNotify(t("desktop.notice.folderCreated", { name: value }));
     } else if (operationDialog.type === "rename") {
       await platform.explorer.rename(operationDialog.shortcut.path, value);
-      onNotify(`Renamed to ${value}`);
+      onNotify(t("desktop.notice.renamed", { name: value }));
     } else if (operationDialog.type === "delete") {
       await platform.explorer.recycle(selectedPaths);
       setSelectedIds([]);
-      onNotify(`${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"} moved to the Recycle Bin`);
+      onNotify(t("desktop.notice.movedToRecycleBin", { count: selectedPaths.length }));
     }
     setOperationDialog(null);
     await refreshDesktopEntries();
-  }, [onNotify, operationDialog, selectedPaths, userDesktopPath]);
+  }, [onNotify, operationDialog, selectedPaths, t, userDesktopPath]);
 
   useEffect(() => {
     const isDesktopDrop = (event) => (
@@ -603,7 +704,7 @@ export function DesktopShortcuts({
       if (!payload) return;
       event.preventDefault();
       void startDesktopTransfer(payload.paths, getFileDropMode(event)).catch((error) => {
-        onNotify(error?.message ?? "The drag-and-drop operation failed");
+        onNotify(error?.message ?? t("desktop.error.dragDropFailed"));
       });
     };
     const stopExternalDrop = platform.events.subscribe("desktop.externalDrop", (payload) => {
@@ -613,7 +714,7 @@ export function DesktopShortcuts({
         : null;
       if (dropTarget?.closest(".jarvis-explorer")) return;
       void startDesktopTransfer(paths, "copy").catch((error) => {
-        onNotify(error?.message ?? "The Windows drag-and-drop operation failed");
+        onNotify(error?.message ?? t("desktop.error.windowsDragDropFailed"));
       });
     });
     window.addEventListener("dragover", handleDragOver);
@@ -623,7 +724,7 @@ export function DesktopShortcuts({
       window.removeEventListener("dragover", handleDragOver);
       window.removeEventListener("drop", handleDrop);
     };
-  }, [onNotify, startDesktopTransfer]);
+  }, [onNotify, startDesktopTransfer, t]);
 
   useEffect(() => {
     const handleDesktopKeys = (event) => {
@@ -644,7 +745,9 @@ export function DesktopShortcuts({
         void writeClipboard("move");
       } else if ((event.ctrlKey || event.metaKey) && key === "v") {
         event.preventDefault();
-        void pasteDesktop().catch((error) => onNotify(error?.message ?? "Paste failed"));
+        void pasteDesktop().catch((error) => (
+          onNotify(error?.message ?? t("desktop.error.pasteFailed"))
+        ));
       } else if (event.key === "Delete") {
         event.preventDefault();
         showDeleteDialog();
@@ -662,6 +765,7 @@ export function DesktopShortcuts({
     selectedShortcuts,
     showDeleteDialog,
     showRenameDialog,
+    t,
     writeClipboard,
   ]);
 
@@ -709,13 +813,24 @@ export function DesktopShortcuts({
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-  }, [alignToGrid, containerSize, iconMetrics]);
+  }, [alignToGrid, containerSize, iconMetrics, setManualPositions]);
 
   const selectedContextShortcut = contextMenu?.kind === "item"
     ? orderedEntries.find((entry) => entry.id === contextMenu.shortcutId) ?? selectedShortcuts[0] ?? null
     : null;
 
-  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const closeContextMenu = useCallback((restoreFocus = true) => {
+    const returnFocusTarget = contextMenuReturnFocusRef.current;
+    contextMenuReturnFocusRef.current = null;
+    setContextMenu(null);
+    if (!restoreFocus) return;
+    window.requestAnimationFrame(() => {
+      const target = returnFocusTarget?.isConnected
+        ? returnFocusTarget
+        : containerRef.current;
+      target?.focus({ preventScroll: true });
+    });
+  }, []);
 
   const runItemAction = useCallback((action, shortcut) => {
     setContextMenu(null);
@@ -726,23 +841,34 @@ export function DesktopShortcuts({
     <nav
       ref={containerRef}
       className={`desktop-shortcuts ${autoArrange ? "is-auto-arranged" : "is-manual"}`}
-      aria-label="Desktop shortcuts"
+      aria-label={t("desktop.shortcuts.aria")}
       data-auto-arrange={autoArrange ? "on" : "off"}
       data-align-to-grid={alignToGrid ? "on" : "off"}
       data-icon-size={iconSize}
+      data-density={desktopDensity}
       data-sort-mode={sortMode}
+      data-visible-count={orderedEntries.length}
+      data-hidden-count={hiddenEntryCount}
       style={{
         "--desktop-icon-cell-width": `${iconMetrics.cellWidth}px`,
         "--desktop-icon-cell-height": `${iconMetrics.cellHeight}px`,
         "--desktop-icon-size": `${iconMetrics.iconSize}px`,
         "--desktop-label-size": `${iconMetrics.labelSize}px`,
       }}
-      tabIndex={-1}
+      tabIndex={0}
+      aria-haspopup="menu"
+      aria-keyshortcuts="ContextMenu Shift+F10"
       onKeyDown={(event) => {
-        if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+        if (!isDesktopContextMenuTrigger(event)) return;
         event.preventDefault();
         const rect = containerRef.current?.getBoundingClientRect();
-        openContextMenu((rect?.left ?? 0) + 24, (rect?.top ?? 0) + 24);
+        openContextMenu(
+          (rect?.left ?? 0) + 24,
+          (rect?.top ?? 0) + 24,
+          "desktop",
+          null,
+          event.currentTarget,
+        );
       }}
     >
       {orderedEntries.map((shortcut, index) => {
@@ -794,7 +920,13 @@ export function DesktopShortcuts({
                 onSelect(shortcut.id);
               }
               setFocusedId(shortcut.id);
-              openContextMenu(event.clientX, event.clientY, "item", shortcut.id);
+              openContextMenu(
+                event.clientX,
+                event.clientY,
+                "item",
+                shortcut.id,
+                event.currentTarget,
+              );
             }}
             onDragStart={(event) => {
               const paths = selected && selectedPaths.length > 0
@@ -847,7 +979,7 @@ export function DesktopShortcuts({
                 onOpen(shortcut);
                 return;
               }
-              if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+              if (isDesktopContextMenuTrigger(event)) {
                 event.preventDefault();
                 event.stopPropagation();
                 const rect = event.currentTarget.getBoundingClientRect();
@@ -861,6 +993,7 @@ export function DesktopShortcuts({
                   rect.top + Math.min(rect.height, 48),
                   "item",
                   shortcut.id,
+                  event.currentTarget,
                 );
                 return;
               }
@@ -920,13 +1053,13 @@ export function DesktopShortcuts({
             onOpenSettings();
           }}
           onPaste={() => void pasteDesktop().catch((error) => {
-            onNotify(error?.message ?? "Paste failed");
+            onNotify(error?.message ?? t("desktop.error.pasteFailed"));
           })}
           onProperties={(shortcut) => {
             setContextMenu(null);
             if (shortcut?.path) {
               void platform.explorer.showProperties(shortcut.path).catch((error) => {
-                onNotify(error?.message ?? "Unable to open properties");
+                onNotify(error?.message ?? t("desktop.error.openPropertiesFailed"));
               });
             }
           }}

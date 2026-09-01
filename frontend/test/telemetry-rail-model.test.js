@@ -28,16 +28,17 @@ test("loading and disconnected feeds stay non-nominal even with cached events", 
     feedLoading: true,
   });
   assert.equal(connecting.kind, "connecting");
-  assert.equal(connecting.title, "STATUS SYNCHRONIZING");
-  assert.match(connecting.meta, /1 cached session event/u);
+  assert.equal(connecting.cachedEventCount, 1);
+  assert.equal(Object.hasOwn(connecting, "title"), false);
+  assert.equal(Object.hasOwn(connecting, "detail"), false);
 
   const disconnected = getTelemetryPriorityPresentation({
     events: cachedEvents,
     feedError: "bridge offline",
   });
   assert.equal(disconnected.kind, "warning");
-  assert.equal(disconnected.title, "TELEMETRY DISCONNECTED");
   assert.equal(disconnected.meta, "bridge offline");
+  assert.equal(Object.hasOwn(disconnected, "title"), false);
 });
 
 test("compact telemetry exposes CPU and memory in its accessible summary", () => {
@@ -47,5 +48,5 @@ test("compact telemetry exposes CPU and memory in its accessible summary", () =>
   ]);
   assert.equal(summary.cpu, "18%");
   assert.equal(summary.memory, "42%");
-  assert.match(summary.label, /CPU 18%\. Memory 42%/u);
+  assert.equal(Object.hasOwn(summary, "label"), false);
 });

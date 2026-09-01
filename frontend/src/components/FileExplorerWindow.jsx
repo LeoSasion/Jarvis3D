@@ -39,6 +39,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { useLanguage } from "../i18n/language-system.js";
+import { formatDateTime } from "../i18n/locale-format.js";
 import { platform } from "../platform/index.js";
 import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
 import { ExplorerContextMenu } from "./ExplorerContextMenu.jsx";
@@ -46,7 +48,6 @@ import { SystemNotice } from "./SystemNotice.jsx";
 import { CoreNodeGlyph } from "./VectorMarks.jsx";
 import {
   canReplaceAllConflicts,
-  getTransferSummary,
   isTransferTerminal,
   normalizeTransferPreflight,
   normalizeTransferSnapshot,
@@ -101,10 +102,10 @@ const locationIcons = {
 };
 
 const EXPLORER_SORT_COLUMNS = Object.freeze([
-  { id: "name", label: "NAME" },
-  { id: "type", label: "TYPE" },
-  { id: "modified", label: "MODIFIED" },
-  { id: "size", label: "SIZE" },
+  { id: "name", labelKey: "explorer.column.name" },
+  { id: "type", labelKey: "explorer.column.type" },
+  { id: "modified", labelKey: "explorer.column.modified" },
+  { id: "size", labelKey: "explorer.column.size" },
 ]);
 
 const entryIcons = {
@@ -120,15 +121,6 @@ const entryIcons = {
   spreadsheet: DocumentTableRegular,
   video: VideoRegular,
 };
-
-const modifiedDateFormatter = new Intl.DateTimeFormat("zh-CN", {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
 
 function read(object, camelKey, pascalKey) {
   return object?.[camelKey] ?? object?.[pascalKey];
@@ -225,10 +217,71 @@ function formatFileSize(bytes) {
   return `${(value / 1024 ** 3).toFixed(1)} GB`;
 }
 
-function formatModified(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return modifiedDateFormatter.format(date);
+function formatModified(value, language) {
+  return formatDateTime(value, language, {
+    month: "2-digit",
+    hourCycle: "h23",
+  });
+}
+
+function getLocalizedTransferSummary(transfer, t) {
+  if (!transfer) return "";
+  if (transfer.status === "completed") {
+    return transfer.skippedItems > 0
+      ? t("explorer.transfer.summary.completedWithSkipped", {
+        completed: transfer.completedItems,
+        skipped: transfer.skippedItems,
+      })
+      : t("explorer.transfer.summary.completed", { count: transfer.completedItems });
+  }
+  if (transfer.status === "completed-with-errors") {
+    return t("explorer.transfer.summary.completedWithErrors", {
+      completed: transfer.completedItems,
+      failed: transfer.failedItems,
+      skipped: transfer.skippedItems,
+    });
+  }
+  if (transfer.status === "cancelled") return t("explorer.transfer.summary.cancelled");
+  if (transfer.status === "failed") {
+    return transfer.error || transfer.result.failures[0]?.message ||
+      t("explorer.transfer.summary.failed");
+  }
+  if (transfer.status === "scanning") {
+    return t("explorer.transfer.summary.scanning", { count: transfer.totalItems });
+  }
+  if (transfer.status === "cancelling") return t("explorer.transfer.summary.cancelling");
+  return transfer.currentItem
+    ? t(transfer.mode === "move"
+      ? "explorer.transfer.summary.moving"
+      : "explorer.transfer.summary.copying", { item: transfer.currentItem })
+    : t("explorer.transfer.summary.preparing");
+}
+
+function getLocalizedSearchSummary(summary, t) {
+  return summary.filtered
+    ? t("explorer.items.filteredCount", {
+      visible: summary.visible,
+      total: summary.total,
+    })
+    : t("explorer.items.count", { count: summary.total });
+}
+
+const TRANSFER_STATUS_KEYS = Object.freeze({
+  queued: "queued",
+  scanning: "scanning",
+  transferring: "transferring",
+  cancelling: "cancelling",
+  completed: "completed",
+  "completed-with-errors": "completedWithErrors",
+  cancelled: "cancelled",
+  failed: "failed",
+});
+
+function getLocalizedTransferStatus(status, t) {
+  const key = TRANSFER_STATUS_KEYS[status];
+  return key
+    ? t(`explorer.transfer.status.${key}`)
+    : String(status ?? "").replaceAll("-", " ").toUpperCase();
 }
 
 function getDriveUsage(drive) {
@@ -236,11 +289,11 @@ function getDriveUsage(drive) {
   return Math.min(100, Math.max(0, ((drive.totalBytes - drive.freeBytes) / drive.totalBytes) * 100));
 }
 
-function ExplorerDriveStrip({ currentPath, drives, onNavigate }) {
+function ExplorerDriveStrip({ currentPath, drives, onNavigate, t }) {
   if (!drives.length) return null;
 
   return (
-    <nav className="explorer-drive-strip" aria-label="Storage volumes">
+    <nav className="explorer-drive-strip" aria-label={t("explorer.drives.aria")}>
       {drives.map((drive) => {
         const usage = getDriveUsage(drive);
         const active = currentPath.toLocaleLowerCase().startsWith(drive.path.toLocaleLowerCase());
@@ -253,7 +306,10 @@ function ExplorerDriveStrip({ currentPath, drives, onNavigate }) {
           >
             <span><HardDriveRegular aria-hidden="true" /><strong>{drive.label}</strong></span>
             <i aria-hidden="true"><b style={{ "--drive-usage": `${usage}%` }} /></i>
-            <small>{formatFileSize(drive.freeBytes)} FREE / {formatFileSize(drive.totalBytes)}</small>
+            <small>{t("explorer.drives.capacity", {
+              free: formatFileSize(drive.freeBytes),
+              total: formatFileSize(drive.totalBytes),
+            })}</small>
           </button>
         );
       })}
@@ -274,12 +330,20 @@ function ExplorerSearchLabel({ value, query }) {
   ));
 }
 
-function ExplorerCommandDialog({ dialog, busy, onCancel, onConfirm }) {
+function ExplorerCommandDialog({ dialog, busy, onCancel, onConfirm, t }) {
   const inputRef = useRef(null);
   const confirmRef = useRef(null);
   const dialogRef = useRef(null);
   const [value, setValue] = useState(dialog.initialValue ?? "");
   const hasInput = dialog.type !== "recycle";
+  const descriptionParams = dialog.remainingCount == null
+    ? dialog.descriptionParams
+    : {
+        ...dialog.descriptionParams,
+        remaining: dialog.remainingCount > 0
+          ? t("explorer.dialog.recycle.more", { count: dialog.remainingCount })
+          : "",
+      };
 
   useDialogFocusTrap(dialogRef, true, {
     initialFocusRef: hasInput ? inputRef : confirmRef,
@@ -293,20 +357,27 @@ function ExplorerCommandDialog({ dialog, busy, onCancel, onConfirm }) {
         className={`explorer-command-dialog ${dialog.danger ? "is-danger" : ""}`}
         role="dialog"
         aria-modal="true"
-        aria-label={dialog.title}
+        aria-label={t(dialog.titleKey, dialog.titleParams)}
         onSubmit={(event) => {
           event.preventDefault();
           onConfirm(value);
         }}
       >
         <header>
-          <strong>{dialog.title}</strong>
-          <button type="button" aria-label="Cancel operation" disabled={busy} onClick={onCancel}><DismissRegular /></button>
+          <strong>{t(dialog.titleKey, dialog.titleParams)}</strong>
+          <button
+            type="button"
+            aria-label={t("explorer.dialog.cancelOperation")}
+            disabled={busy}
+            onClick={onCancel}
+          >
+            <DismissRegular />
+          </button>
         </header>
-        <p>{dialog.description}</p>
+        <p>{t(dialog.descriptionKey, descriptionParams)}</p>
         {hasInput ? (
           <label>
-            <span>{dialog.label}</span>
+            <span>{t(dialog.labelKey)}</span>
             <input
               ref={inputRef}
               value={value}
@@ -317,9 +388,11 @@ function ExplorerCommandDialog({ dialog, busy, onCancel, onConfirm }) {
           </label>
         ) : null}
         <footer>
-          <button type="button" disabled={busy} onClick={onCancel}>CANCEL</button>
+          <button type="button" disabled={busy} onClick={onCancel}>
+            {t("common.action.cancel")}
+          </button>
           <button ref={confirmRef} type="submit" className="is-primary" disabled={busy || (hasInput && !value.trim())}>
-            {busy ? "PROCESSING" : dialog.confirmLabel}
+            {busy ? t("explorer.state.processing") : t(dialog.confirmLabelKey)}
           </button>
         </footer>
       </form>
@@ -327,7 +400,7 @@ function ExplorerCommandDialog({ dialog, busy, onCancel, onConfirm }) {
   );
 }
 
-function ExplorerConflictDialog({ pending, busy, onCancel, onChoose }) {
+function ExplorerConflictDialog({ pending, busy, onCancel, onChoose, t }) {
   const dialogRef = useRef(null);
   const primaryRef = useRef(null);
   const replaceAllowed = canReplaceAllConflicts(pending.preflight);
@@ -352,41 +425,58 @@ function ExplorerConflictDialog({ pending, busy, onCancel, onChoose }) {
         aria-labelledby="explorer-conflict-title"
       >
         <header>
-          <strong id="explorer-conflict-title">NAME CONFLICT DETECTED</strong>
-          <button type="button" aria-label="Cancel transfer" disabled={busy} onClick={onCancel}><DismissRegular /></button>
+          <strong id="explorer-conflict-title">{t("explorer.conflict.title")}</strong>
+          <button
+            type="button"
+            aria-label={t("explorer.transfer.cancel")}
+            disabled={busy}
+            onClick={onCancel}
+          >
+            <DismissRegular />
+          </button>
         </header>
         <p>
-          {conflictCount} of {pending.preflight.itemCount} item{pending.preflight.itemCount === 1 ? "" : "s"} already {pending.preflight.itemCount === 1 ? "exists" : "exist"}
-          in this folder: {preview}{conflictCount > 3 ? ` and ${conflictCount - 3} more` : ""}.
+          {t("explorer.conflict.description", {
+            conflicts: conflictCount,
+            total: pending.preflight.itemCount,
+            preview,
+            remaining: conflictCount > 3
+              ? t("explorer.conflict.remaining", { count: conflictCount - 3 })
+              : "",
+          })}
         </p>
         {pending.preflight.crossesVolumes && pending.mode === "move" ? (
           <div className="explorer-conflict-note">
-            CROSS-VOLUME MOVE · JARVIS WILL COPY, VERIFY, THEN DELETE THE SOURCE
+            {t("explorer.conflict.crossVolumeMove")}
           </div>
         ) : null}
         <div className="explorer-conflict-choices">
           <button ref={primaryRef} type="button" disabled={busy} onClick={() => onChoose("rename")}>
-            <strong>KEEP BOTH</strong>
-            <span>Generate a unique Windows-style name.</span>
+            <strong>{t("explorer.conflict.keepBoth")}</strong>
+            <span>{t("explorer.conflict.keepBothDescription")}</span>
           </button>
           <button type="button" disabled={busy} onClick={() => onChoose("skip")}>
-            <strong>SKIP CONFLICTS</strong>
-            <span>Transfer only items whose names are free.</span>
+            <strong>{t("explorer.conflict.skip")}</strong>
+            <span>{t("explorer.conflict.skipDescription")}</span>
           </button>
           <button type="button" className="is-danger" disabled={busy || !replaceAllowed} onClick={() => onChoose("replace")}>
-            <strong>REPLACE</strong>
-            <span>{replaceAllowed ? "Protect the existing target with rollback until complete." : "Unavailable when source and target are the same item."}</span>
+            <strong>{t("explorer.conflict.replace")}</strong>
+            <span>{replaceAllowed
+              ? t("explorer.conflict.replaceDescription")
+              : t("explorer.conflict.replaceUnavailable")}</span>
           </button>
         </div>
         <footer>
-          <button type="button" disabled={busy} onClick={onCancel}>CANCEL TRANSFER</button>
+          <button type="button" disabled={busy} onClick={onCancel}>
+            {t("explorer.transfer.cancel")}
+          </button>
         </footer>
       </section>
     </div>
   );
 }
 
-function ExplorerTransferPanel({ transfer, onCancel, onDismiss }) {
+function ExplorerTransferPanel({ transfer, onCancel, onDismiss, t }) {
   if (!transfer) return null;
   const terminal = isTransferTerminal(transfer.status);
   const tone = transfer.status === "completed"
@@ -398,19 +488,27 @@ function ExplorerTransferPanel({ transfer, onCancel, onDismiss }) {
         : "info";
 
   return (
-    <section className={`explorer-transfer-panel is-${tone}`} aria-label="File transfer status" aria-live={terminal ? "polite" : "off"}>
+    <section
+      className={`explorer-transfer-panel is-${tone}`}
+      aria-label={t("explorer.transfer.statusAria")}
+      aria-live={terminal ? "polite" : "off"}
+    >
       <header>
-        <span>{transfer.mode === "move" ? "MOVE OPERATION" : "COPY OPERATION"}</span>
-        <strong>{transfer.status.replaceAll("-", " ").toUpperCase()}</strong>
+        <span>{transfer.mode === "move"
+          ? t("explorer.transfer.moveOperation")
+          : t("explorer.transfer.copyOperation")}</span>
+        <strong>{getLocalizedTransferStatus(transfer.status, t)}</strong>
       </header>
       <div className="explorer-transfer-summary">
-        <span>{getTransferSummary(transfer)}</span>
+        <span>{getLocalizedTransferSummary(transfer, t)}</span>
         <b>{Math.round(transfer.percent)}%</b>
       </div>
       <div
         className="explorer-transfer-progress"
         role="progressbar"
-        aria-label={`${transfer.mode} progress`}
+        aria-label={transfer.mode === "move"
+          ? t("explorer.transfer.moveProgress")
+          : t("explorer.transfer.copyProgress")}
         aria-valuemin="0"
         aria-valuemax="100"
         aria-valuenow={Math.round(transfer.percent)}
@@ -420,13 +518,18 @@ function ExplorerTransferPanel({ transfer, onCancel, onDismiss }) {
       <footer>
         <small>
           {formatFileSize(transfer.bytesTransferred)} / {formatFileSize(transfer.totalBytes)}
-          {" · "}{transfer.completedItems}/{transfer.totalItems} complete
+          {" · "}{t("explorer.transfer.itemsComplete", {
+            completed: transfer.completedItems,
+            total: transfer.totalItems,
+          })}
         </small>
         {terminal ? (
-          <button type="button" onClick={onDismiss}>DISMISS</button>
+          <button type="button" onClick={onDismiss}>{t("common.action.dismiss")}</button>
         ) : (
           <button type="button" disabled={transfer.status === "cancelling"} onClick={onCancel}>
-            {transfer.status === "cancelling" ? "CANCELLING" : "CANCEL"}
+            {transfer.status === "cancelling"
+              ? t("explorer.transfer.cancelling")
+              : t("common.action.cancel")}
           </button>
         )}
       </footer>
@@ -454,6 +557,9 @@ export function FileExplorerWindow({
   onToggleMaximize,
   onToast,
 }) {
+  const { language, t } = useLanguage();
+  const tRef = useRef(t);
+  tRef.current = t;
   const requestIdRef = useRef(0);
   const currentPathRef = useRef("");
   const addressRef = useRef(null);
@@ -517,7 +623,7 @@ export function FileExplorerWindow({
     } catch (browseError) {
       if (requestId !== requestIdRef.current) return null;
       setError(browseError);
-      onToast(`Unable to open folder: ${browseError.message}`);
+      onToast(tRef.current("explorer.notice.openFolderFailed", { message: browseError.message }));
       return null;
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
@@ -619,7 +725,7 @@ export function FileExplorerWindow({
       }
 
       handledTerminalTransfersRef.current.add(nextTransfer.jobId);
-      const message = getTransferSummary(nextTransfer);
+      const message = getLocalizedTransferSummary(nextTransfer, t);
       const tone = nextTransfer.status === "completed"
         ? "success"
         : nextTransfer.status === "cancelled"
@@ -671,11 +777,11 @@ export function FileExplorerWindow({
       disposed = true;
       unsubscribe();
     };
-  }, [browse, onToast, open]);
+  }, [browse, onToast, open, t]);
 
   const sortedEntries = useMemo(
-    () => sortExplorerEntries(snapshot.entries, explorerPreferences),
-    [explorerPreferences, snapshot.entries],
+    () => sortExplorerEntries(snapshot.entries, explorerPreferences, language),
+    [explorerPreferences, language, snapshot.entries],
   );
   const visibleEntries = useMemo(() => {
     if (!deferredSearch) return sortedEntries;
@@ -747,7 +853,7 @@ export function FileExplorerWindow({
   const linkedOriginLabel = linkedContext?.items?.length === 1
     ? linkedContext.items[0].name
     : linkedContext?.items?.length
-      ? `${linkedContext.items.length} LINKED SOURCES`
+      ? t("explorer.agent.linkedSources", { count: linkedContext.items.length })
       : null;
 
   useEffect(() => {
@@ -794,33 +900,38 @@ export function FileExplorerWindow({
 
     try {
       await platform.explorer.openFile(entry.path);
-      onToast(`Opening ${entry.name}`);
+      onToast(t("explorer.notice.openingItem", { name: entry.name }));
     } catch (openError) {
-      onToast(`Unable to open ${entry.name}: ${openError.message}`);
+      onToast(t("explorer.notice.openItemFailed", {
+        name: entry.name,
+        message: openError.message,
+      }));
     }
-  }, [navigate, onToast]);
+  }, [navigate, onToast, t]);
 
   const openInWindows = useCallback(async (path = snapshot.currentPath) => {
     if (!path) return;
     try {
       await platform.explorer.openInWindows(path);
-      onToast(platform.isNative ? "Opened location with Windows File Explorer" : "Windows Explorer fallback requested");
+      onToast(platform.isNative
+        ? t("explorer.notice.openedInWindows")
+        : t("explorer.notice.windowsFallbackRequested"));
     } catch (openError) {
-      onToast(`Unable to open Windows Explorer: ${openError.message}`);
+      onToast(t("explorer.notice.openWindowsFailed", { message: openError.message }));
     }
-  }, [onToast, snapshot.currentPath]);
+  }, [onToast, snapshot.currentPath, t]);
 
   const showProperties = useCallback(async (entry) => {
     if (!entry?.path) return;
     try {
       await platform.explorer.showProperties(entry.path);
       onToast(platform.isNative
-        ? `Opened properties for ${entry.name}`
-        : `Properties requested for ${entry.name}`);
+        ? t("explorer.notice.openedProperties", { name: entry.name })
+        : t("explorer.notice.propertiesRequested", { name: entry.name }));
     } catch (propertiesError) {
-      onToast(`Unable to open properties: ${propertiesError.message}`);
+      onToast(t("explorer.notice.openPropertiesFailed", { message: propertiesError.message }));
     }
-  }, [onToast]);
+  }, [onToast, t]);
 
   const selectEntry = useCallback((entry, event) => {
     const toggleSelection = event.ctrlKey || event.metaKey;
@@ -931,23 +1042,24 @@ export function FileExplorerWindow({
     const targetPaths = Array.isArray(paths) ? paths : selectedPaths;
     const text = formatExplorerCopyPath(targetPaths);
     if (!text) {
-      onToast("Select one or more items to copy their paths");
+      onToast(t("explorer.notice.selectItemsForPaths"));
       return;
     }
     try {
       if (!navigator.clipboard?.writeText) {
-        throw new Error("Text clipboard is unavailable");
+        throw new Error(t("explorer.error.textClipboardUnavailable"));
       }
       await navigator.clipboard.writeText(text);
+      const message = t("explorer.notice.pathsCopied", { count: targetPaths.length });
       setOperationNotice({
         tone: "success",
-        message: `${targetPaths.length} path${targetPaths.length === 1 ? "" : "s"} copied`,
+        message,
       });
-      onToast(`Copied ${targetPaths.length} path${targetPaths.length === 1 ? "" : "s"}`);
+      onToast(message);
     } catch (clipboardError) {
-      onToast(`Unable to copy path: ${clipboardError.message}`);
+      onToast(t("explorer.notice.copyPathFailed", { message: clipboardError.message }));
     }
-  }, [onToast, selectedPaths]);
+  }, [onToast, selectedPaths, t]);
 
   const copySelection = useCallback(async (mode, paths = selectedPaths) => {
     const targetPaths = Array.isArray(paths) ? paths : selectedPaths;
@@ -956,20 +1068,27 @@ export function FileExplorerWindow({
     try {
       await platform.clipboard.write(nextClipboard.paths, mode);
       setClipboard(nextClipboard);
+      const noticeMessage = t(mode === "copy"
+        ? "explorer.notice.itemsCopiedToWindowsClipboard"
+        : "explorer.notice.itemsCutToWindowsClipboard", { count: targetPaths.length });
       setOperationNotice({
         tone: "info",
-        message: `${targetPaths.length} item${targetPaths.length === 1 ? "" : "s"} ${mode === "copy" ? "copied" : "cut"} to Windows clipboard.`,
+        message: noticeMessage,
       });
-      onToast(`${mode === "copy" ? "Copied" : "Cut"} ${targetPaths.length} item${targetPaths.length === 1 ? "" : "s"}`);
+      onToast(t(mode === "copy"
+        ? "explorer.notice.itemsCopied"
+        : "explorer.notice.itemsCut", { count: targetPaths.length }));
     } catch (clipboardError) {
-      const message = `Windows clipboard unavailable: ${clipboardError.message}`;
+      const message = t("explorer.notice.windowsClipboardUnavailable", {
+        message: clipboardError.message,
+      });
       setOperationNotice({ tone: "error", message });
       onToast({ severity: "error", title: message });
     }
-  }, [onToast, selectedPaths, transfer]);
+  }, [onToast, selectedPaths, t, transfer]);
 
-  const runMutation = useCallback(async (label, operation, options = {}) => {
-    setOperationBusy(label);
+  const runMutation = useCallback(async (labelKey, operation, options = {}) => {
+    setOperationBusy(labelKey);
     setOperationNotice(null);
     try {
       const result = normalizeOperation(await operation());
@@ -980,27 +1099,36 @@ export function FileExplorerWindow({
 
       if (result.failures.length > 0) {
         const completed = result.items.length;
-        const message = `${completed} completed · ${result.failures.length} failed · ${result.failures[0].message}`;
+        const message = t("explorer.notice.operationPartiallyCompleted", {
+          completed,
+          failed: result.failures.length,
+          message: result.failures[0].message,
+        });
         setOperationNotice({ tone: "warning", message });
         onToast({ severity: "warning", title: message });
       } else {
-        const message = options.successMessage ?? `${result.items.length} item${result.items.length === 1 ? "" : "s"} updated`;
+        const message = options.successMessage ?? t("explorer.notice.itemsUpdated", {
+          count: result.items.length,
+        });
         setOperationNotice({ tone: "success", message });
         onToast({ severity: "ok", title: message });
       }
       return result;
     } catch (operationError) {
-      const message = `${label} failed: ${operationError.message}`;
+      const message = t("explorer.notice.operationFailed", {
+        operation: t(labelKey),
+        message: operationError.message,
+      });
       setOperationNotice({ tone: "error", message });
       onToast({ severity: "error", title: message });
       return null;
     } finally {
       setOperationBusy(null);
     }
-  }, [browse, onToast, snapshot.currentPath]);
+  }, [browse, onToast, snapshot.currentPath, t]);
 
   const startTransfer = useCallback(async (request, conflictPolicy) => {
-    setOperationBusy("Start transfer");
+    setOperationBusy("explorer.operation.startTransfer");
     setOperationNotice(null);
     try {
       const started = normalizeTransferSnapshot(await platform.explorer.startTransfer(
@@ -1015,21 +1143,23 @@ export function FileExplorerWindow({
       setPendingTransfer(null);
       setOperationNotice({
         tone: "info",
-        message: `${request.mode === "move" ? "Move" : "Copy"} queued · ${request.paths.length} item${request.paths.length === 1 ? "" : "s"}`,
+        message: t(request.mode === "move"
+          ? "explorer.transfer.moveQueued"
+          : "explorer.transfer.copyQueued", { count: request.paths.length }),
       });
     } catch (transferError) {
-      const message = `Transfer failed to start: ${transferError.message}`;
+      const message = t("explorer.transfer.startFailed", { message: transferError.message });
       setOperationNotice({ tone: "error", message });
       onToast({ severity: "error", title: message });
     } finally {
       setOperationBusy(null);
     }
-  }, [onToast]);
+  }, [onToast, t]);
 
   const queueTransfer = useCallback(async (paths, destinationPath, mode) => {
     if (!paths?.length || !destinationPath || operationBusy ||
         (transfer && !isTransferTerminal(transfer.status))) return;
-    setOperationBusy("Transfer preflight");
+    setOperationBusy("explorer.operation.transferPreflight");
     setOperationNotice(null);
     const request = {
       paths: [...paths],
@@ -1048,13 +1178,15 @@ export function FileExplorerWindow({
       }
       await startTransfer({ ...request, preflight }, "rename");
     } catch (preflightError) {
-      const message = `Transfer preflight failed: ${preflightError.message}`;
+      const message = t("explorer.transfer.preflightFailed", {
+        message: preflightError.message,
+      });
       setOperationNotice({ tone: "error", message });
       onToast({ severity: "error", title: message });
     } finally {
       setOperationBusy(null);
     }
-  }, [onToast, operationBusy, startTransfer, transfer]);
+  }, [onToast, operationBusy, startTransfer, t, transfer]);
 
   const pasteClipboard = useCallback(async () => {
     try {
@@ -1064,11 +1196,13 @@ export function FileExplorerWindow({
       setClipboard(paths.length > 0 ? { paths, mode } : null);
       await queueTransfer(paths, snapshot.currentPath, mode);
     } catch (clipboardError) {
-      const message = `Unable to read Windows clipboard: ${clipboardError.message}`;
+      const message = t("explorer.notice.readWindowsClipboardFailed", {
+        message: clipboardError.message,
+      });
       setOperationNotice({ tone: "error", message });
       onToast({ severity: "error", title: message });
     }
-  }, [onToast, queueTransfer, snapshot.currentPath]);
+  }, [onToast, queueTransfer, snapshot.currentPath, t]);
 
   const allowFileDrop = useCallback((event) => {
     if (!hasFileDrag(event.dataTransfer) ||
@@ -1103,24 +1237,24 @@ export function FileExplorerWindow({
       const cancelled = normalizeTransferSnapshot(await platform.explorer.cancelTransfer(transfer.jobId));
       setTransfer(cancelled);
     } catch (cancelError) {
-      const message = `Unable to cancel transfer: ${cancelError.message}`;
+      const message = t("explorer.transfer.cancelFailed", { message: cancelError.message });
       setOperationNotice({ tone: "error", message });
       onToast({ severity: "error", title: message });
     }
-  }, [onToast, transfer]);
+  }, [onToast, t, transfer]);
 
   const openCreateDialog = useCallback(() => {
     if (!snapshot.currentPath || operationBusy || (transfer && !isTransferTerminal(transfer.status))) return;
     setCommandDialog({
       id: `create-${Date.now()}`,
       type: "create",
-      title: "CREATE NEW FOLDER",
-      description: "Create a folder in the current location.",
-      label: "FOLDER NAME",
-      initialValue: "New folder",
-      confirmLabel: "CREATE FOLDER",
+      titleKey: "explorer.dialog.createFolder.title",
+      descriptionKey: "explorer.dialog.createFolder.description",
+      labelKey: "explorer.dialog.createFolder.nameLabel",
+      initialValue: t("explorer.dialog.createFolder.defaultName"),
+      confirmLabelKey: "explorer.dialog.createFolder.confirm",
     });
-  }, [operationBusy, snapshot.currentPath, transfer]);
+  }, [operationBusy, snapshot.currentPath, t, transfer]);
 
   const showRenameDialogForEntry = useCallback((entry) => {
     if (!entry || operationBusy || (transfer && !isTransferTerminal(transfer.status))) return;
@@ -1128,11 +1262,12 @@ export function FileExplorerWindow({
       id: `rename-${entry.path}`,
       type: "rename",
       path: entry.path,
-      title: "RENAME ITEM",
-      description: `Rename ${entry.name}.`,
-      label: "NEW NAME",
+      titleKey: "explorer.dialog.rename.title",
+      descriptionKey: "explorer.dialog.rename.description",
+      descriptionParams: { name: entry.name },
+      labelKey: "explorer.dialog.rename.nameLabel",
       initialValue: entry.name,
-      confirmLabel: "APPLY NAME",
+      confirmLabelKey: "explorer.dialog.rename.confirm",
     });
   }, [operationBusy, transfer]);
 
@@ -1149,9 +1284,11 @@ export function FileExplorerWindow({
       id: `recycle-${Date.now()}`,
       type: "recycle",
       paths: entries.map((entry) => entry.path),
-      title: "MOVE TO RECYCLE BIN",
-      description: `${preview}${remaining > 0 ? ` and ${remaining} more` : ""} will remain recoverable from the Windows Recycle Bin.`,
-      confirmLabel: "MOVE TO RECYCLE BIN",
+      titleKey: "explorer.dialog.recycle.title",
+      descriptionKey: "explorer.dialog.recycle.description",
+      descriptionParams: { preview },
+      remainingCount: remaining,
+      confirmLabelKey: "explorer.dialog.recycle.confirm",
       danger: true,
     });
   }, [operationBusy, transfer]);
@@ -1164,9 +1301,9 @@ export function FileExplorerWindow({
     if (!commandDialog) return;
     if (commandDialog.type === "create") {
       const result = await runMutation(
-        "Create folder",
+        "explorer.operation.createFolder",
         () => platform.explorer.createFolder(snapshot.currentPath, value.trim()),
-        { successMessage: `Created folder ${value.trim()}` },
+        { successMessage: t("explorer.notice.folderCreated", { name: value.trim() }) },
       );
       if (result) setCommandDialog(null);
       return;
@@ -1174,9 +1311,9 @@ export function FileExplorerWindow({
 
     if (commandDialog.type === "rename") {
       const result = await runMutation(
-        "Rename",
+        "explorer.operation.rename",
         () => platform.explorer.rename(commandDialog.path, value.trim()),
-        { successMessage: `Renamed item to ${value.trim()}` },
+        { successMessage: t("explorer.notice.itemRenamed", { name: value.trim() }) },
       );
       if (result) {
         const renamedItem = result.items[0];
@@ -1195,9 +1332,14 @@ export function FileExplorerWindow({
 
     const recycledPaths = new Set(commandDialog.paths);
     const result = await runMutation(
-      "Recycle",
+      "explorer.operation.recycle",
       () => platform.explorer.recycle(commandDialog.paths),
-      { selectTargets: false, successMessage: `${commandDialog.paths.length} item${commandDialog.paths.length === 1 ? "" : "s"} moved to Recycle Bin` },
+      {
+        selectTargets: false,
+        successMessage: t("explorer.notice.itemsMovedToRecycleBin", {
+          count: commandDialog.paths.length,
+        }),
+      },
     );
     if (result) {
       setClipboard((current) => current
@@ -1205,7 +1347,7 @@ export function FileExplorerWindow({
         : null);
       setCommandDialog(null);
     }
-  }, [commandDialog, runMutation, snapshot.currentPath]);
+  }, [commandDialog, runMutation, snapshot.currentPath, t]);
 
   const closeExplorerContextMenu = useCallback((restoreFocus = false) => {
     const closingMenu = contextMenu;
@@ -1486,43 +1628,59 @@ export function FileExplorerWindow({
     visibleEntries.length,
     deferredSearch,
   );
+  const searchSummaryLabel = getLocalizedSearchSummary(searchSummary, t);
+  const sortColumnLabel = t(EXPLORER_SORT_COLUMNS.find((column) =>
+    column.id === sortKey)?.labelKey ?? "explorer.column.name");
+  const sortDirectionLabel = t(sortDirection === "ascending"
+    ? "explorer.sort.ascending"
+    : "explorer.sort.descending");
+  const nextSortDirectionLabel = t(sortDirection === "ascending"
+    ? "explorer.sort.descending"
+    : "explorer.sort.ascending");
   const currentNodeLabel = snapshot.breadcrumbs.at(-1)?.label
     ?? snapshot.currentPath
-    ?? "THIS PC";
+    ?? t("explorer.location.thisPc");
 
   return (
     <div ref={explorerLayerRef} className="explorer-layer" aria-hidden={false}>
-      <section className="jarvis-explorer" role="dialog" aria-modal="false" aria-label="JARVIS File Explorer">
+      <section
+        className="jarvis-explorer"
+        role="dialog"
+        aria-modal="false"
+        aria-label={t("explorer.window.aria")}
+      >
         <header
           className="explorer-titlebar"
           data-window-drag-handle
           aria-keyshortcuts={canMaximize ? "Alt+F4 Alt+F9 Alt+F10" : "Alt+F4 Alt+F9"}
         >
           <FolderRegular aria-hidden="true" />
-          <strong>FILE EXPLORER</strong>
-          <span>LOCAL FILESYSTEM · RECYCLE-SAFE WRITE MODE</span>
+          <strong>{t("explorer.window.title")}</strong>
+          <span>{t("explorer.window.mode")}</span>
           <div className="explorer-window-actions" data-no-window-drag>
-            <button type="button" aria-label="Minimize JARVIS File Explorer" onClick={onMinimize}>—</button>
+            <button type="button" aria-label={t("explorer.window.minimize")} onClick={onMinimize}>—</button>
             <button
               type="button"
               disabled={!canMaximize}
               aria-label={canMaximize
-                ? maximized ? "Restore JARVIS File Explorer" : "Maximize JARVIS File Explorer"
-                : "Explorer layout is controlled by the workspace"}
+                ? maximized
+                  ? t("explorer.window.restore")
+                  : t("explorer.window.maximize")
+                : t("explorer.window.workspaceControlled")}
               onClick={onToggleMaximize}
             >
               {maximized ? "❐" : "□"}
             </button>
-            <button type="button" aria-label="Close JARVIS File Explorer" onClick={onClose}><DismissRegular /></button>
+            <button type="button" aria-label={t("explorer.window.close")} onClick={onClose}><DismissRegular /></button>
           </div>
         </header>
 
         <div className="explorer-toolbar">
           <div className="explorer-history-actions">
-            <button type="button" aria-label="Back" disabled={!canGoBack || loading} onClick={() => navigateHistory(historyIndex - 1)}><ArrowLeftRegular /></button>
-            <button type="button" aria-label="Forward" disabled={!canGoForward || loading} onClick={() => navigateHistory(historyIndex + 1)}><ArrowRightRegular /></button>
-            <button type="button" aria-label="Up one level" disabled={!snapshot.parentPath || loading} onClick={() => navigate(snapshot.parentPath)}><ArrowUpRegular /></button>
-            <button type="button" aria-label="Refresh" disabled={!snapshot.currentPath || loading} onClick={() => browse(snapshot.currentPath, { clearSearch: false })}><ArrowClockwiseRegular /></button>
+            <button type="button" aria-label={t("explorer.navigation.back")} disabled={!canGoBack || loading} onClick={() => navigateHistory(historyIndex - 1)}><ArrowLeftRegular /></button>
+            <button type="button" aria-label={t("explorer.navigation.forward")} disabled={!canGoForward || loading} onClick={() => navigateHistory(historyIndex + 1)}><ArrowRightRegular /></button>
+            <button type="button" aria-label={t("explorer.navigation.up")} disabled={!snapshot.parentPath || loading} onClick={() => navigate(snapshot.parentPath)}><ArrowUpRegular /></button>
+            <button type="button" aria-label={t("explorer.navigation.refresh")} disabled={!snapshot.currentPath || loading} onClick={() => browse(snapshot.currentPath, { clearSearch: false })}><ArrowClockwiseRegular /></button>
           </div>
 
           {addressEditing ? (
@@ -1537,17 +1695,17 @@ export function FileExplorerWindow({
                 ref={addressRef}
                 value={addressValue}
                 maxLength={2_048}
-                aria-label="Explorer address"
+                aria-label={t("explorer.address.aria")}
                 spellCheck="false"
                 autoComplete="off"
                 onChange={(event) => setAddressValue(event.target.value)}
               />
-              <button type="submit" disabled={loading}>GO</button>
+              <button type="submit" disabled={loading}>{t("explorer.address.go")}</button>
             </form>
           ) : (
             <nav
               className="explorer-breadcrumbs"
-              aria-label="Current path"
+              aria-label={t("explorer.breadcrumbs.aria")}
               onDoubleClick={beginAddressEdit}
             >
               {snapshot.breadcrumbs.map((breadcrumb, index) => (
@@ -1556,15 +1714,15 @@ export function FileExplorerWindow({
                   {index < snapshot.breadcrumbs.length - 1 ? <small>›</small> : null}
                 </button>
               ))}
-              {loading ? <span className="explorer-scan-line">SCANNING</span> : null}
+              {loading ? <span className="explorer-scan-line">{t("explorer.state.scanning")}</span> : null}
               <button
                 type="button"
                 className="explorer-address-trigger"
                 onClick={beginAddressEdit}
-                title="Edit address · Ctrl+L"
-                aria-label="Edit Explorer address"
+                title={t("explorer.address.editTitle")}
+                aria-label={t("explorer.address.editAria")}
               >
-                PATH
+                {t("explorer.address.pathLabel")}
               </button>
             </nav>
           )}
@@ -1576,15 +1734,15 @@ export function FileExplorerWindow({
               value={search}
               maxLength={96}
               onChange={(event) => setSearch(event.target.value.slice(0, 96))}
-              placeholder="Search current folder"
-              aria-label="Search current folder"
+              placeholder={t("explorer.search.placeholder")}
+              aria-label={t("explorer.search.aria")}
             />
             {search ? (
               <button
                 type="button"
                 className="explorer-search-clear"
-                aria-label="Clear Explorer search"
-                title="Clear search · Escape"
+                aria-label={t("explorer.search.clearAria")}
+                title={t("explorer.search.clearTitle")}
                 onClick={clearExplorerSearch}
               >
                 <DismissRegular />
@@ -1595,19 +1753,22 @@ export function FileExplorerWindow({
           <div className="explorer-view-actions">
             <select
               value={sortKey}
-              aria-label="Sort folder contents"
-              title="Sort folder contents"
+              aria-label={t("explorer.sort.aria")}
+              title={t("explorer.sort.aria")}
               onChange={(event) => chooseSortKey(event.target.value)}
             >
-              <option value="name">Name</option>
-              <option value="type">Type</option>
-              <option value="modified">Modified</option>
-              <option value="size">Size</option>
+              {EXPLORER_SORT_COLUMNS.map((column) => (
+                <option key={column.id} value={column.id}>{t(column.labelKey)}</option>
+              ))}
             </select>
             <button
               type="button"
-              aria-label={`Sort ${sortDirection === "ascending" ? "descending" : "ascending"}`}
-              title={`Sort ${sortDirection === "ascending" ? "descending" : "ascending"}`}
+              aria-label={t("explorer.sort.changeDirection", {
+                direction: nextSortDirectionLabel,
+              })}
+              title={t("explorer.sort.changeDirection", {
+                direction: nextSortDirectionLabel,
+              })}
               onClick={() => setExplorerPreferences((current) => ({
                 ...current,
                 sortDirection: current.sortDirection === "ascending"
@@ -1617,29 +1778,36 @@ export function FileExplorerWindow({
             >
               {sortDirection === "ascending" ? "↑" : "↓"}
             </button>
-            <button type="button" className={viewMode === "list" ? "is-active" : ""} aria-label="Details view" onClick={() => setExplorerPreferences((current) => ({ ...current, viewMode: "list" }))}><ListRegular /></button>
-            <button type="button" className={viewMode === "grid" ? "is-active" : ""} aria-label="Grid view" onClick={() => setExplorerPreferences((current) => ({ ...current, viewMode: "grid" }))}><GridRegular /></button>
-            <button type="button" aria-label="Open current folder with Windows File Explorer" onClick={() => openInWindows()}><MoreHorizontalRegular /></button>
+            <button type="button" className={viewMode === "list" ? "is-active" : ""} aria-label={t("explorer.view.details")} onClick={() => setExplorerPreferences((current) => ({ ...current, viewMode: "list" }))}><ListRegular /></button>
+            <button type="button" className={viewMode === "grid" ? "is-active" : ""} aria-label={t("explorer.view.grid")} onClick={() => setExplorerPreferences((current) => ({ ...current, viewMode: "grid" }))}><GridRegular /></button>
+            <button type="button" aria-label={t("explorer.action.openCurrentInWindows")} onClick={() => openInWindows()}><MoreHorizontalRegular /></button>
           </div>
         </div>
 
-        <div className="explorer-commandbar" role="toolbar" aria-label="File operations">
-          <button type="button" disabled={!snapshot.currentPath || Boolean(operationBusy) || transferActive} onClick={openCreateDialog}><FolderAddRegular /><span>NEW FOLDER</span><kbd>CTRL+SHIFT+N</kbd></button>
-          <button type="button" disabled={!canRename || Boolean(operationBusy) || transferActive} onClick={openRenameDialog}><RenameRegular /><span>RENAME</span><kbd>F2</kbd></button>
-          <button type="button" disabled={!hasSelection || Boolean(operationBusy) || transferActive} onClick={() => copySelection("copy")}><CopyRegular /><span>COPY</span><kbd>CTRL+C</kbd></button>
-          <button type="button" disabled={!hasSelection} onClick={() => void copySelectedPaths()}><CodeRegular /><span>COPY PATH</span><kbd>CTRL+SHIFT+C</kbd></button>
-          <button type="button" disabled={!hasSelection || Boolean(operationBusy) || transferActive} onClick={() => copySelection("move")}><CutRegular /><span>CUT</span><kbd>CTRL+X</kbd></button>
-          <button type="button" disabled={!canPaste || Boolean(operationBusy)} onClick={pasteClipboard}><ClipboardPasteRegular /><span>PASTE</span><kbd>CTRL+V</kbd></button>
-          <button type="button" className="is-danger" disabled={!hasSelection || Boolean(operationBusy) || transferActive} onClick={openRecycleDialog}><DeleteRegular /><span>RECYCLE</span><kbd>DEL</kbd></button>
+        <div className="explorer-commandbar" role="toolbar" aria-label={t("explorer.operations.aria")}>
+          <button type="button" aria-label={t("explorer.context.action.newFolder")} title={t("explorer.context.action.newFolder")} disabled={!snapshot.currentPath || Boolean(operationBusy) || transferActive} onClick={openCreateDialog}><FolderAddRegular /><span>{t("explorer.context.action.newFolder")}</span><kbd>CTRL+SHIFT+N</kbd></button>
+          <button type="button" aria-label={t("explorer.context.action.rename")} title={t("explorer.context.action.rename")} disabled={!canRename || Boolean(operationBusy) || transferActive} onClick={openRenameDialog}><RenameRegular /><span>{t("explorer.context.action.rename")}</span><kbd>F2</kbd></button>
+          <button type="button" aria-label={t("explorer.context.action.copy")} title={t("explorer.context.action.copy")} disabled={!hasSelection || Boolean(operationBusy) || transferActive} onClick={() => copySelection("copy")}><CopyRegular /><span>{t("explorer.context.action.copy")}</span><kbd>CTRL+C</kbd></button>
+          <button type="button" aria-label={t("explorer.context.action.copyPath")} title={t("explorer.context.action.copyPath")} disabled={!hasSelection} onClick={() => void copySelectedPaths()}><CodeRegular /><span>{t("explorer.context.action.copyPath")}</span><kbd>CTRL+SHIFT+C</kbd></button>
+          <button type="button" aria-label={t("explorer.context.action.cut")} title={t("explorer.context.action.cut")} disabled={!hasSelection || Boolean(operationBusy) || transferActive} onClick={() => copySelection("move")}><CutRegular /><span>{t("explorer.context.action.cut")}</span><kbd>CTRL+X</kbd></button>
+          <button type="button" aria-label={t("explorer.context.action.paste")} title={t("explorer.context.action.paste")} disabled={!canPaste || Boolean(operationBusy)} onClick={pasteClipboard}><ClipboardPasteRegular /><span>{t("explorer.context.action.paste")}</span><kbd>CTRL+V</kbd></button>
+          <button type="button" className="is-danger" aria-label={t("explorer.context.action.recycle")} title={t("explorer.context.action.recycle")} disabled={!hasSelection || Boolean(operationBusy) || transferActive} onClick={openRecycleDialog}><DeleteRegular /><span>{t("explorer.context.action.recycle")}</span><kbd>DEL</kbd></button>
           <div className="explorer-clipboard-status" aria-live="polite">
-            <span>WINDOWS CLIPBOARD</span>
-            <strong>{clipboard?.paths.length ? `${clipboard.mode.toUpperCase()} · ${clipboard.paths.length} ITEM${clipboard.paths.length === 1 ? "" : "S"}` : "EMPTY"}</strong>
+            <span>{t("explorer.clipboard.title")}</span>
+            <strong>{clipboard?.paths.length
+              ? t("explorer.clipboard.items", {
+                mode: t(clipboard.mode === "move"
+                  ? "explorer.clipboard.mode.move"
+                  : "explorer.clipboard.mode.copy"),
+                count: clipboard.paths.length,
+              })
+              : t("explorer.clipboard.empty")}</strong>
           </div>
         </div>
 
         <div className="explorer-body">
-          <aside className="explorer-navigation" aria-label="Explorer locations">
-            <h2>LOCATIONS</h2>
+          <aside className="explorer-navigation" aria-label={t("explorer.navigation.aria")}>
+            <h2>{t("explorer.navigation.locations")}</h2>
             {snapshot.locations.map((location) => {
               const Icon = locationIcons[location.kind] ?? FolderRegular;
               const active = snapshot.currentPath === location.path;
@@ -1649,29 +1817,36 @@ export function FileExplorerWindow({
                 </button>
               );
             })}
-            <h2>DRIVES</h2>
+            <h2>{t("explorer.navigation.drives")}</h2>
             {snapshot.drives.map((drive) => {
               const usage = getDriveUsage(drive);
               const active = snapshot.currentPath.toLocaleLowerCase().startsWith(drive.path.toLocaleLowerCase());
               return (
                 <button key={drive.id} type="button" className={`explorer-drive ${active ? "is-active" : ""}`} onClick={() => navigate(drive.path)}>
                   <HardDriveRegular aria-hidden="true" />
-                  <span><strong>{drive.label}</strong><small>{formatFileSize(drive.freeBytes)} FREE</small><i style={{ "--drive-usage": `${usage}%` }} /></span>
+                  <span><strong>{drive.label}</strong><small>{t("explorer.drives.free", {
+                    free: formatFileSize(drive.freeBytes),
+                  })}</small><i style={{ "--drive-usage": `${usage}%` }} /></span>
                 </button>
               );
             })}
           </aside>
 
-          <section className={`explorer-files is-${viewMode}`} aria-label="Folder contents">
+          <section className={`explorer-files is-${viewMode}`} aria-label={t("explorer.folderContents.aria")}>
             <header className="explorer-workspace-heading">
-              <span>LOCAL STORAGE // CURRENT NODE</span>
+              <span>{t("explorer.workspace.currentNode")}</span>
               <h1>{currentNodeLabel}</h1>
-              <small>{searchSummary.label} · SORT {sortKey.toUpperCase()} {sortDirection === "ascending" ? "ASC" : "DESC"}</small>
+              <small>{t("explorer.workspace.summary", {
+                items: searchSummaryLabel,
+                sort: sortColumnLabel,
+                direction: sortDirectionLabel,
+              })}</small>
             </header>
             {viewMode === "list" ? (
-              <div className="explorer-list-heading" aria-label="Sortable file columns">
+              <div className="explorer-list-heading" aria-label={t("explorer.columns.aria")}>
                 {EXPLORER_SORT_COLUMNS.map((column) => {
                   const activeSort = sortKey === column.id;
+                  const columnLabel = t(column.labelKey);
                   return (
                     <button
                       key={column.id}
@@ -1679,11 +1854,15 @@ export function FileExplorerWindow({
                       className={activeSort ? "is-active" : ""}
                       aria-pressed={activeSort}
                       aria-label={activeSort
-                        ? `${column.label}, sorted ${sortDirection}. Activate to sort ${sortDirection === "ascending" ? "descending" : "ascending"}.`
-                        : `Sort by ${column.label.toLocaleLowerCase()}.`}
+                        ? t("explorer.column.sortedAria", {
+                          column: columnLabel,
+                          direction: sortDirectionLabel,
+                          nextDirection: nextSortDirectionLabel,
+                        })
+                        : t("explorer.column.sortByAria", { column: columnLabel })}
                       onClick={() => chooseSortKey(column.id)}
                     >
-                      <span>{column.label}</span>
+                      <span>{columnLabel}</span>
                       {activeSort
                         ? <small aria-hidden="true">{sortDirection === "ascending" ? "↑" : "↓"}</small>
                         : null}
@@ -1697,8 +1876,9 @@ export function FileExplorerWindow({
               ref={fileViewportRef}
               className="explorer-file-viewport"
               data-linked-scroll-viewport="explorer"
-              tabIndex={visibleEntries.length === 0 ? 0 : -1}
-              aria-keyshortcuts="Shift+F10"
+              tabIndex={0}
+              aria-haspopup="menu"
+              aria-keyshortcuts="ContextMenu Shift+F10"
               onDragOver={allowFileDrop}
               onDrop={(event) => dropFiles(event)}
               onScroll={() => {
@@ -1724,22 +1904,32 @@ export function FileExplorerWindow({
               }}
               onClick={(event) => {
                 if (event.target === event.currentTarget) {
+                  event.currentTarget.focus({ preventScroll: true });
                   setSelectedPaths([]);
                   setSelectionAnchor(null);
                 }
               }}
             >
               <SystemNotice notice={notice} onDismiss={onDismissNotice} placement="inline" />
-              {error ? <div className="explorer-empty"><strong>ACCESS INTERRUPTED</strong><span>{error.message}</span></div> : null}
+              {error ? (
+                <div className="explorer-empty">
+                  <strong>{t("explorer.empty.accessInterrupted")}</strong>
+                  <span>{error.message}</span>
+                </div>
+              ) : null}
               {!error && !loading && visibleEntries.length === 0 ? (
                 <div className="explorer-empty">
                   {deferredSearch ? <SearchRegular /> : <FolderRegular />}
-                  <strong>{deferredSearch ? "NO SEARCH MATCH" : "FOLDER EMPTY"}</strong>
+                  <strong>{deferredSearch
+                    ? t("explorer.empty.noSearchMatch")
+                    : t("explorer.empty.folderEmpty")}</strong>
                   <span>{deferredSearch
-                    ? `No item in this folder matches “${search.trim()}”.`
-                    : "This folder does not contain any items."}</span>
+                    ? t("explorer.empty.noSearchMatchDescription", { query: search.trim() })
+                    : t("explorer.empty.folderEmptyDescription")}</span>
                   {deferredSearch ? (
-                    <button type="button" onClick={clearExplorerSearch}>CLEAR SEARCH</button>
+                    <button type="button" onClick={clearExplorerSearch}>
+                      {t("explorer.search.clear")}
+                    </button>
                   ) : null}
                 </div>
               ) : null}
@@ -1844,7 +2034,7 @@ export function FileExplorerWindow({
                       <strong><ExplorerSearchLabel value={entry.name} query={deferredSearch} /></strong>
                     </span>
                     <span><ExplorerSearchLabel value={entry.typeLabel} query={deferredSearch} /></span>
-                    <span>{formatModified(entry.modified)}</span>
+                    <span>{formatModified(entry.modified, language)}</span>
                     <span>{formatFileSize(entry.sizeBytes)}</span>
                   </button>
                 );
@@ -1854,36 +2044,41 @@ export function FileExplorerWindow({
               currentPath={snapshot.currentPath}
               drives={snapshot.drives}
               onNavigate={navigate}
+              t={t}
             />
           </section>
 
-          <aside className="explorer-inspector" aria-label="Selected item details">
+          <aside className="explorer-inspector" aria-label={t("explorer.inspector.aria")}>
             <header className="explorer-inspector-heading">
-              <span>INSPECTOR // SELECTED ITEM</span>
+              <span>{t("explorer.inspector.heading")}</span>
               <i aria-hidden="true" />
             </header>
             {selectedEntries.length > 1 ? (
               <>
                 <div className="explorer-preview-icon is-multiple"><CopyRegular /></div>
-                <h2>{selectedEntries.length} ITEMS SELECTED</h2>
-                <p>{formatFileSize(selectionSize)} · MULTI-SELECTION</p>
+                <h2>{t("explorer.selection.itemsSelected", {
+                  count: selectedEntries.length,
+                })}</h2>
+                <p>{formatFileSize(selectionSize)} · {t("explorer.selection.multi")}</p>
                 <dl>
-                  <div><dt>FILES</dt><dd>{selectedEntries.filter((entry) => !entry.isDirectory).length}</dd></div>
-                  <div><dt>FOLDERS</dt><dd>{selectedEntries.filter((entry) => entry.isDirectory).length}</dd></div>
-                  <div><dt>LOCATION</dt><dd title={snapshot.currentPath}>{snapshot.currentPath}</dd></div>
+                  <div><dt>{t("explorer.field.files")}</dt><dd>{selectedEntries.filter((entry) => !entry.isDirectory).length}</dd></div>
+                  <div><dt>{t("explorer.field.folders")}</dt><dd>{selectedEntries.filter((entry) => entry.isDirectory).length}</dd></div>
+                  <div><dt>{t("explorer.field.location")}</dt><dd title={snapshot.currentPath}>{snapshot.currentPath}</dd></div>
                 </dl>
                 <div className="explorer-inspector-actions">
                   <button
                     type="button"
                     disabled={!canUseAgentChat}
-                    title={canUseAgentChat ? undefined : "The active Agent Provider does not support chat"}
+                    title={canUseAgentChat ? undefined : t("explorer.agent.chatUnsupported")}
                     onClick={() => onAddToAgentContext?.(agentContextSelection)}
                   >
-                    <LinkRegular />{canUseAgentChat ? "ASK AGENT ABOUT SELECTION" : "AGENT CHAT UNAVAILABLE"}
+                    <LinkRegular />{canUseAgentChat
+                      ? t("explorer.agent.askSelection")
+                      : t("explorer.agent.chatUnavailable")}
                   </button>
-                  <button type="button" onClick={() => copySelection("copy")}><CopyRegular />COPY SELECTION</button>
-                  <button type="button" onClick={() => copySelection("move")}><CutRegular />CUT SELECTION</button>
-                  <button type="button" className="is-danger" onClick={openRecycleDialog}><DeleteRegular />MOVE TO RECYCLE BIN</button>
+                  <button type="button" onClick={() => copySelection("copy")}><CopyRegular />{t("explorer.action.copySelection")}</button>
+                  <button type="button" onClick={() => copySelection("move")}><CutRegular />{t("explorer.action.cutSelection")}</button>
+                  <button type="button" className="is-danger" onClick={openRecycleDialog}><DeleteRegular />{t("explorer.action.moveToRecycleBin")}</button>
                 </div>
               </>
             ) : selectedEntry ? (
@@ -1892,31 +2087,37 @@ export function FileExplorerWindow({
                 <h2>{selectedEntry.name}</h2>
                 <p>{selectedEntry.typeLabel} · {formatFileSize(selectedEntry.sizeBytes)}</p>
                 <dl>
-                  <div><dt>MODIFIED</dt><dd>{formatModified(selectedEntry.modified)}</dd></div>
-                  <div><dt>LOCATION</dt><dd title={snapshot.currentPath}>{snapshot.currentPath}</dd></div>
-                  <div><dt>EXTENSION</dt><dd>{selectedEntry.extension || "—"}</dd></div>
-                  <div><dt>LINKED</dt><dd>{selectedEntry.isLinked ? "YES" : "NO"}</dd></div>
+                  <div><dt>{t("explorer.field.modified")}</dt><dd>{formatModified(selectedEntry.modified, language)}</dd></div>
+                  <div><dt>{t("explorer.field.location")}</dt><dd title={snapshot.currentPath}>{snapshot.currentPath}</dd></div>
+                  <div><dt>{t("explorer.field.extension")}</dt><dd>{selectedEntry.extension || "—"}</dd></div>
+                  <div><dt>{t("explorer.field.linked")}</dt><dd>{selectedEntry.isLinked
+                    ? t("common.state.yes")
+                    : t("common.state.no")}</dd></div>
                 </dl>
                 <div className="explorer-inspector-actions">
                   <button
                     type="button"
                     disabled={!canUseAgentChat}
-                    title={canUseAgentChat ? undefined : "The active Agent Provider does not support chat"}
+                    title={canUseAgentChat ? undefined : t("explorer.agent.chatUnsupported")}
                     onClick={() => onAddToAgentContext?.(agentContextSelection)}
                   >
-                    <LinkRegular />{canUseAgentChat ? "ASK AGENT ABOUT THIS" : "AGENT CHAT UNAVAILABLE"}
+                    <LinkRegular />{canUseAgentChat
+                      ? t("explorer.agent.askThis")
+                      : t("explorer.agent.chatUnavailable")}
                   </button>
-                  <button type="button" onClick={() => openEntry(selectedEntry)}><OpenRegular />{selectedEntry.isDirectory ? "OPEN FOLDER" : "OPEN FILE"}</button>
-                  <button type="button" onClick={openRenameDialog}><RenameRegular />RENAME</button>
-                  <button type="button" onClick={() => openInWindows(selectedEntry.path)}><FolderRegular />OPEN IN WINDOWS</button>
-                  <button type="button" className="is-danger" onClick={openRecycleDialog}><DeleteRegular />MOVE TO RECYCLE BIN</button>
+                  <button type="button" onClick={() => openEntry(selectedEntry)}><OpenRegular />{selectedEntry.isDirectory
+                    ? t("explorer.action.openFolder")
+                    : t("explorer.action.openFile")}</button>
+                  <button type="button" onClick={openRenameDialog}><RenameRegular />{t("explorer.context.action.rename")}</button>
+                  <button type="button" onClick={() => openInWindows(selectedEntry.path)}><FolderRegular />{t("explorer.action.openInWindows")}</button>
+                  <button type="button" className="is-danger" onClick={openRecycleDialog}><DeleteRegular />{t("explorer.action.moveToRecycleBin")}</button>
                 </div>
               </>
             ) : (
               <div className="explorer-inspector-empty">
                 <CoreNodeGlyph />
-                <strong>SELECT AN ITEM</strong>
-                <span>Ctrl/Shift enables multi-selection. File operations remain recoverable where possible.</span>
+                <strong>{t("explorer.inspector.selectItem")}</strong>
+                <span>{t("explorer.inspector.selectionHint")}</span>
               </div>
             )}
           </aside>
@@ -1924,27 +2125,31 @@ export function FileExplorerWindow({
 
         <section
           className={`explorer-selection-summary${linkedContext?.items?.length ? " has-agent-context" : ""}`}
-          aria-label="Current Explorer selection summary"
+          aria-label={t("explorer.selection.summaryAria")}
         >
           <div className="explorer-selection-summary__identity">
             <span className={`explorer-selection-summary__icon is-${selectedEntry?.kind ?? "folder"}`}>
               {selectedEntry ? <EntryIcon kind={selectedEntry.kind} /> : <FolderRegular />}
             </span>
             <span>
-              <strong>{selectedEntries.length > 1 ? `${selectedEntries.length} ITEMS` : selectedEntry?.name ?? currentNodeLabel}</strong>
-              <small>{selectedEntries.length > 1 ? "MULTI-SELECTION" : selectedEntry?.typeLabel ?? "CURRENT FOLDER"}</small>
+              <strong>{selectedEntries.length > 1
+                ? t("explorer.selection.itemCount", { count: selectedEntries.length })
+                : selectedEntry?.name ?? currentNodeLabel}</strong>
+              <small>{selectedEntries.length > 1
+                ? t("explorer.selection.multi")
+                : selectedEntry?.typeLabel ?? t("explorer.selection.currentFolder")}</small>
             </span>
           </div>
           <dl>
-            <div><dt>LOCATION</dt><dd title={snapshot.currentPath}>{snapshot.currentPath || "THIS PC"}</dd></div>
-            <div><dt>SIZE</dt><dd>{selectedEntries.length ? formatFileSize(selectionSize) : searchSummary.label}</dd></div>
-            <div><dt>MODIFIED</dt><dd>{selectedEntry ? formatModified(selectedEntry.modified) : "—"}</dd></div>
+            <div><dt>{t("explorer.field.location")}</dt><dd title={snapshot.currentPath}>{snapshot.currentPath || t("explorer.location.thisPc")}</dd></div>
+            <div><dt>{t("explorer.field.size")}</dt><dd>{selectedEntries.length ? formatFileSize(selectionSize) : searchSummaryLabel}</dd></div>
+            <div><dt>{t("explorer.field.modified")}</dt><dd>{selectedEntry ? formatModified(selectedEntry.modified, language) : "—"}</dd></div>
           </dl>
           <button
             type="button"
             className="explorer-link-agent-action"
             disabled={!canUseAgentChat || agentContextSelection.length === 0}
-            title={canUseAgentChat ? undefined : "The active Agent Provider does not support chat"}
+            title={canUseAgentChat ? undefined : t("explorer.agent.chatUnsupported")}
             onClick={() => onAddToAgentContext?.(agentContextSelection)}
           >
             {linkedRelationId ? (
@@ -1956,30 +2161,42 @@ export function FileExplorerWindow({
             ) : null}
             <LinkRegular />
             <span>{canUseAgentChat
-              ? linkedContext?.items?.length ? "RELINK AGENT" : "ASK AGENT"
-              : "CHAT UNAVAILABLE"}</span>
+              ? linkedContext?.items?.length
+                ? t("explorer.agent.relink")
+                : t("explorer.agent.ask")
+              : t("explorer.agent.chatUnavailable")}</span>
             <small>{canUseAgentChat
               ? linkedOriginLabel
-                ? `LINKED · ${linkedOriginLabel}`
+                ? t("explorer.agent.linked", { origin: linkedOriginLabel })
                 : agentContextSelection.length
-                  ? `${agentContextSelection.length} SOURCE${agentContextSelection.length === 1 ? "" : "S"}`
-                  : "SELECT ITEM"
-              : "STATUS ONLY PROVIDER"}</small>
+                  ? t("explorer.agent.sourceCount", { count: agentContextSelection.length })
+                  : t("explorer.agent.selectItem")
+              : t("explorer.agent.statusOnlyProvider")}</small>
           </button>
         </section>
 
         <footer className="explorer-statusbar">
-          <span>{searchSummary.label}</span>
-          {deferredSearch ? <span>FILTER · {search.trim()}</span> : null}
-          {selectedEntries.length > 0 ? <span>{selectedEntries.length} SELECTED · {formatFileSize(selectionSize)}</span> : <span>NO SELECTION</span>}
+          <span>{searchSummaryLabel}</span>
+          {deferredSearch ? <span>{t("explorer.status.filter", { query: search.trim() })}</span> : null}
+          {selectedEntries.length > 0
+            ? <span>{t("explorer.status.selected", {
+              count: selectedEntries.length,
+              size: formatFileSize(selectionSize),
+            })}</span>
+            : <span>{t("explorer.status.noSelection")}</span>}
           {operationNotice ? <strong className={`is-${operationNotice.tone}`}>{operationNotice.message}</strong> : null}
           {!operationNotice && snapshot.warning ? <strong>{snapshot.warning}</strong> : null}
-          <small>{operationBusy ? `${operationBusy.toUpperCase()} IN PROGRESS` : transferActive ? "BACKGROUND TRANSFER ACTIVE · CANCELLATION SAFE" : "LOCAL FILESYSTEM · READ / WRITE · RECYCLE SAFE"}</small>
+          <small>{operationBusy
+            ? t("explorer.status.operationInProgress", { operation: t(operationBusy) })
+            : transferActive
+              ? t("explorer.status.transferActive")
+              : t("explorer.status.filesystemReady")}</small>
         </footer>
 
         <ExplorerTransferPanel
           transfer={transfer}
           onCancel={cancelTransfer}
+          t={t}
           onDismiss={() => {
             if (transfer) dismissedTransfersRef.current.add(transfer.jobId);
             setTransfer(null);
@@ -1992,6 +2209,7 @@ export function FileExplorerWindow({
             busy={Boolean(operationBusy)}
             onCancel={() => setPendingTransfer(null)}
             onChoose={(policy) => startTransfer(pendingTransfer, policy)}
+            t={t}
           />
         ) : null}
 
@@ -2002,6 +2220,7 @@ export function FileExplorerWindow({
             busy={Boolean(operationBusy)}
             onCancel={() => setCommandDialog(null)}
             onConfirm={confirmCommand}
+            t={t}
           />
         ) : null}
       </section>

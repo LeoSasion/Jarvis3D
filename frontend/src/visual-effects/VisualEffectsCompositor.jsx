@@ -3,8 +3,8 @@ import { publishVisualEffectsRenderPlan } from "./visual-effects-runtime-state.j
 import "./visual-effects.css";
 
 const STATIC_LAYERS = Object.freeze({
-  scanlines: "repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgb(245 241 233 / 2.2%) 2.5px, transparent 3px, transparent 4px)",
-  vignette: "radial-gradient(ellipse at center, transparent 58%, rgb(0 0 0 / 4%) 78%, rgb(0 0 0 / 18%) 100%)",
+  scanlines: "repeating-linear-gradient(to bottom, transparent 0, transparent 2px, color-mix(in srgb, var(--shell-effect-contrast) 2.2%, transparent) 2.5px, transparent 3px, transparent 4px)",
+  vignette: "radial-gradient(ellipse at center, transparent 58%, color-mix(in srgb, var(--shell-effect-shadow) 4%, transparent) 78%, color-mix(in srgb, var(--shell-effect-shadow) 18%, transparent) 100%)",
 });
 
 function getStaticBackground(staticEffects) {

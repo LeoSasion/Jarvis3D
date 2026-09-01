@@ -9,10 +9,6 @@ function normalizeNativeFlyoutText(value, fallback, maximumLength) {
   return (normalized || fallback).slice(0, maximumLength);
 }
 
-function getWindowStateLabel(window) {
-  return window?.active ? "ACTIVE" : window?.minimized ? "MINIMIZED" : "READY";
-}
-
 function createTaskbarOverflowItem(item) {
   const windows = Array.isArray(item?.windows) ? item.windows : [];
   const window = item?.selectedWindow ?? windows[0] ?? null;
@@ -20,11 +16,6 @@ function createTaskbarOverflowItem(item) {
     itemId: normalizeNativeFlyoutText(item?.id, "application", 256),
     windowId: typeof window?.windowId === "string" ? window.windowId.slice(0, 256) : null,
     label: normalizeNativeFlyoutText(item?.label, "Application", 128),
-    meta: window?.internalWindowId
-      ? `INTERNAL WINDOW · ${getWindowStateLabel(window)}`
-      : window
-        ? `${windows.length > 1 ? `${windows.length} WINDOWS · ` : ""}${getWindowStateLabel(window)}`
-      : item?.isPinned ? "PINNED APPLICATION" : "APPLICATION",
   };
 }
 
@@ -33,7 +24,6 @@ function createInternalWindowItem(item, window) {
     itemId: normalizeNativeFlyoutText(item?.id, "application", 256),
     windowId: typeof window?.windowId === "string" ? window.windowId.slice(0, 256) : null,
     label: normalizeNativeFlyoutText(window?.title ?? item?.label, "Application", 128),
-    meta: `INTERNAL WINDOW · ${getWindowStateLabel(window)}`,
   };
 }
 
@@ -103,6 +93,5 @@ export function getTaskbarOverflowSummary(entries, visibleEntries = entries) {
     visible,
     running,
     pinned,
-    label: `${visible === source.length ? visible : `${visible}/${source.length}`} APPS · ${running} RUNNING · ${pinned} PINNED`,
   });
 }

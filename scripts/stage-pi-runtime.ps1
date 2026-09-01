@@ -885,7 +885,7 @@ $Destination = Resolve-RepositoryPath -Path $Destination
 Assert-NotRootPath -Path $Destination -Label 'Pi runtime destination'
 
 if (-not $PSBoundParameters.ContainsKey('CacheDirectory')) {
-    $CacheDirectory = Join-Path $repositoryRoot "artifacts\vendor\pi\$($manifest.version)"
+    $CacheDirectory = ''
 }
 $cacheEnabled = -not [string]::IsNullOrWhiteSpace($CacheDirectory)
 if ($cacheEnabled) {

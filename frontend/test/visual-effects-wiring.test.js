@@ -44,6 +44,10 @@ test("disabled effects stay unmounted and the backend remains conditionally load
   assert.match(css, /contain: strict/u);
   assert.match(css, /z-index: 200/u);
   assert.doesNotMatch(css, /255 106 0/u);
+  assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b|(?:rgb|rgba|hsl|hsla)\s*\(/iu);
+  assert.doesNotMatch(compositor, /#[0-9a-f]{3,8}\b|(?:rgb|rgba|hsl|hsla)\s*\(/iu);
+  assert.match(css, /var\(--shell-effect-(?:contrast|grain|shadow)\)/u);
+  assert.match(compositor, /var\(--shell-effect-(?:contrast|shadow)\)/u);
   assert.doesNotMatch(css, /filter:/u);
   assert.doesNotMatch(css, /backdrop-filter:/u);
 });
@@ -70,12 +74,13 @@ test("optional effects settings are isolated from the functional settings chunk"
     readSource("components/ShellPanels.jsx"),
   ]);
 
-  assert.match(settings, /Turning this off unmounts every effect layer/u);
+  assert.match(settings, /t\("visualEffects\.master\.detail"\)/u);
   assert.doesNotMatch(settings, /Bloom|Ghost|Chromatic|Curvature|Distortion/u);
   assert.doesNotMatch(settings, /\b(?:COMPOSITOR|PASSES?)\b/u);
   assert.match(settings, /getVisualEffectsRuntimeSnapshot/u);
   assert.match(panels, /lazy\(\(\) => import\("\.\.\/visual-effects\/VisualEffectsSettings\.jsx"\)/u);
-  assert.match(panels, /<OptionalSettingsBoundary>/u);
+  assert.match(panels, /<OptionalSettingsBoundary\s+fallbackMessage=/u);
+  assert.match(panels, /settings\.interface\.effects\.unavailable/u);
   assert.match(panels, /await import\("\.\.\/visual-effects\/visual-effects-system\.js"\)/u);
   assert.doesNotMatch(panels, /import \{ VisualEffectsSettings \}/u);
 });

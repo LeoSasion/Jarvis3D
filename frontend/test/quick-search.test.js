@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { TRANSLATION_DICTIONARIES } from "../src/i18n/translations.js";
 import {
   createQuickSearchIndex,
   getQuickSearchScopeShortcut,
   isQuickSearchToggleShortcut,
   normalizeSearchText,
   parseQuickSearchQuery,
+  quickSearchScopes,
   searchQuickIndex,
   segmentSearchMatch,
 } from "../src/quick-search.js";
@@ -43,6 +45,20 @@ const catalog = {
   }],
 };
 
+test("Quick Search scopes expose semantic translation keys instead of English copy", () => {
+  assert.equal(quickSearchScopes.length, 5);
+  for (const scope of quickSearchScopes) {
+    assert.match(scope.labelKey, /^quickSearch\.scope\.[a-z]+\.label$/u);
+    assert.match(scope.detailKey, /^quickSearch\.scope\.[a-z]+\.detail$/u);
+    assert.equal(Object.hasOwn(scope, "label"), false);
+    assert.equal(Object.hasOwn(scope, "detail"), false);
+    for (const language of ["en-US", "zh-CN"]) {
+      assert.ok(Object.hasOwn(TRANSLATION_DICTIONARIES[language], scope.labelKey));
+      assert.ok(Object.hasOwn(TRANSLATION_DICTIONARIES[language], scope.detailKey));
+    }
+  }
+});
+
 test("quick search normalizes full-width text and keeps every result set bounded", () => {
   const index = createQuickSearchIndex(catalog);
   const results = searchQuickIndex([
@@ -57,6 +73,27 @@ test("quick search normalizes full-width text and keeps every result set bounded
   assert.equal(normalizeSearchText(" ＮＥＴＷＯＲＫ　设置 "), "network 设置");
   assert.equal(results.length, 9);
   assert.equal(results[0].label, "Notepad");
+});
+
+test("Quick Search label ties follow the selected UI language", () => {
+  const index = ["中", "阿", "A"].map((label) => ({
+    resultId: label,
+    label,
+    normalizedLabel: normalizeSearchText(label),
+    normalizedDetail: "",
+    searchText: normalizeSearchText(label),
+    priority: 1,
+    emptyPriority: 1,
+  }));
+
+  assert.deepEqual(
+    searchQuickIndex(index, "", undefined, "en-US").map(({ label }) => label),
+    ["A", "中", "阿"],
+  );
+  assert.deepEqual(
+    searchQuickIndex(index, "", undefined, "zh-CN").map(({ label }) => label),
+    ["阿", "中", "A"],
+  );
 });
 
 test("search match segments preserve labels and merge overlapping query tokens", () => {

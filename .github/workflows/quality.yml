@@ -22,6 +22,7 @@ jobs:
       - run: npm run format:check
       - run: npm test
       - run: npm run build
+      - run: ..\scripts\test-frontend-runtime-licenses.ps1
 
   host:
     runs-on: windows-latest
@@ -35,4 +36,6 @@ jobs:
       - run: dotnet restore .\host\Jarvis.Host.sln --locked-mode
       - run: dotnet build .\host\Jarvis.Host.sln -c Release --no-restore
       - run: dotnet test .\host\Jarvis.Host.sln -c Release --no-build
+      - name: Test Pi staging safety (synthetic only)
+        run: .\scripts\test-pi-runtime-staging.ps1
       - run: git diff --check

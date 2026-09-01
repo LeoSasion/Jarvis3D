@@ -37,7 +37,7 @@ export function createWindowsPlatform(webview) {
     if (message.id && pendingRequests.has(message.id)) {
       const pending = pendingRequests.get(message.id);
       pendingRequests.delete(message.id);
-      window.clearTimeout(pending.timeout);
+      if (pending.timeout !== null) window.clearTimeout(pending.timeout);
       if (message.ok) pending.resolve(message.result);
       else pending.reject(toBridgeError(message.error, pending.method));
       return;
@@ -52,16 +52,18 @@ export function createWindowsPlatform(webview) {
 
   const request = (method, params = {}, timeoutMs = DEFAULT_TIMEOUT_MS) => new Promise((resolve, reject) => {
     const id = `jarvis-${Date.now()}-${++requestSequence}`;
-    const timeout = window.setTimeout(() => {
-      pendingRequests.delete(id);
-      reject(toBridgeError({ code: "TIMEOUT", message: `${method} timed out` }, method));
-    }, timeoutMs);
+    const timeout = Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? window.setTimeout(() => {
+          pendingRequests.delete(id);
+          reject(toBridgeError({ code: "TIMEOUT", message: `${method} timed out` }, method));
+        }, timeoutMs)
+      : null;
 
     pendingRequests.set(id, { method, resolve, reject, timeout });
     try {
       webview.postMessage({ id, method, params });
     } catch (error) {
-      window.clearTimeout(timeout);
+      if (timeout !== null) window.clearTimeout(timeout);
       pendingRequests.delete(id);
       reject(toBridgeError(error, method));
     }
@@ -113,6 +115,16 @@ export function createWindowsPlatform(webview) {
     notifications: {
       getState: () => request("notifications.getState"),
       requestAccess: () => request("notifications.requestAccess"),
+    },
+    knowledgeGraph: {
+      getDefaultSource: () => request("knowledgeGraph.getDefaultSource", {}, 30_000),
+      getDefaultManifest: (options = {}) => request(
+        "knowledgeGraph.getDefaultManifest",
+        options.force ? { force: true } : {},
+        30_000,
+      ),
+      getDefaultChunk: (params) => request("knowledgeGraph.getDefaultChunk", params, 30_000),
+      chooseVault: () => request("knowledgeGraph.chooseVault", {}, null),
     },
     explorer: {
       browse: (path = null) => request("explorer.browse", { path }),

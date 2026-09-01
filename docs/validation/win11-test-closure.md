@@ -19,7 +19,8 @@ Current host:
 
 ## Safety boundary
 
-- Preserve the two user-owned `assets/archive` changes.
+- Preserve the two user-owned Explorer composition references now kept under
+  `docs/design/references/`.
 - Keep every live native test bounded by a timeout and an explicit recovery
   path.
 - Capture evidence, then immediately close JARVIS, restore the native taskbar,

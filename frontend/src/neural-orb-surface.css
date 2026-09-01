@@ -1,0 +1,27 @@
+html[data-surface="orb"],
+html[data-surface="orb"] body,
+html[data-surface="orb"] #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--void);
+}
+
+.neural-orb-surface,
+.neural-orb-surface__frame {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--void);
+}
+
+.neural-orb-surface {
+  isolation: isolate;
+}
+
+.neural-orb-surface__fallback {
+  position: absolute;
+  inset: 0;
+  background: var(--void);
+}

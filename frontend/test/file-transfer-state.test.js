@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canReplaceAllConflicts,
-  getTransferSummary,
   isTransferTerminal,
   normalizeTransferPreflight,
   normalizeTransferSnapshot,
@@ -52,7 +51,7 @@ test("normalizes transfer progress and clamps invalid percentages", () => {
   assert.equal(isTransferTerminal(transfer.status), false);
 });
 
-test("summarizes all terminal states without hiding skipped items", () => {
+test("recognizes terminal transfer states", () => {
   const completed = normalizeTransferSnapshot({
     jobId: "job-2",
     status: "completed",
@@ -60,15 +59,16 @@ test("summarizes all terminal states without hiding skipped items", () => {
     skippedItems: 2,
     result: {},
   });
-  const failed = normalizeTransferSnapshot({
-    jobId: "job-3",
-    status: "failed",
-    error: "Disk unavailable",
-    result: {},
-  });
-
-  assert.equal(getTransferSummary(completed), "4 completed · 2 skipped");
-  assert.equal(getTransferSummary(failed), "Disk unavailable");
   assert.equal(isTransferTerminal(completed.status), true);
   assert.equal(isTransferTerminal("cancelled"), true);
+  assert.equal(isTransferTerminal("transferring"), false);
+});
+
+test("missing Host failure text remains empty for the localized view fallback", () => {
+  const transfer = normalizeTransferSnapshot({
+    status: "failed",
+    result: { failures: [{ code: "TRANSFER_FAILED" }] },
+  });
+
+  assert.equal(transfer.result.failures[0].message, null);
 });

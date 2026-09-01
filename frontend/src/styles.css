@@ -176,7 +176,6 @@ input:focus-visible {
 }
 
 .jarvis-taskbar-surface .taskbar-start,
-.jarvis-taskbar-surface .taskbar-search,
 .jarvis-taskbar-surface .taskbar-start button,
 .jarvis-taskbar-surface .system-tray button {
   height: 100%;
@@ -222,57 +221,6 @@ input:focus-visible {
     radial-gradient(circle at 50% 48%, rgba(0, 91, 184, 0.13), transparent 42%),
     linear-gradient(115deg, #01040a, #020914 46%, #01040a);
   isolation: isolate;
-}
-
-.window-switcher-field {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  opacity: 0.62;
-  background: transparent;
-}
-
-.window-switcher-field::before,
-.window-switcher-field::after {
-  position: absolute;
-  top: 50%;
-  width: 32%;
-  height: 1px;
-  content: "";
-  background: linear-gradient(90deg, transparent, rgba(59, 193, 255, 0.55));
-}
-
-.window-switcher-field::before {
-  left: 0;
-}
-
-.window-switcher-field::after {
-  right: 0;
-  transform: rotate(180deg);
-}
-
-.window-switcher-field > span {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  border: 1px solid rgba(19, 113, 175, 0.17);
-  transform: translate(-50%, -50%) rotate(45deg);
-}
-
-.window-switcher-field > span:nth-child(1) {
-  width: 170px;
-  height: 170px;
-}
-
-.window-switcher-field > span:nth-child(2) {
-  width: 230px;
-  height: 230px;
-}
-
-.window-switcher-field > span:nth-child(3) {
-  width: 290px;
-  height: 290px;
-  border-style: dashed;
 }
 
 .window-switcher-chassis {
@@ -356,8 +304,7 @@ input:focus-visible {
   gap: 3px;
 }
 
-.window-switcher-brand span,
-.window-switcher-selected span {
+.window-switcher-brand span {
   color: var(--energy-ice);
   font-family: Bahnschrift, "Segoe UI", sans-serif;
   font-size: 10px;
@@ -370,26 +317,6 @@ input:focus-visible {
   font-family: Consolas, monospace;
   font-size: 7px;
   letter-spacing: 0.08em;
-}
-
-.window-switcher-counter {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  font-family: Consolas, monospace;
-}
-
-.window-switcher-counter strong {
-  color: var(--glow-core);
-  font-size: 20px;
-  font-weight: 400;
-  text-shadow: 0 0 8px var(--glow-halo);
-}
-
-.window-switcher-counter span,
-.window-switcher-counter small {
-  color: #41637b;
-  font-size: 10px;
 }
 
 .window-switcher-rail {
@@ -465,17 +392,6 @@ input:focus-visible {
 .window-switcher-card.is-selected::before {
   background: linear-gradient(90deg, transparent, var(--glow-core), var(--energy-cyan), transparent);
   box-shadow: 0 0 7px var(--glow-halo);
-}
-
-.window-switcher-card-index {
-  justify-self: end;
-  color: #486b83;
-  font-family: Consolas, monospace;
-  font-size: 8px;
-}
-
-.window-switcher-card.is-selected .window-switcher-card-index {
-  color: var(--energy-cyan);
 }
 
 .window-switcher-icon {
@@ -557,79 +473,12 @@ input:focus-visible {
   color: #6fa8c7;
 }
 
-.window-switcher-corners::before,
-.window-switcher-corners::after {
-  position: absolute;
-  width: 9px;
-  height: 9px;
-  content: "";
-  opacity: 0;
-}
-
-.window-switcher-corners::before {
-  top: 5px;
-  left: 5px;
-  border-top: 1px solid var(--glow-core);
-  border-left: 1px solid var(--glow-core);
-}
-
-.window-switcher-corners::after {
-  right: 5px;
-  bottom: 5px;
-  border-right: 1px solid var(--energy-cyan);
-  border-bottom: 1px solid var(--energy-cyan);
-}
-
-.window-switcher-card.is-selected .window-switcher-corners::before,
-.window-switcher-card.is-selected .window-switcher-corners::after {
-  opacity: 1;
-}
-
 .window-switcher-footer {
   display: grid;
   grid-template-columns: minmax(170px, 1fr) auto minmax(290px, 1fr);
   padding: 0 22px;
   border-top: 1px solid rgba(13, 69, 105, 0.72);
   gap: 20px;
-}
-
-.window-switcher-selected {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
-.window-switcher-selected span {
-  color: #4c7792;
-  font-size: 7px;
-}
-
-.window-switcher-selected strong {
-  overflow: hidden;
-  color: #a7dff3;
-  font-size: 9px;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.window-switcher-progress {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-}
-
-.window-switcher-progress span {
-  width: 12px;
-  height: 2px;
-  background: #123a56;
-}
-
-.window-switcher-progress span.is-current {
-  width: 25px;
-  background: linear-gradient(90deg, var(--energy-blue), var(--glow-core));
-  box-shadow: 0 0 7px var(--glow-halo);
 }
 
 .window-switcher-instructions {
@@ -680,8 +529,7 @@ input:focus-visible {
     flex-basis: 190px;
   }
 
-  .window-switcher-instructions span,
-  .window-switcher-selected {
+  .window-switcher-instructions span {
     display: none;
   }
 
@@ -816,20 +664,8 @@ button.top-cluster:hover:not(:disabled) {
   letter-spacing: 0.2em;
 }
 
-.brand-edition {
+.search-cluster {
   color: var(--energy-cyan);
-  font-size: 9px;
-  letter-spacing: 0.32em;
-}
-
-.mic-cluster {
-  color: var(--energy-cyan);
-}
-
-.mic-cluster .waveform {
-  flex: 1;
-  min-width: 54px;
-  height: 23px;
 }
 
 .stop-cluster {
@@ -852,48 +688,6 @@ button.top-cluster:hover:not(:disabled) {
   border-radius: 50%;
   font: 600 10px/1 "Cascadia Mono", Consolas, monospace;
   box-shadow: 0 0 6px rgba(231, 73, 49, 0.28);
-}
-
-.date-cluster {
-  justify-content: center;
-  font-family: "Segoe UI", sans-serif;
-  color: #8795a3;
-}
-
-.system-cluster {
-  justify-content: flex-end;
-  padding-right: 22px;
-  border-right: 0;
-  gap: 13px;
-}
-
-.system-cluster time {
-  color: var(--text-1);
-  font: 20px/1 Bahnschrift, "Segoe UI", sans-serif;
-  letter-spacing: 0.04em;
-}
-
-.system-cluster > svg,
-.system-cluster .battery-copy svg,
-.system-cluster button svg {
-  width: 17px;
-  height: 17px;
-}
-
-.battery-copy {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.system-cluster button {
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-2);
-  cursor: pointer;
 }
 
 .desktop-workspace {
@@ -1436,57 +1230,6 @@ button.hud-panel {
   min-height: 0;
 }
 
-.core-status-panel .hud-panel__body {
-  height: calc(100% - 29px);
-}
-
-.core-status {
-  height: 100%;
-  display: grid;
-  grid-template-columns: 34% minmax(0, 1fr);
-  column-gap: 8px;
-  align-items: center;
-  padding: 4px 15px 7px 0;
-}
-
-.core-status > img {
-  width: min(100%, 94px);
-  aspect-ratio: 1;
-  object-fit: contain;
-  justify-self: center;
-}
-
-.core-status__copy {
-  min-width: 0;
-  display: grid;
-  align-content: center;
-  gap: 4px;
-}
-
-.core-status__copy > span {
-  color: var(--text-2);
-  font: 10px/1 Bahnschrift, sans-serif;
-  letter-spacing: 0.1em;
-}
-
-.core-status__copy > strong {
-  color: var(--text-1);
-  font: 400 19px/1 Bahnschrift, sans-serif;
-  letter-spacing: 0.09em;
-}
-
-.core-status__copy > small {
-  color: var(--text-3);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-}
-
-.core-wave {
-  height: 22px;
-  color: var(--energy-cyan);
-}
-
-.waveform,
 .sparkline {
   display: block;
   width: 100%;
@@ -1749,41 +1492,6 @@ button.process-grid:hover {
   text-align: right;
 }
 
-.health-panel .hud-panel__body {
-  height: calc(100% - 29px);
-}
-
-.health-status {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 20px;
-}
-
-.health-status > svg {
-  width: 29px;
-  height: 29px;
-  color: var(--success);
-  filter: drop-shadow(0 0 4px rgba(144, 200, 120, 0.4));
-}
-
-.health-status > span {
-  display: grid;
-  gap: 3px;
-}
-
-.health-status strong {
-  color: var(--success);
-  font: 600 9px/1 Bahnschrift, sans-serif;
-  letter-spacing: 0.08em;
-}
-
-.health-status small {
-  color: #718079;
-  font-size: 8.5px;
-}
-
 .taskbar {
   --taskbar-leading-width: 352px;
   --taskbar-core-reserve: 116px;
@@ -1963,23 +1671,6 @@ button.process-grid:hover {
   filter: drop-shadow(var(--taskbar-glow-active));
 }
 
-.taskbar-search {
-  height: var(--taskbar-control);
-  display: flex;
-  align-items: center;
-  gap: var(--taskbar-gap);
-  padding: 0 16px;
-  color: var(--taskbar-text-dim);
-  text-align: left;
-}
-
-.taskbar-search svg {
-  width: var(--taskbar-icon);
-  height: var(--taskbar-icon);
-  color: var(--taskbar-text);
-}
-
-.taskbar-search span,
 .taskbar-apps span {
   font-size: 11px;
   letter-spacing: 0.01em;
@@ -4954,8 +4645,7 @@ button.process-grid:hover {
   display: flex;
   align-items: flex-end;
   padding: 18px 22px;
-  background: linear-gradient(180deg, transparent 52%, rgba(0, 3, 8, 0.64));
-  animation: shell-panel-layer-in 140ms ease-out;
+  background: var(--shell-transient-backdrop, transparent);
 }
 
 .shell-panel-layer.is-quick-settings,
@@ -4969,11 +4659,6 @@ button.process-grid:hover {
 .shell-panel-layer.is-settings {
   top: calc(var(--top-height) + 8px);
   padding-top: 8px;
-}
-
-@keyframes shell-panel-layer-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 .shell-panel {
@@ -7777,8 +7462,7 @@ button.process-grid:hover {
   z-index: 80;
   display: grid;
   place-items: center;
-  background-color: rgba(0, 3, 8, 0.7);
-  animation: overlay-in 180ms ease-out;
+  background-color: var(--shell-transient-backdrop, transparent);
 }
 
 .command-palette.is-busy .command-results > button,
@@ -8146,38 +7830,6 @@ button.process-grid:hover {
   color: #3d708e;
 }
 
-.system-toast {
-  position: fixed;
-  z-index: 70;
-  right: 30px;
-  bottom: calc(var(--taskbar-height) + 26px);
-  max-width: 380px;
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 16px 8px 9px;
-  border: 1px solid rgba(34, 207, 255, 0.58);
-  clip-path: polygon(0 8px, 8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
-  background-color: rgba(2, 12, 21, 0.98);
-  color: #b8c5cf;
-  font-size: 12px;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(12px);
-  transition: opacity 180ms ease, transform 180ms ease;
-}
-
-.system-toast.is-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.system-toast img {
-  width: 36px;
-  height: 36px;
-}
-
 .desktop-only-notice {
   display: none;
 }
@@ -8204,10 +7856,6 @@ button.process-grid:hover {
 
   .brand-name {
     font-size: 14px;
-  }
-
-  .brand-edition {
-    font-size: 8px;
   }
 
   .desktop-workspace {
@@ -8266,16 +7914,10 @@ button.process-grid:hover {
 }
 
 @media (max-width: 1260px) {
-  .date-cluster {
-    display: none;
-  }
-
   .topbar {
     grid-template-columns: minmax(205px, 1.12fr) minmax(155px, 0.9fr) minmax(140px, 0.72fr) minmax(175px, 0.95fr) minmax(140px, 0.72fr) minmax(190px, 0.98fr);
   }
 
-  .brand-edition,
-  .secure-cluster span,
   .taskbar-apps span {
     display: none;
   }
@@ -8349,10 +7991,8 @@ button.process-grid:hover {
   }
 
   .hud-panel__body,
-  .core-status-panel .hud-panel__body,
   .resources-panel .hud-panel__body,
-  .notifications-panel .hud-panel__body,
-  .health-panel .hud-panel__body {
+  .notifications-panel .hud-panel__body {
     height: calc(100% - 25px);
   }
 
@@ -8396,12 +8036,6 @@ button.process-grid:hover {
       8px;
   }
 
-  .jarvis-taskbar-surface .taskbar-search {
-    justify-content: center;
-    padding-inline: 0;
-  }
-
-  .jarvis-taskbar-surface .taskbar-search span,
   .jarvis-taskbar-surface .system-tray .tray-clock small {
     display: none;
   }

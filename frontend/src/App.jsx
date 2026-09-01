@@ -19,7 +19,10 @@ import {
   selectFeedbackNotice,
 } from "./feedback-model.js";
 import { useAgentSession } from "./hooks/useAgentSession.js";
+import { useDefaultKnowledgeGraph } from "./graph/useDefaultKnowledgeGraph.js";
+import { useReducedMotion } from "./hooks/useReducedMotion.js";
 import { useWorkspaceManager } from "./hooks/useWorkspaceManager.js";
+import { translate, useLanguage } from "./i18n/language-system.js";
 import { platform } from "./platform/index.js";
 import { isQuickSearchToggleShortcut } from "./quick-search.js";
 import { isHelpShortcut } from "./shell-shortcuts.js";
@@ -30,6 +33,7 @@ import {
   planInternalShowDesktopToggle,
 } from "./show-desktop-model.js";
 import { subscribeWorkspaceCommands } from "./workspace-runtime-channel.js";
+import { useTransientPresence } from "./transient-presence.js";
 import {
   getLinkedWorkspaceVariant,
   getLinkedPaneToggleTarget,
@@ -53,6 +57,7 @@ const BootSequence = lazy(() => import("./components/BootSequence.jsx")
   .then((module) => ({ default: module.BootSequence })));
 
 export function App() {
+  const { t } = useLanguage();
   const hasExternalTaskbar = new URLSearchParams(window.location.search).get("taskbar") === "external";
   const {
     state: workspaceState,
@@ -68,11 +73,15 @@ export function App() {
     cycle: cycleWorkspaceWindows,
   } = useWorkspaceManager();
   const agentSession = useAgentSession();
+  const defaultKnowledgeGraph = useDefaultKnowledgeGraph();
+  const reducedMotion = useReducedMotion();
   const agentChatAvailable = canUseAgentChat(agentSession.state);
   const [selectedShortcut, setSelectedShortcut] = useState(null);
   const [activeApp, setActiveApp] = useState("builtin:explorer");
   const [commandOpen, setCommandOpen] = useState(false);
   const [shellPanel, setShellPanel] = useState(null);
+  const shellPanelPresence = useTransientPresence(shellPanel, { reducedMotion });
+  const commandPresence = useTransientPresence(commandOpen ? "command" : null, { reducedMotion });
   const [explorerRequest, setExplorerRequest] = useState({ path: null, sequence: 0 });
   const [explorerSelection, setExplorerSelection] = useState([]);
   const [graphSource, setGraphSource] = useState(null);
@@ -117,8 +126,8 @@ export function App() {
   const hasInlineNotice = Boolean(agentInlineNotice || explorerInlineNotice);
   const linkedWorkspaceAnnouncement = workspaceLayoutMode === "explorer-agent-linked"
     ? workspaceState.activeId === "agent"
-      ? "Linked workspace. Agent pane active."
-      : "Linked workspace. Explorer pane active. Agent remains linked."
+      ? t("workspace.linked.agentActive")
+      : t("workspace.linked.explorerActive")
     : "";
   const handleToggleWorkspaceMaximize = useCallback((id) => {
     if (isDockedWindow(id, workspaceLayoutMode)) return;
@@ -199,9 +208,9 @@ export function App() {
       showToast({
         severity: "error",
         source: "taskbar",
-        title: "Unable to show window preview",
+        title: translate("feedback.taskbar.previewFailed"),
         detail: error.message,
-        actions: [{ label: "RETRY", onInvoke: () => showTaskbarFlyout(options) }],
+        actions: [{ label: translate("common.action.retry"), onInvoke: () => showTaskbarFlyout(options) }],
       });
     }
   }, [showToast]);
@@ -211,20 +220,20 @@ export function App() {
       const internalWindowId = windowId.slice("jarvis:".length);
       if (workspaceState.windows[internalWindowId]) {
         closeWorkspaceWindow(internalWindowId);
-        showToast("JARVIS window closed");
+        showToast(translate("feedback.window.closed"));
       }
       return;
     }
     try {
       await platform.taskbar.closeWindow(windowId);
-      showToast("Window close requested");
+      showToast(translate("feedback.window.closeRequested"));
     } catch (error) {
       showToast({
         severity: "error",
         source: "taskbar",
-        title: "Unable to close window",
+        title: translate("feedback.window.closeFailed"),
         detail: error.message,
-        actions: [{ label: "RETRY", onInvoke: () => closeTaskbarWindow(windowId) }],
+        actions: [{ label: translate("common.action.retry"), onInvoke: () => closeTaskbarWindow(windowId) }],
       });
     }
   }, [closeWorkspaceWindow, showToast, workspaceState.windows]);
@@ -257,23 +266,28 @@ export function App() {
       showToast({
         severity: "warning",
         source: "agent",
-        title: "Agent chat unavailable",
-        detail: "The active Agent Provider is unavailable or does not advertise chat capability.",
+        title: translate("feedback.agent.chatUnavailable.title"),
+        detail: translate("feedback.agent.chatUnavailable.detail"),
       });
       return;
     }
     if (["submitting", "running"].includes(agentSession.context.phase)) {
       await openAgent();
-      showToast("Agent context is locked while the current response is running");
+      showToast(translate("feedback.agent.contextLocked"));
       return;
     }
     const stagedItems = agentSession.addContextItems(entries);
     if (!stagedItems.length) {
-      showToast("Select an Explorer item before linking the Agent");
+      showToast(translate("feedback.agent.selectExplorerItem"));
       return;
     }
     await openAgent();
-    showToast(`${stagedItems.length} Explorer reference${stagedItems.length === 1 ? "" : "s"} linked to the Agent`);
+    showToast(translate(
+      stagedItems.length === 1
+        ? "feedback.agent.explorerReferenceLinked.one"
+        : "feedback.agent.explorerReferenceLinked.other",
+      { count: stagedItems.length },
+    ));
   }, [
     agentChatAvailable,
     agentSession.addContextItems,
@@ -288,23 +302,23 @@ export function App() {
       showToast({
         severity: "warning",
         source: "agent",
-        title: "Agent chat unavailable",
-        detail: "The active Agent Provider is unavailable or does not advertise chat capability.",
+        title: translate("feedback.agent.chatUnavailable.title"),
+        detail: translate("feedback.agent.chatUnavailable.detail"),
       });
       return;
     }
     if (["submitting", "running"].includes(agentSession.context.phase)) {
       await openAgent();
-      showToast("Agent context is locked while the current response is running");
+      showToast(translate("feedback.agent.contextLocked"));
       return;
     }
     const stagedItems = agentSession.addContextItems(entry ? [entry] : []);
     if (!stagedItems.length) {
-      showToast("Select a local graph node before linking the Agent");
+      showToast(translate("feedback.agent.selectGraphNode"));
       return;
     }
     await openAgent();
-    showToast(`${stagedItems[0].name} linked from the local graph · metadata only`);
+    showToast(translate("feedback.agent.graphNodeLinked", { name: stagedItems[0].name }));
   }, [
     agentChatAvailable,
     agentSession.addContextItems,
@@ -314,13 +328,13 @@ export function App() {
   ]);
 
   const clearLinkedAgentContext = useCallback(() => {
-    if (agentSession.clearContext()) showToast("Explorer reference unlinked from the Agent");
+    if (agentSession.clearContext()) showToast(translate("feedback.agent.referenceUnlinked"));
   }, [agentSession.clearContext, showToast]);
 
   const reuseLinkedAgentResult = useCallback(() => {
     agentSession.setDraft((current) => current.trim()
       ? current
-      : "Refine the completed response into a concise, actionable next step.");
+      : translate("agent.draft.refineCompletedResponse"));
   }, [agentSession.setDraft]);
 
   useEffect(() => {
@@ -359,6 +373,7 @@ export function App() {
       }
       if (isQuickSearchToggleShortcut(event)) {
         event.preventDefault();
+        setShellPanel(null);
         setCommandOpen((current) => !current);
         return;
       }
@@ -464,24 +479,24 @@ export function App() {
     setActiveApp(label.toLowerCase().replaceAll(" ", "-"));
     if (shortcut.id === "terminal" && !shortcut.path) {
       openTerminal();
-      showToast("ConPTY terminal ready");
+      showToast(translate("feedback.terminal.ready"));
       return;
     }
     if (shortcut.kind === "directory" && shortcut.path) {
       openExplorer(shortcut.path);
-      showToast(`Browsing ${label}`);
+      showToast(translate("feedback.explorer.browsing", { label }));
       return;
     }
     try {
       await platform.shell.open(shortcut.target ?? shortcut.path ?? label);
-      showToast(`Opening ${label} with Windows`);
+      showToast(translate("feedback.shell.openingWithWindows", { label }));
     } catch (error) {
       showToast({
         severity: "error",
         source: "desktop",
-        title: `Unable to open ${label}`,
+        title: translate("feedback.shell.openFailed", { label }),
         detail: error.message,
-        actions: [{ label: "RETRY", onInvoke: () => openShortcut(shortcut) }],
+        actions: [{ label: translate("common.action.retry"), onInvoke: () => openShortcut(shortcut) }],
       });
     }
   }, [openExplorer, openTerminal, showToast]);
@@ -490,14 +505,14 @@ export function App() {
     if (!shortcut.path) return;
     try {
       await platform.explorer.openInWindows(shortcut.path);
-      showToast(`Located ${shortcut.label} in Windows File Explorer`);
+      showToast(translate("feedback.explorer.locatedInWindows", { label: shortcut.label }));
     } catch (error) {
       showToast({
         severity: "error",
         source: "desktop",
-        title: `Unable to locate ${shortcut.label}`,
+        title: translate("feedback.explorer.locateFailed", { label: shortcut.label }),
         detail: error.message,
-        actions: [{ label: "RETRY", onInvoke: () => openShortcutLocation(shortcut) }],
+        actions: [{ label: translate("common.action.retry"), onInvoke: () => openShortcutLocation(shortcut) }],
       });
     }
   }, [showToast]);
@@ -506,14 +521,14 @@ export function App() {
     if (!shortcut.path) return;
     try {
       await navigator.clipboard.writeText(shortcut.path);
-      showToast("Path copied");
+      showToast(translate("feedback.path.copied"));
     } catch (error) {
       showToast({
         severity: "error",
         source: "desktop",
-        title: "Unable to copy path",
+        title: translate("feedback.path.copyFailed"),
         detail: error.message,
-        actions: [{ label: "RETRY", onInvoke: () => copyShortcutPath(shortcut) }],
+        actions: [{ label: translate("common.action.retry"), onInvoke: () => copyShortcutPath(shortcut) }],
       });
     }
   }, [showToast]);
@@ -521,7 +536,7 @@ export function App() {
   const openDesktopSettings = useCallback(() => {
     setCommandOpen(false);
     setShellPanel("settings");
-    showToast("JARVIS runtime settings ready");
+    showToast(translate("feedback.settings.ready"));
   }, [showToast]);
 
   const inspect = useCallback((label) => {
@@ -553,15 +568,15 @@ export function App() {
       await platform.shell.openApplication(application.applicationId);
       recordRecentApplication(application.applicationId);
       showToast(platform.isNative
-        ? `Opening ${application.label}`
-        : `${application.label} launch requested`);
+        ? translate("feedback.shell.opening", { label: application.label })
+        : translate("feedback.shell.launchRequested", { label: application.label }));
     } catch (error) {
       showToast({
         severity: "error",
         source: "shell",
-        title: `Unable to open ${application.label}`,
+        title: translate("feedback.shell.openFailed", { label: application.label }),
         detail: error.message,
-        actions: [{ label: "RETRY", onInvoke: () => launchInstalledApplication(application) }],
+        actions: [{ label: translate("common.action.retry"), onInvoke: () => launchInstalledApplication(application) }],
       });
     }
   }, [showToast]);
@@ -574,8 +589,8 @@ export function App() {
       if (runningWindow?.internalWindowId) {
         toggleWorkspaceWindowFromTaskbar(runningWindow.internalWindowId);
         showToast(runningWindow.active && !runningWindow.minimized
-          ? `Minimizing ${item.label}`
-          : `Switching to ${item.label}`);
+          ? translate("feedback.window.minimizing", { label: item.label })
+          : translate("feedback.window.switching", { label: item.label }));
         return;
       }
       if (builtinId === "explorer") {
@@ -585,7 +600,7 @@ export function App() {
       if (builtinId === "jarvis-settings") {
         setCommandOpen(false);
         setShellPanel("settings");
-        showToast("JARVIS runtime settings ready");
+        showToast(translate("feedback.settings.ready"));
         return;
       }
       if (builtinId === "jarvis-help") {
@@ -595,15 +610,15 @@ export function App() {
       }
       if (builtinId === "terminal") {
         openTerminal();
-        showToast("ConPTY terminal ready");
+        showToast(translate("feedback.terminal.ready"));
         return;
       }
       if (runningWindow && !options.forceLaunch) {
         await platform.taskbar.toggleWindow(runningWindow.windowId);
         const appLabel = item.label ?? runningWindow.processName;
         showToast(runningWindow.active && !runningWindow.minimized
-          ? `Minimizing ${appLabel}`
-          : `Switching to ${appLabel}`);
+          ? translate("feedback.window.minimizing", { label: appLabel })
+          : translate("feedback.window.switching", { label: appLabel }));
         return;
       }
       if (item.kind === "installed" && item.application) {
@@ -613,16 +628,16 @@ export function App() {
       if (!item.pinnedApplication) return;
       await platform.shell.open(item.pinnedApplication.target);
       showToast(platform.isNative
-        ? `Opening ${item.label} with Windows`
-        : `${item.label} selected`);
+        ? translate("feedback.shell.openingWithWindows", { label: item.label })
+        : translate("feedback.shell.selected", { label: item.label }));
     } catch (error) {
       const appLabel = item.label ?? runningWindow?.processName ?? item.id;
       showToast({
         severity: "error",
         source: "taskbar",
-        title: `Unable to open ${appLabel}`,
+        title: translate("feedback.shell.openFailed", { label: appLabel }),
         detail: error.message,
-        actions: [{ label: "RETRY", onInvoke: () => handleAppClick(item, runningWindow, options) }],
+        actions: [{ label: translate("common.action.retry"), onInvoke: () => handleAppClick(item, runningWindow, options) }],
       });
     }
   }, [
@@ -657,25 +672,25 @@ export function App() {
       if (result.action === "shown") {
         setCommandOpen(false);
         setShellPanel(null);
-        showToast("Desktop shown");
+        showToast(translate("feedback.desktop.shown"));
       } else if (result.action === "restored") {
-        showToast("Previous windows restored");
+        showToast(translate("feedback.desktop.windowsRestored"));
       } else {
         showToast({
           severity: "warning",
           source: "taskbar",
-          title: "Some windows could not be restored",
-          detail: "Open Session Control to review the active shell state.",
-          actions: [{ label: "SESSION CONTROL", onInvoke: () => setShellPanel("session") }],
+          title: translate("feedback.desktop.partialRestore.title"),
+          detail: translate("feedback.desktop.partialRestore.detail"),
+          actions: [{ label: translate("common.action.sessionControl"), onInvoke: () => setShellPanel("session") }],
         });
       }
     } catch (error) {
       showToast({
         severity: "error",
         source: "taskbar",
-        title: "Unable to toggle desktop",
+        title: translate("feedback.desktop.toggleFailed"),
         detail: error.message,
-        actions: [{ label: "SESSION CONTROL", onInvoke: () => setShellPanel("session") }],
+        actions: [{ label: translate("common.action.sessionControl"), onInvoke: () => setShellPanel("session") }],
       });
     }
   }, [
@@ -707,12 +722,12 @@ export function App() {
     }
     if (target.toLowerCase() === "jarvis-settings:") {
       setShellPanel("settings");
-      showToast("JARVIS runtime settings ready");
+      showToast(translate("feedback.settings.ready"));
       return;
     }
     if (target.toLowerCase() === "jarvis-terminal:") {
       openTerminal();
-      showToast("ConPTY terminal ready");
+      showToast(translate("feedback.terminal.ready"));
       return;
     }
     setShellPanel(null);
@@ -722,14 +737,16 @@ export function App() {
     }
     try {
       await platform.shell.open(target);
-      showToast(platform.isNative ? `Opening ${label} with Windows` : `${label} launch requested`);
+      showToast(platform.isNative
+        ? translate("feedback.shell.openingWithWindows", { label })
+        : translate("feedback.shell.launchRequested", { label }));
     } catch (error) {
       showToast({
         severity: "error",
         source: "shell",
-        title: `Unable to open ${label}`,
+        title: translate("feedback.shell.openFailed", { label }),
         detail: error.message,
-        actions: [{ label: "RETRY", onInvoke: () => launchShellApp({ label, target }) }],
+        actions: [{ label: translate("common.action.retry"), onInvoke: () => launchShellApp({ label, target }) }],
       });
     }
   }, [openExplorer, openTerminal, showToast]);
@@ -738,21 +755,21 @@ export function App() {
     setShellPanel(null);
     try {
       await platform.taskbar.toggleWindow(window.windowId);
-      showToast(`Switching to ${window.title || window.processName}`);
+      showToast(translate("feedback.window.switching", { label: window.title || window.processName }));
     } catch (error) {
       showToast({
         severity: "error",
         source: "taskbar",
-        title: "Unable to switch window",
+        title: translate("feedback.window.switchFailed"),
         detail: error.message,
-        actions: [{ label: "RETRY", onInvoke: () => activateShellWindow(window) }],
+        actions: [{ label: translate("common.action.retry"), onInvoke: () => activateShellWindow(window) }],
       });
     }
   }, [showToast]);
 
   const exitToWindows = useCallback(async () => {
     if (!platform.isNative) {
-      showToast("Power controls are protected");
+      showToast(translate("feedback.session.powerProtected"));
       return;
     }
     try {
@@ -761,9 +778,9 @@ export function App() {
       showToast({
         severity: "error",
         source: "runtime",
-        title: "Unable to exit JARVIS",
+        title: translate("feedback.session.exitFailed"),
         detail: error.message,
-        actions: [{ label: "SESSION CONTROL", onInvoke: () => setShellPanel("session") }],
+        actions: [{ label: translate("common.action.sessionControl"), onInvoke: () => setShellPanel("session") }],
       });
     }
   }, [showToast]);
@@ -772,7 +789,9 @@ export function App() {
     setCommandOpen(false);
     if (result.kind === "window") {
       if (result.window.active && !result.window.minimized) {
-        showToast(`${result.window.title || result.window.processName} is already active`);
+        showToast(translate("feedback.window.alreadyActive", {
+          label: result.window.title || result.window.processName,
+        }));
         return;
       }
       void activateShellWindow(result.window);
@@ -790,7 +809,7 @@ export function App() {
       void launchShellApp({ label: result.label, target: result.target });
       return;
     }
-    showToast("This local search result is not available");
+    showToast(translate("feedback.search.resultUnavailable"));
   }, [
     activateShellWindow,
     launchInstalledApplication,
@@ -811,15 +830,14 @@ export function App() {
       id: "knowledge-graph-source-prompt",
       severity: "info",
       source: "desktop",
-      title: "Choose a verified local source",
-      detail: "Open a file or folder to begin local graph work. No source is connected until selection is explicit.",
+      title: translate("feedback.graph.chooseSource.title"),
+      detail: translate("feedback.graph.chooseSource.detail"),
     });
   }, [openExplorer, showToast]);
 
   return (
     <main className={[
       "jarvis-shell",
-      "is-mic-muted",
       hasExternalTaskbar ? "has-external-taskbar" : "",
       hasVisibleWorkspaceWindow ? "has-open-window" : "",
       `is-layout-${workspaceLayoutMode}`,
@@ -840,7 +858,7 @@ export function App() {
         onPower={openSessionPanel}
       />
 
-      <section className="desktop-workspace" aria-label="JARVIS desktop workspace">
+      <section className="desktop-workspace" aria-label={t("workspace.desktop.ariaLabel")}>
         <DesktopShortcuts
           selectedId={selectedShortcut}
           onSelect={setSelectedShortcut}
@@ -851,6 +869,7 @@ export function App() {
           onNotify={showDesktopFeedback}
         />
         <CoreStage
+          defaultGraphState={defaultKnowledgeGraph}
           graphSource={graphSource}
           graphSelection={explorerSelection}
           desktopOnly={graphLaunchpadHidden}
@@ -860,7 +879,7 @@ export function App() {
           onLinkGraphNode={linkKnowledgeGraphNodeToAgent}
           onKeepDesktop={() => {
             setGraphLaunchpadHidden(true);
-            showToast("Knowledge graph start options hidden for this session");
+            showToast(translate("feedback.graph.startOptionsHidden"));
           }}
           onRestoreLaunchpad={() => setGraphLaunchpadHidden(false)}
         />
@@ -1052,10 +1071,12 @@ export function App() {
         />
       )}
 
-      {shellPanel ? (
+      {shellPanelPresence.renderedValue ? (
         <Suspense fallback={null}>
           <ShellPanelLayer
-            panel={shellPanel}
+            panel={shellPanelPresence.renderedValue}
+            presenceState={shellPanelPresence.state}
+            onPresenceComplete={shellPanelPresence.complete}
             onClose={() => setShellPanel(null)}
             onOpenCommand={openCommand}
             onLaunch={launchShellApp}
@@ -1067,13 +1088,16 @@ export function App() {
             localFeedEvents={localFeedEvents}
             onClearLocalFeed={clearLocalFeed}
             onMarkLocalFeedRead={markLocalFeedRead}
+            graphSourceState={defaultKnowledgeGraph}
           />
         </Suspense>
       ) : null}
 
-      {commandOpen ? (
+      {commandPresence.renderedValue ? (
         <CommandOverlay
           open
+          presenceState={commandPresence.state}
+          onPresenceComplete={commandPresence.complete}
           onClose={() => setCommandOpen(false)}
           onExecute={executeQuickSearch}
         />
@@ -1087,8 +1111,8 @@ export function App() {
 
       <div className="desktop-only-notice" role="status">
         <JarvisMark />
-        <strong>JARVIS LOCAL VISUAL FRAME</strong>
-        <span>Desktop viewport required</span>
+        <strong>JARVIS DESKTOP</strong>
+        <span>{t("app.desktopOnly.viewportRequired")}</span>
       </div>
     </main>
   );

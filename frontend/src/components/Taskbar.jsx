@@ -13,6 +13,8 @@ import {
 } from "@fluentui/react-icons";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getAgentLauncherStatus, getAgentProviderLabel } from "../agent-provider-model.js";
+import { useLanguage } from "../i18n/language-system.js";
+import { formatClockPresentation } from "../i18n/locale-format.js";
 import {
   usePlatformClock,
   usePlatformKind,
@@ -35,7 +37,6 @@ import { quickLaunchItems } from "../quick-search-catalog.js";
 import { buildStartMenuApplications } from "../start-menu-model.js";
 import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
 import {
-  getTaskbarAccessibleLabel,
   getTaskbarKeyboardTarget,
 } from "../taskbar-accessibility-model.js";
 import {
@@ -60,6 +61,7 @@ import {
 } from "../taskbar-hover-preview.js";
 import { getTaskbarLayoutPlan, TASKBAR_ICON_SLOT_WIDTH } from "../taskbar-layout-model.js";
 import { getTaskbarFallbackMark } from "../taskbar-icon-model.js";
+import { localizeWorkspaceWindows } from "../workspace-window-labels.js";
 import { AgentGlyph } from "./VectorMarks.jsx";
 
 const processDisplayNames = {
@@ -246,12 +248,73 @@ function TaskbarAppIcon({ item }) {
     : <span className="taskbar-app-fallback-mark" aria-hidden="true">{getTaskbarFallbackMark(item)}</span>;
 }
 
-function getContextActionLabel(action, item) {
-  if (action === "launch") return item.windows.length > 0 ? "Open new instance" : "Open";
+function getContextActionLabel(action, item, t) {
+  if (action === "launch") return item.windows.length > 0
+    ? t("taskbar.action.openNewInstance")
+    : t("taskbar.action.open");
   if (action === "close") return item.windows.length > 1
-    ? `Close all ${item.windows.length} windows`
-    : "Close window";
-  return "Unpin from JARVIS";
+    ? t("taskbar.action.closeAllWindows", { count: item.windows.length })
+    : t("taskbar.action.closeWindow");
+  return t("taskbar.action.unpinFromJarvis");
+}
+
+function getWindowStateText(window, t) {
+  if (window?.minimized) return t("taskbar.state.minimized");
+  if (window?.active) return t("taskbar.state.active");
+  return t("taskbar.state.ready");
+}
+
+function getLocalizedTaskbarAccessibleLabel(item, isActive, t) {
+  const label = String(item?.label ?? "").trim() || t("taskbar.application");
+  const windows = Array.isArray(item?.windows) ? item.windows : [];
+  const selectedWindow = item?.selectedWindow ?? windows[0] ?? null;
+  const states = [];
+  if (isActive) states.push(t("taskbar.state.active"));
+  if (selectedWindow?.minimized) states.push(t("taskbar.state.minimized"));
+  if (windows.length > 0) {
+    states.push(t("taskbar.item.openWindows", { count: windows.length }));
+  } else if (item?.isPinned) {
+    states.push(t("taskbar.state.pinned"));
+  } else {
+    states.push(t("taskbar.state.notRunning"));
+  }
+  return t("taskbar.item.accessibleLabel", {
+    label,
+    states: states.join(t("common.separator.list")),
+  });
+}
+
+function getLocalizedAgentStatus(status, t) {
+  const key = {
+    ACTIVE: "active",
+    ATTENTION: "attention",
+    OFFLINE: "offline",
+    OPEN: "open",
+    PROCESSING: "processing",
+    READY: "ready",
+  }[status];
+  return key ? t(`taskbar.agent.state.${key}`) : status;
+}
+
+function getLocalizedNativeFlyoutMeta(item, t) {
+  const windows = Array.isArray(item?.windows) ? item.windows : [];
+  const window = item?.selectedWindow ?? windows[0] ?? null;
+  if (window?.internalWindowId) {
+    return t("taskbar.flyout.internalWindowMeta", {
+      state: getWindowStateText(window, t),
+    });
+  }
+  if (window) {
+    return windows.length > 1
+      ? t("taskbar.flyout.windowMeta", {
+        count: windows.length,
+        state: getWindowStateText(window, t),
+      })
+      : getWindowStateText(window, t);
+  }
+  return item?.isPinned
+    ? t("taskbar.state.pinnedApplication")
+    : t("taskbar.application");
 }
 
 function TaskbarLocalFlyout({
@@ -263,6 +326,7 @@ function TaskbarLocalFlyout({
   onPointerEnter,
   onPointerLeave,
 }) {
+  const { t } = useLanguage();
   const flyoutRef = useRef(null);
   const entryRefs = useRef(new Map());
   const [query, setQuery] = useState("");
@@ -278,14 +342,22 @@ function TaskbarLocalFlyout({
         className="taskbar-flyout-mock is-context"
         role="dialog"
         aria-modal="false"
-        aria-label={`${flyout.item.label} commands`}
+        aria-label={t("taskbar.flyout.applicationCommandsFor", {
+          application: flyout.item.label,
+        })}
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}
       >
         <header>
-          <span>APP COMMANDS</span>
+          <span>{t("taskbar.flyout.applicationCommands")}</span>
           <small>{flyout.item.label}</small>
-          <button type="button" onClick={onDismiss} aria-label="Close taskbar commands"><DismissRegular /></button>
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label={t("taskbar.flyout.closeCommands")}
+          >
+            <DismissRegular />
+          </button>
         </header>
         <div className="taskbar-context-actions">
           {flyout.actions.map((action, index) => (
@@ -295,7 +367,7 @@ function TaskbarLocalFlyout({
               data-dialog-initial-focus={index === 0 ? "true" : undefined}
               onClick={() => onContextAction(flyout.item, action)}
             >
-              {getContextActionLabel(action, flyout.item)}
+              {getContextActionLabel(action, flyout.item, t)}
             </button>
           ))}
         </div>
@@ -307,7 +379,7 @@ function TaskbarLocalFlyout({
     ? flyout.item.windows.map((window) => ({
       key: window.windowId,
       label: window.title,
-      meta: `${window.processName} · ${window.minimized ? "MINIMIZED" : window.active ? "ACTIVE" : "READY"}`,
+      meta: `${window.processName} · ${getWindowStateText(window, t)}`,
       searchText: `${window.title} ${window.processName}`,
       window,
       item: flyout.item,
@@ -315,7 +387,9 @@ function TaskbarLocalFlyout({
     : flyout.items.map((item) => ({
       key: item.id,
       label: item.label,
-      meta: item.selectedWindow?.title ?? (item.isPinned ? "PINNED APPLICATION" : "RUNNING APPLICATION"),
+      meta: item.selectedWindow?.title ?? (item.isPinned
+        ? t("taskbar.state.pinnedApplication")
+        : t("taskbar.state.runningApplication")),
       searchText: `${item.label} ${item.selectedWindow?.title ?? ""} ${item.windows.map((window) => `${window.title} ${window.processName}`).join(" ")}`,
       window: item.selectedWindow ?? null,
       item,
@@ -349,14 +423,26 @@ function TaskbarLocalFlyout({
       className={`taskbar-flyout-mock is-${flyout.mode}`}
       role="dialog"
       aria-modal="false"
-      aria-label={flyout.mode === "windows" ? "Window previews" : "Taskbar overflow"}
+      aria-label={flyout.mode === "windows"
+        ? t("taskbar.flyout.windowPreviews")
+        : t("taskbar.flyout.overflow")}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
     >
       <header>
-        <span>{flyout.mode === "windows" ? "WINDOW GROUP" : "TASK OVERFLOW"}</span>
-        <small>{visibleEntries.length} {flyout.mode === "windows" ? "OPEN WINDOWS" : "VISIBLE APPLICATIONS"}</small>
-        <button type="button" onClick={onDismiss} aria-label="Close taskbar flyout"><DismissRegular /></button>
+        <span>{flyout.mode === "windows"
+          ? t("taskbar.flyout.windowGroup")
+          : t("taskbar.flyout.overflow")}</span>
+        <small>{flyout.mode === "windows"
+          ? t("taskbar.flyout.openWindowCount", { count: visibleEntries.length })
+          : t("taskbar.flyout.visibleApplicationCount", { count: visibleEntries.length })}</small>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label={t("taskbar.flyout.close")}
+        >
+          <DismissRegular />
+        </button>
       </header>
       {flyout.mode === "overflow" ? (
         <div className="taskbar-overflow-tools">
@@ -366,8 +452,8 @@ function TaskbarLocalFlyout({
               type="search"
               value={query}
               maxLength={64}
-              placeholder="Filter overflow applications"
-              aria-label="Filter taskbar overflow applications"
+              placeholder={t("taskbar.flyout.filterPlaceholder")}
+              aria-label={t("taskbar.flyout.filterAria")}
               data-dialog-initial-focus="true"
               onChange={(event) => {
                 setQuery(event.target.value.slice(0, 64));
@@ -384,7 +470,12 @@ function TaskbarLocalFlyout({
               }}
             />
           </label>
-          <code>{overflowSummary.label}</code>
+          <code>{t("taskbar.flyout.overflowSummary", {
+            visible: overflowSummary.visible,
+            total: overflowSummary.total,
+            running: overflowSummary.running,
+            pinned: overflowSummary.pinned,
+          })}</code>
         </div>
       ) : null}
       <div className="taskbar-flyout-grid">
@@ -399,7 +490,7 @@ function TaskbarLocalFlyout({
             {flyout.mode === "windows" ? (
               <div className="mock-window-thumbnail" aria-hidden="true">
                 <TaskbarAppIcon item={entry.item} />
-                <span><small>WINDOW PREVIEW</small><strong>{entry.label}</strong></span>
+                <span><small>{t("taskbar.flyout.windowPreview")}</small><strong>{entry.label}</strong></span>
               </div>
             ) : null}
             <button
@@ -422,8 +513,8 @@ function TaskbarLocalFlyout({
               <button
                 type="button"
                 className="mock-window-close"
-                aria-label={`Close ${entry.label}`}
-                title={`Close ${entry.label}`}
+                aria-label={t("taskbar.action.closeNamedWindow", { name: entry.label })}
+                title={t("taskbar.action.closeNamedWindow", { name: entry.label })}
                 onClick={() => onCloseWindow(entry.window.windowId)}
               >
                 <DismissRegular />
@@ -434,7 +525,10 @@ function TaskbarLocalFlyout({
         {visibleEntries.length === 0 ? (
           <p className="taskbar-flyout-empty" role="status">
             <SearchRegular />
-            <span><strong>NO OVERFLOW MATCH</strong><small>Try another application or window name.</small></span>
+            <span>
+              <strong>{t("taskbar.flyout.noOverflowMatch")}</strong>
+              <small>{t("taskbar.flyout.noOverflowMatchHint")}</small>
+            </span>
           </p>
         ) : null}
       </div>
@@ -458,7 +552,9 @@ export function Taskbar({
   onCloseWindow,
   onToggleShowDesktop,
 }) {
+  const { language, t } = useLanguage();
   const clock = usePlatformClock();
+  const localizedClock = formatClockPresentation(clock.dateTime, language);
   const platformKind = usePlatformKind();
   const tray = useTrayStatus();
   const feed = useSystemFeed();
@@ -482,14 +578,20 @@ export function Taskbar({
   const menuApplications = useMemo(() => buildStartMenuApplications(
     quickLaunchItems,
     applicationCatalog.applications,
-  ), [applicationCatalog.applications]);
+    language,
+  ), [applicationCatalog.applications, language]);
   const orderedPinnedApps = useMemo(() => createTaskbarPinnedApps(
     resolvePinnedApplications(pinnedApplicationRefs, menuApplications),
   ), [menuApplications, pinnedApplicationRefs]);
-  const agentWindow = internalWindows.find((window) => window.internalWindowId === "agent") ?? null;
+  const localizedInternalWindows = useMemo(
+    () => localizeWorkspaceWindows(internalWindows, t),
+    [internalWindows, t],
+  );
+  const agentWindow = localizedInternalWindows
+    .find((window) => window.internalWindowId === "agent") ?? null;
   const taskbarInternalWindows = useMemo(
-    () => internalWindows.filter((window) => window.internalWindowId !== "agent"),
-    [internalWindows],
+    () => localizedInternalWindows.filter((window) => window.internalWindowId !== "agent"),
+    [localizedInternalWindows],
   );
   const taskbarItems = useMemo(
     () => buildTaskbarItems(taskbar.windows, orderedPinnedApps, runningOrder, taskbarInternalWindows),
@@ -569,6 +671,7 @@ export function Taskbar({
     open: agentRunning,
     active: agentActive,
   });
+  const localizedAgentLauncherStatus = getLocalizedAgentStatus(agentLauncherStatus, t);
   const networkAvailable = tray.network.available;
   const power = tray.power;
   const alertCount = feed.unreadCount;
@@ -680,10 +783,16 @@ export function Taskbar({
       return;
     }
     if (item.windows.some((window) => window.internalWindowId)) {
+      const items = getNativeInternalWindowItems(item).map((entry, index) => ({
+        ...entry,
+        meta: t("taskbar.flyout.internalWindowMeta", {
+          state: getWindowStateText(item.windows[index], t),
+        }),
+      }));
       onShowFlyout({
         mode: "overflow",
         windowIds: [],
-        items: getNativeInternalWindowItems(item),
+        items,
         ...getFlyoutAnchor(event.currentTarget),
       });
       return;
@@ -695,6 +804,7 @@ export function Taskbar({
     getFlyoutAnchor,
     onShowFlyout,
     platformKind,
+    t,
   ]);
 
   const showOverflow = useCallback((event) => {
@@ -703,7 +813,12 @@ export function Taskbar({
     cancelHoverDismiss();
     onHideFlyout();
     if (platformKind !== "mock") {
-      const { windowIds, items } = getNativeTaskbarOverflowPayload(overflowItems);
+      const payload = getNativeTaskbarOverflowPayload(overflowItems);
+      const items = payload.items.map((entry, index) => ({
+        ...entry,
+        meta: getLocalizedNativeFlyoutMeta(overflowItems[index], t),
+      }));
+      const { windowIds } = payload;
       if (windowIds.length > 0 || items.length > 0) {
         onShowFlyout({
           mode: "overflow",
@@ -723,6 +838,7 @@ export function Taskbar({
     onShowFlyout,
     overflowItems,
     platformKind,
+    t,
   ]);
 
   const activateMockFlyoutWindow = useCallback((item, window) => {
@@ -828,7 +944,8 @@ export function Taskbar({
       mode: "context",
       windowIds: item.windows.map((window) => window.windowId),
       itemId: item.id,
-      label: String(item.label).replace(/[\u0000-\u001f\u007f]/gu, " ").trim().slice(0, 128) || "Application",
+      label: String(item.label).replace(/[\u0000-\u001f\u007f]/gu, " ").trim().slice(0, 128) ||
+        t("taskbar.application"),
       actions,
       ...getFlyoutAnchor(event.currentTarget),
     };
@@ -844,6 +961,7 @@ export function Taskbar({
     getFlyoutAnchor,
     onShowFlyout,
     platformKind,
+    t,
   ]);
 
   const reorderPinnedApps = useCallback((targetId) => {
@@ -856,9 +974,14 @@ export function Taskbar({
   }, []);
 
   return (
-    <footer className="taskbar hud-chassis" aria-label="Windows taskbar">
+    <footer className="taskbar hud-chassis" aria-label={t("taskbar.aria.windowsTaskbar")}>
       <div className="taskbar-start">
-        <button type="button" aria-label="Start" title="Start" onClick={onOpenStart}>
+        <button
+          type="button"
+          aria-label={t("taskbar.start")}
+          title={t("taskbar.start")}
+          onClick={onOpenStart}
+        >
           <span className="taskbar-start-mark" aria-hidden="true">
             <i />
             <i />
@@ -878,9 +1001,13 @@ export function Taskbar({
           agentDegraded ? "is-degraded" : "",
         ].filter(Boolean).join(" ")}
         onClick={onToggleAgent ?? onOpenCommand}
-        aria-label={agentActive ? "Minimize JARVIS Agent" : "Open JARVIS Agent"}
+        aria-label={agentActive
+          ? t("taskbar.agent.minimize")
+          : t("taskbar.agent.open")}
         title={agentState?.error?.message
-          ?? (agentState?.available === false ? "Agent Provider configuration required" : `Open Agent · ${agentProviderLabel}`)}
+          ?? (agentState?.available === false
+            ? t("taskbar.agent.providerConfigurationRequired")
+            : t("taskbar.agent.openWithProvider", { provider: agentProviderLabel }))}
       >
         <AgentGlyph
           state={agentWorking
@@ -890,15 +1017,15 @@ export function Taskbar({
               : agentState?.available === false ? "offline" : "ready"}
         />
         <span className="jarvis-agent-launcher__copy">
-          <strong>AGENT</strong>
-          <small><span>{agentProviderLabel}</span> · {agentLauncherStatus}</small>
+          <strong>Agent</strong>
+          <small><span>{agentProviderLabel}</span> · {localizedAgentLauncherStatus}</small>
         </span>
         <i aria-hidden="true" />
       </button>
       <nav
         ref={appsRef}
         className={`taskbar-apps is-density-${layoutPlan?.mode ?? "measuring"}`}
-        aria-label="Taskbar applications"
+        aria-label={t("taskbar.aria.applications")}
         aria-busy={!layoutPlan}
         onFocusCapture={() => { taskbarHadFocusRef.current = true; }}
         onBlurCapture={() => {
@@ -949,9 +1076,14 @@ export function Taskbar({
             .join(" ");
           const windowTitle = runningWindow?.title?.trim();
           const itemLayout = layoutById.get(id);
-          const title = runningWindow
-            ? `${label}${windowTitle ? ` — ${windowTitle}` : ""}${windows.length > 1 ? ` (${windows.length} windows)` : ""}${runningWindow.minimized ? " (minimized)" : ""}`
+          const baseTitle = runningWindow
+            ? `${label}${windowTitle ? ` — ${windowTitle}` : ""}${windows.length > 1
+              ? t("taskbar.item.windowCountSuffix", { count: windows.length })
+              : ""}${runningWindow.minimized ? t("taskbar.item.minimizedSuffix") : ""}`
             : label;
+          const title = item.isPinned
+            ? t("taskbar.item.dragToReorder", { title: baseTitle })
+            : baseTitle;
 
           return (
             <button
@@ -965,9 +1097,9 @@ export function Taskbar({
               data-density={itemLayout?.density ?? "icon"}
               data-label-mode={itemLayout?.density === "full" ? "persistent" : "contextual"}
               style={{ "--taskbar-item-width": `${itemLayout?.width ?? TASKBAR_ICON_SLOT_WIDTH}px` }}
-              aria-label={getTaskbarAccessibleLabel(item, isActive)}
+              aria-label={getLocalizedTaskbarAccessibleLabel(item, isActive, t)}
               aria-current={isActive ? "true" : undefined}
-              title={`${title}${item.isPinned ? " · drag to reorder" : ""}`}
+              title={title}
               tabIndex={
                 focusedTaskbarItemId
                   ? focusedTaskbarItemId === id ? 0 : -1
@@ -1033,8 +1165,8 @@ export function Taskbar({
             }}
             type="button"
             className="taskbar-overflow-button is-running"
-            aria-label={`More taskbar applications (${overflowItems.length})`}
-            title={`${overflowItems.length} more taskbar applications`}
+            aria-label={t("taskbar.overflow.moreApplications", { count: overflowItems.length })}
+            title={t("taskbar.overflow.moreApplications", { count: overflowItems.length })}
             tabIndex={focusedTaskbarItemId === "taskbar:overflow" ? 0 : -1}
             onFocus={() => setFocusedTaskbarItemId("taskbar:overflow")}
             onKeyDown={(event) => {
@@ -1057,8 +1189,15 @@ export function Taskbar({
         <button
           type="button"
           className="tray-status-button"
-          aria-label="Open quick settings"
-          title={`${networkAvailable ? "Connected" : "Offline"} · ${power.batteryPresent ? `${Math.round(power.percentage ?? 0)}% battery` : "AC power"}`}
+          aria-label={t("taskbar.tray.openQuickSettings")}
+          title={t("taskbar.tray.status", {
+            network: networkAvailable
+              ? t("taskbar.tray.connected")
+              : t("taskbar.tray.offline"),
+            power: power.batteryPresent
+              ? t("taskbar.tray.battery", { percentage: Math.round(power.percentage ?? 0) })
+              : t("taskbar.tray.acPower"),
+          })}
           onClick={onOpenQuickSettings}
         >
           <ChevronUpRegular />
@@ -1069,14 +1208,25 @@ export function Taskbar({
         <button
           type="button"
           className="tray-clock"
-          aria-label={`Open date and time · ${clock.longDate}, ${clock.time}`}
-          title="Date and time"
+          aria-label={t("taskbar.clock.open", {
+            date: localizedClock.longDate,
+            time: localizedClock.time,
+          })}
+          title={t("taskbar.clock.title")}
           onClick={onOpenDateTime}
         >
-          <strong>{clock.time}</strong>
-          <small>{clock.shortDate}</small>
+          <strong>{localizedClock.time}</strong>
+          <small>{localizedClock.shortDate}</small>
         </button>
-        <button className="tray-notifications" type="button" aria-label={`JARVIS system feed${alertCount ? ` (${alertCount} unread)` : ""}`} title="JARVIS System Feed" onClick={onOpenNotifications}>
+        <button
+          className="tray-notifications"
+          type="button"
+          aria-label={alertCount
+            ? t("taskbar.feed.ariaWithUnread", { count: alertCount })
+            : t("taskbar.feed.aria")}
+          title={t("taskbar.feed.title")}
+          onClick={onOpenNotifications}
+        >
           <AlertRegular />
           {alertCount ? <small>{alertCount}</small> : null}
         </button>
@@ -1084,8 +1234,8 @@ export function Taskbar({
       <button
         type="button"
         className="taskbar-show-desktop"
-        aria-label="Show desktop"
-        title="Show desktop"
+        aria-label={t("taskbar.showDesktop")}
+        title={t("taskbar.showDesktop")}
         onClick={onToggleShowDesktop}
       />
       <span className="taskbar-edge-track" aria-hidden="true" />

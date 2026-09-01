@@ -4,8 +4,10 @@ import {
   DismissRegular,
   InfoRegular,
 } from "@fluentui/react-icons";
+import { useLanguage } from "../i18n/language-system.js";
 
 export function SystemNotice({ notice, onDismiss, placement = "desktop-bottom-end" }) {
+  const { t } = useLanguage();
   if (!notice) return null;
   const Icon = notice.severity === "ok"
     ? CheckmarkCircleRegular
@@ -43,7 +45,12 @@ export function SystemNotice({ notice, onDismiss, placement = "desktop-bottom-en
           ))}
         </span>
       ) : null}
-      <button type="button" className="system-notice__dismiss" onClick={onDismiss} aria-label="Dismiss notification">
+      <button
+        type="button"
+        className="system-notice__dismiss"
+        onClick={onDismiss}
+        aria-label={t("systemNotice.dismiss")}
+      >
         <DismissRegular />
       </button>
     </section>

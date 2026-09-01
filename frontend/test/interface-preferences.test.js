@@ -75,7 +75,7 @@ test("interface reset changes only the bounded local preference schema", () => {
     emission: "standard",
   });
   assert.match(writes.at(-1)[1], /"motion":"system"/);
-  assert.equal(properties.get("--glow-halo"), "rgba(255, 90, 0, 0.34)");
+  assert.equal(properties.get("--glow-halo"), "rgba(255, 90, 0, 0.28)");
 
   delete global.window;
   delete global.document;

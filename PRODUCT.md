@@ -4,7 +4,7 @@
 
 ## Platform
 
-web
+Windows desktop (React/WebView2 renderer in a native WPF host)
 
 ## Users
 
@@ -98,17 +98,20 @@ Durable constraints and current boundaries:
 ## Brand Commitments
 
 The product name is **JARVIS**, with **JarvisV1** as the current repository and
-release identity. The interface must remain intentionally minimal for geeks and
-code workers: functional state and working context take precedence over
-decorative dashboard density. Agent providers are integrations, not part of the
-JARVIS brand identity.
+release identity. Its operator HUD, passive neural field, and bounded telemetry
+rails are intentional parts of the brand for geeks and code workers, not neutral
+theme chrome. Functional state and working context still take precedence: every
+readout must be Host-backed or explicitly identified as simulated, and ambient
+effects must never imply file access, Agent authority, or system activity that did
+not occur. Agent providers are integrations, not part of the JARVIS brand identity.
 
 ## Evidence on Hand
 
 - The working product implementation and documented capability inventory are in
   `frontend/`, `host/`, `installer/`, and `README.md`.
 - Existing approved design decisions are recorded in `frontend/AGENTS.md`.
-- Restorable visual source material is retained under `assets/archive/`.
+- The small current visual-reference set is indexed under `docs/design/`; retired
+  color directions and one-off QA captures are not retained in source control.
 - Native-host safety, recovery, and release procedures are documented in
   `host/README.md` and `scripts/`.
 - There is no established evidence yet for broad consumer adoption, certified

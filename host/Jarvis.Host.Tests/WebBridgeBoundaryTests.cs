@@ -63,6 +63,10 @@ public sealed class WebBridgeBoundaryTests
     [InlineData("agent.prompt")]
     [InlineData("clipboard.read")]
     [InlineData("explorer.browse")]
+    [InlineData("knowledgeGraph.chooseVault")]
+    [InlineData("knowledgeGraph.getDefaultChunk")]
+    [InlineData("knowledgeGraph.getDefaultManifest")]
+    [InlineData("knowledgeGraph.getDefaultSource")]
     [InlineData("lifecycle.exitToWindows")]
     [InlineData("session.prepare")]
     [InlineData("taskbarMode.setMode")]
@@ -127,6 +131,7 @@ public sealed class WebBridgeBoundaryTests
             "display.changed",
             "explorer.transferChanged",
             "feed.snapshot",
+            "knowledgeGraph.changed",
             "shell.applicationsChanged",
             "system.snapshot",
             "taskbar.snapshot",
@@ -195,6 +200,43 @@ public sealed class WebBridgeBoundaryTests
         second.Dispose();
         replacement.Dispose();
         Assert.Equal(0, gate.ActiveRequests);
+    }
+
+    [Fact]
+    public void KnowledgeGraphChunkRequestAcceptsZeroLimitForAnExhaustedSide()
+    {
+        using var document = JsonDocument.Parse(
+            """
+            {
+              "revision": "obsidian-v1-0123456789abcdef",
+              "nodeOffset": 842,
+              "nodeLimit": 0,
+              "edgeOffset": 100,
+              "edgeLimit": 256
+            }
+            """);
+
+        var request = WebBridge.GetKnowledgeGraphChunkRequest(document.RootElement);
+
+        Assert.Equal("obsidian-v1-0123456789abcdef", request.Revision);
+        Assert.Equal(842, request.NodeOffset);
+        Assert.Equal(0, request.NodeLimit);
+        Assert.Equal(100, request.EdgeOffset);
+        Assert.Equal(256, request.EdgeLimit);
+    }
+
+    [Theory]
+    [InlineData("{\"revision\":\"obsidian-v1-aa\",\"nodeOffset\":0,\"nodeLimit\":513,\"edgeOffset\":0,\"edgeLimit\":0}")]
+    [InlineData("{\"revision\":\"../../private\",\"nodeOffset\":0,\"nodeLimit\":1,\"edgeOffset\":0,\"edgeLimit\":0}")]
+    [InlineData("{\"revision\":\"obsidian-v1-aa\",\"nodeOffset\":0,\"nodeLimit\":1,\"edgeOffset\":0,\"edgeLimit\":0,\"path\":\"C:/private\"}")]
+    public void KnowledgeGraphChunkRequestRejectsUnboundedOrUnknownParameters(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+
+        var exception = Assert.Throws<BridgeFaultException>(() =>
+            WebBridge.GetKnowledgeGraphChunkRequest(document.RootElement));
+
+        Assert.Equal("INVALID_PARAMS", exception.Code);
     }
 
     [Fact]

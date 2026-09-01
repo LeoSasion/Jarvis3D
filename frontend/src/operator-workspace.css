@@ -2,7 +2,19 @@
 
 :root {
   --linked-system-collapsed-width: 116px;
-  --operator-hit-size: 34px;
+  --operator-layout-hit-size: 34px;
+  --operator-density-hit-size: 34px;
+  --operator-hit-size: max(var(--operator-layout-hit-size), var(--operator-density-hit-size));
+  --operator-layout-label-size: 11px;
+  --operator-density-label-size: 11px;
+  --operator-label-size: max(var(--operator-layout-label-size), var(--operator-density-label-size));
+  --operator-layout-meta-size: 11px;
+  --operator-density-meta-size: 11px;
+  --operator-meta-size: max(var(--operator-layout-meta-size), var(--operator-density-meta-size));
+  --operator-inspector-title-size: 15px;
+  --graph-toolbar-layout-height: 44px;
+  --graph-toolbar-density-height: 44px;
+  --graph-toolbar-height: max(var(--graph-toolbar-layout-height), var(--graph-toolbar-density-height));
 }
 
 .taskbar {
@@ -10,6 +22,231 @@
 }
 
 /* Connected local knowledge graph ------------------------------------------------ */
+
+.core-stage__media.is-graphics {
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: none;
+  transition: none;
+}
+
+.core-stage__media.is-graphics.is-exploring {
+  pointer-events: auto;
+}
+
+.core-stage__graph-toolbar {
+  position: absolute;
+  z-index: 13;
+  top: 14px;
+  right: 18px;
+  min-height: var(--operator-hit-size);
+  display: flex;
+  align-items: stretch;
+  border-left: var(--stroke) solid var(--structure-strong);
+  background: var(--surface-1);
+  pointer-events: auto;
+}
+
+.core-stage__graph-toolbar > button,
+.core-stage__graph-toolbar > form {
+  min-height: var(--operator-hit-size);
+  border: 0;
+  border-right: var(--stroke) solid var(--structure);
+  color: var(--ink-2);
+  background: transparent;
+  font: 600 var(--operator-label-size)/1 var(--font-data);
+  letter-spacing: 0.06em;
+}
+
+.core-stage__graph-toolbar > button {
+  min-width: var(--operator-hit-size);
+  display: grid;
+  place-items: center;
+  padding-inline: 9px;
+}
+
+.core-stage__graph-toolbar > button:is(:hover, :focus-visible, .is-active),
+.core-stage__graph-toolbar > button[aria-pressed="true"] {
+  color: var(--signal-hot);
+  background: var(--signal-fill-strong);
+}
+
+.core-stage__graph-toolbar > button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.core-stage__graph-toolbar > form {
+  width: clamp(150px, 16vw, 260px);
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding-inline: 9px;
+}
+
+.core-stage__graph-toolbar > form:focus-within {
+  box-shadow: 0 -1px 0 var(--signal-hot) inset;
+}
+
+.core-stage__graph-toolbar input {
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: var(--ink-1);
+  background: transparent;
+  font: inherit;
+}
+
+.core-stage__graph-health {
+  position: absolute;
+  z-index: 11;
+  bottom: 18px;
+  left: 18px;
+  max-width: min(620px, calc(100% - 408px));
+  min-height: var(--operator-hit-size);
+  display: flex;
+  align-items: stretch;
+  border-left: 2px solid var(--structure-strong);
+  background: var(--surface-1);
+  color: var(--ink-2);
+  pointer-events: auto;
+}
+
+.core-stage__graph-health.is-warning {
+  border-left-color: var(--status-warning);
+}
+
+.core-stage__graph-health.is-error {
+  border-left-color: var(--status-danger);
+}
+
+.core-stage__graph-health > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 7px 10px;
+}
+
+.core-stage__graph-health strong,
+.core-stage__graph-health small {
+  overflow: hidden;
+  font: var(--operator-meta-size)/1.2 var(--font-data);
+  letter-spacing: 0.05em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.core-stage__graph-health strong {
+  color: var(--ink-1);
+}
+
+.core-stage__graph-health button {
+  min-height: var(--operator-hit-size);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 10px;
+  border: 0;
+  border-left: var(--stroke) solid var(--structure);
+  color: var(--ink-2);
+  background: transparent;
+  font: 600 var(--operator-meta-size)/1 var(--font-data);
+}
+
+.core-stage__graph-health button:is(:hover, :focus-visible) {
+  color: var(--signal-hot);
+  background: var(--signal-fill-strong);
+}
+
+.core-stage__graph-inspector {
+  position: absolute;
+  z-index: 12;
+  right: 18px;
+  bottom: 18px;
+  width: min(360px, calc(100% - 36px));
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border-block: var(--stroke) solid var(--structure-strong);
+  border-left: 2px solid var(--signal-hot);
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--shell-effect-shadow) 92%, transparent);
+  pointer-events: none;
+}
+
+.core-stage__graph-inspector span,
+.core-stage__graph-inspector small {
+  overflow: hidden;
+  font: var(--operator-meta-size)/1.2 var(--font-data);
+  letter-spacing: 0.05em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.core-stage__graph-inspector strong {
+  overflow: hidden;
+  color: var(--ink-1);
+  font: 650 var(--operator-inspector-title-size)/1.1 var(--font-display);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.core-stage__graphics-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: stretch;
+  background: var(--surface-canvas);
+}
+
+.core-stage__readout.is-graph-source {
+  z-index: 2;
+  right: 18px;
+  bottom: 18px;
+  padding: 9px 0 0 14px;
+  border-left: var(--stroke) solid var(--structure-strong);
+  pointer-events: none;
+}
+
+.core-stage__readout.is-graph-source :where(strong, small) {
+  line-height: 1.25;
+}
+
+.core-stage__graph-settings-trigger {
+  position: absolute;
+  z-index: 12;
+  top: 14px;
+  right: 18px;
+  min-height: var(--operator-hit-size);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0;
+  border-left: var(--stroke) solid var(--structure-strong);
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--shell-effect-shadow) 78%, transparent);
+  font: 600 var(--operator-label-size)/1 var(--font-data);
+  letter-spacing: 0.07em;
+  pointer-events: auto;
+}
+
+.core-stage__graph-settings-trigger svg {
+  width: 16px;
+  height: 16px;
+}
+
+.core-stage__graph-settings-trigger:hover,
+.core-stage__graph-settings-trigger:focus-visible,
+.core-stage__graph-settings-trigger[aria-expanded="true"] {
+  border-left-color: var(--signal-hot);
+  color: var(--signal-hot);
+  background: var(--signal-fill-strong);
+}
 
 .core-stage__media.is-interactive {
   pointer-events: auto;
@@ -24,8 +261,8 @@
   overflow: hidden;
   color: var(--ink-1);
   background:
-    linear-gradient(90deg, transparent 49.94%, rgb(245 241 233 / 12%) 50%, transparent 50.06%),
-    linear-gradient(transparent 49.94%, rgb(245 241 233 / 12%) 50%, transparent 50.06%),
+    linear-gradient(90deg, transparent 49.94%, color-mix(in srgb, var(--shell-effect-contrast) 12%, transparent) 50%, transparent 50.06%),
+    linear-gradient(transparent 49.94%, color-mix(in srgb, var(--shell-effect-contrast) 12%, transparent) 50%, transparent 50.06%),
     var(--surface-canvas);
 }
 
@@ -35,14 +272,32 @@
   top: 0;
   right: 0;
   left: 0;
-  min-height: 44px;
+  min-height: var(--graph-toolbar-height);
   display: grid;
-  grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(190px, 0.8fr) minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
   padding: 0 12px;
   border-bottom: var(--stroke) solid var(--structure);
-  background: rgb(0 0 0 / 92%);
+  background: color-mix(in srgb, var(--shell-effect-shadow) 92%, transparent);
+}
+
+.knowledge-workspace__explore-toggle {
+  min-height: var(--operator-hit-size);
+  padding-inline: 10px;
+  border: 0;
+  border-left: 2px solid var(--structure-strong);
+  color: var(--ink-2);
+  background: transparent;
+  font: 650 var(--operator-label-size)/1 var(--font-data);
+  letter-spacing: 0.07em;
+}
+
+.knowledge-workspace__explore-toggle:is(:hover, :focus-visible),
+.knowledge-workspace__explore-toggle[aria-pressed="true"] {
+  border-left-color: var(--signal-hot);
+  color: var(--signal-hot);
+  background: var(--signal-fill-strong);
 }
 
 .knowledge-workspace__toolbar > label {
@@ -75,13 +330,18 @@
   outline: 0;
   color: var(--ink-1);
   background: transparent;
-  font: 11px/1 var(--font-data);
+  font: var(--operator-label-size)/1 var(--font-data);
   letter-spacing: 0.06em;
 }
 
 .knowledge-workspace__toolbar input::placeholder {
   color: var(--ink-3);
   opacity: 1;
+}
+
+.knowledge-workspace__toolbar input:disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
 }
 
 .knowledge-workspace__facts {
@@ -91,7 +351,7 @@
   justify-content: center;
   gap: 12px;
   color: var(--ink-2);
-  font: 10px/1 var(--font-data);
+  font: var(--operator-meta-size)/1 var(--font-data);
   letter-spacing: 0.08em;
   white-space: nowrap;
 }
@@ -115,9 +375,15 @@
 .knowledge-workspace__zoom {
   height: var(--operator-hit-size);
   display: grid;
-  grid-template-columns: repeat(4, var(--operator-hit-size));
+  grid-template-columns: repeat(8, var(--operator-hit-size));
   align-items: stretch;
   border-inline: var(--stroke) solid var(--structure);
+}
+
+.knowledge-workspace__zoom button.is-active,
+.knowledge-workspace__zoom button[aria-pressed="true"] {
+  color: var(--signal-hot);
+  background: var(--signal-fill-strong);
 }
 
 .knowledge-workspace__zoom button,
@@ -131,7 +397,7 @@
   border-right: var(--stroke) solid var(--structure);
   color: var(--ink-2);
   background: transparent;
-  font: 10px/1 var(--font-data);
+  font: var(--operator-label-size)/1 var(--font-data);
 }
 
 .knowledge-workspace__zoom button:last-child {
@@ -146,147 +412,70 @@
 
 .knowledge-workspace__canvas {
   position: absolute;
-  inset: 44px 0 0;
+  inset: var(--graph-toolbar-height) 0 0;
   width: 100%;
-  height: calc(100% - 44px);
-  overflow: visible;
+  height: calc(100% - var(--graph-toolbar-height));
+  display: block;
+  overflow: hidden;
+  background: var(--surface-canvas);
   touch-action: none;
   shape-rendering: geometricPrecision;
 }
 
-.knowledge-workspace__dot {
-  fill: var(--ink-2);
-  opacity: 0.4;
-}
-
-.knowledge-workspace__field {
-  opacity: 0.42;
+.knowledge-workspace__canvas.is-passive {
   pointer-events: none;
 }
 
-.knowledge-workspace__edges path {
-  fill: none;
-  stroke: var(--ink-3);
-  stroke-width: 0.9;
-  opacity: 0.82;
+.knowledge-workspace__canvas.is-exploring {
+  pointer-events: auto;
+}
+
+.knowledge-workspace__gpu-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: stretch;
+  background: var(--surface-canvas);
   pointer-events: none;
-  vector-effect: non-scaling-stroke;
 }
 
-.knowledge-workspace__edges path.is-active {
-  stroke: var(--signal-hot);
-  stroke-width: 1.25;
-  opacity: 1;
-  filter: drop-shadow(var(--glow-status));
+.knowledge-workspace__accessible-nodes {
+  position: absolute;
+  inset: var(--graph-toolbar-height) auto auto 0;
 }
 
-.knowledge-node {
-  cursor: grab;
-  outline: none;
-  pointer-events: bounding-box;
+.knowledge-workspace__accessible-nodes.sr-only:focus-within {
+  z-index: 6;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  white-space: normal;
 }
 
-.knowledge-node:active {
-  cursor: grabbing;
+.knowledge-workspace__accessible-nodes button {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
-.knowledge-node > :where(rect, path:not(.knowledge-node__state)) {
-  fill: var(--surface-canvas);
-  stroke: var(--ink-2);
-  stroke-width: 1.25;
-  vector-effect: non-scaling-stroke;
-}
-
-.knowledge-node__orbit {
-  fill: none;
-  stroke: var(--structure-strong);
-  stroke-width: 0.75;
-  stroke-dasharray: 3 5;
-  vector-effect: non-scaling-stroke;
-}
-
-.knowledge-node.is-entry > rect {
-  fill: var(--ink-1);
-  stroke: none;
-}
-
-.knowledge-node.is-source > path {
-  fill: var(--void);
-  stroke: var(--signal-hot);
-  stroke-width: 1.5;
-  filter: drop-shadow(var(--glow-status));
-}
-
-.knowledge-node.is-group > rect {
-  fill: var(--surface-1);
-  stroke: var(--ink-1);
-  stroke-width: 1.5;
-}
-
-.knowledge-node.is-group.is-collapsed > rect {
-  stroke: var(--ink-3);
-}
-
-.knowledge-node__state {
-  fill: none;
-  stroke: var(--signal-hot);
-  stroke-width: 1;
-  pointer-events: none;
-  vector-effect: non-scaling-stroke;
-}
-
-.knowledge-node > text {
-  fill: var(--ink-1);
+.knowledge-workspace__accessible-nodes button:focus-visible {
+  position: relative;
+  width: auto;
+  height: var(--operator-hit-size);
+  display: block;
+  overflow: visible;
+  padding: 0 12px;
+  border: var(--stroke) solid var(--signal-hot);
+  clip-path: none;
+  color: var(--ink-1);
+  background: var(--void);
   font: 600 10px/1 var(--font-data);
-  letter-spacing: 0.06em;
-  paint-order: stroke fill;
-  stroke: var(--void);
-  stroke-width: 3px;
-  stroke-linejoin: round;
-  user-select: none;
-}
-
-.knowledge-node > text.knowledge-node__meta {
-  fill: var(--ink-2);
-  font-size: 8.5px;
-  font-weight: 400;
-  letter-spacing: 0.04em;
-}
-
-.knowledge-node.is-entry > text {
-  display: none;
-}
-
-.knowledge-workspace[data-node-density="expanded"] .knowledge-node.is-entry > text {
-  display: block;
-}
-
-.knowledge-workspace[data-node-density="expanded"] .knowledge-node.is-entry > text.knowledge-node__meta {
-  fill: var(--ink-3);
-}
-
-.knowledge-workspace[data-node-density="balanced"] .knowledge-node.is-entry:nth-child(-n + 13) > text {
-  display: block;
-}
-
-.knowledge-node.is-entry:hover > text,
-.knowledge-node.is-entry:focus-visible > text,
-.knowledge-node.is-entry.is-selected > text,
-.knowledge-node.is-entry.is-explorer-selected > text {
-  display: block;
-}
-
-.knowledge-node:hover > :where(rect, path:not(.knowledge-node__state)),
-.knowledge-node:focus-visible > :where(rect, path:not(.knowledge-node__state)),
-.knowledge-node.is-selected > :where(rect, path:not(.knowledge-node__state)),
-.knowledge-node.is-explorer-selected > :where(rect, path:not(.knowledge-node__state)) {
-  fill: var(--signal-hot);
-  stroke: var(--signal-pale);
-  filter: drop-shadow(var(--glow-status));
-}
-
-.knowledge-node:focus-visible > :where(rect, path:not(.knowledge-node__state)) {
-  stroke-width: 2;
+  letter-spacing: 0.05em;
+  box-shadow: 0 0 0 1px var(--void), var(--glow-status);
 }
 
 .knowledge-workspace__hint,
@@ -296,7 +485,7 @@
   z-index: 2;
   margin: 0;
   color: var(--ink-2);
-  font: 10px/1 var(--font-data);
+  font: var(--operator-meta-size)/1.25 var(--font-data);
   letter-spacing: 0.08em;
 }
 
@@ -329,8 +518,8 @@
   padding: 12px 0 0;
   border-block: var(--stroke) solid var(--structure-strong);
   color: var(--ink-2);
-  background: rgb(0 0 0 / 94%);
-  box-shadow: 0 12px 36px rgb(0 0 0 / 48%);
+  background: color-mix(in srgb, var(--shell-effect-shadow) 94%, transparent);
+  box-shadow: 0 12px 36px color-mix(in srgb, var(--shell-effect-shadow) 48%, transparent);
 }
 
 .knowledge-workspace__inspector > header,
@@ -355,7 +544,7 @@
 .knowledge-workspace__inspector > header strong {
   overflow: hidden;
   color: var(--ink-1);
-  font: 600 15px/1.15 var(--font-display);
+  font: 600 var(--operator-inspector-title-size)/1.15 var(--font-display);
   letter-spacing: 0.04em;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -477,7 +666,7 @@
   border: var(--stroke) solid var(--structure-strong);
   color: var(--ink-1);
   background: var(--void);
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 76%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--shell-effect-shadow) 76%, transparent);
   text-overflow: ellipsis;
   transform: translateX(-50%);
   white-space: nowrap;
@@ -633,7 +822,10 @@
 
 @media (min-resolution: 144dpi) {
   :root {
-    --operator-hit-size: 36px;
+    --operator-density-hit-size: 40px;
+    --operator-density-label-size: 12px;
+    --operator-density-meta-size: 12px;
+    --graph-toolbar-density-height: 48px;
   }
 
   .knowledge-workspace__toolbar input,
@@ -646,23 +838,14 @@
     font-size: 11px;
   }
 
-  .knowledge-node > text {
-    font-size: 11px;
-  }
-
-  .knowledge-node > text.knowledge-node__meta {
-    font-size: 9px;
-  }
 }
 
 @media (min-resolution: 192dpi) {
-  .knowledge-workspace__toolbar {
-    min-height: 48px;
-  }
-
-  .knowledge-workspace__canvas {
-    inset-block-start: 48px;
-    height: calc(100% - 48px);
+  :root {
+    --operator-density-hit-size: 44px;
+    --operator-density-label-size: 13px;
+    --operator-density-meta-size: 13px;
+    --graph-toolbar-density-height: 52px;
   }
 
   .knowledge-workspace__toolbar input,
@@ -676,7 +859,7 @@
 
 @media (max-width: 1180px), (max-height: 720px) {
   .knowledge-workspace__toolbar {
-    grid-template-columns: minmax(180px, 1fr) auto;
+    grid-template-columns: auto minmax(180px, 1fr) auto;
   }
 
   .knowledge-workspace__facts {
@@ -691,11 +874,22 @@
   }
 
   .knowledge-workspace__zoom {
-    grid-template-columns: repeat(3, var(--operator-hit-size));
+    grid-template-columns: repeat(7, var(--operator-hit-size));
   }
 
   .knowledge-workspace__zoom output {
     display: none;
+  }
+
+  .core-stage__graph-toolbar > form {
+    width: 148px;
+  }
+
+  .core-stage__graph-health {
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    max-width: none;
   }
 
   .knowledge-workspace__inspector {
@@ -707,12 +901,344 @@
 }
 
 @media (forced-colors: active) {
-  .knowledge-workspace__edges path,
-  .knowledge-node > :where(rect, path),
   .knowledge-workspace__toolbar,
   .knowledge-workspace__inspector,
   .linked-system-rail-toggle,
   .taskbar-app-label {
     forced-color-adjust: auto;
+  }
+}
+
+/* High-resolution operator scale -------------------------------------------------
+   1920x1080 is the comfortable desktop baseline. Larger canvases gain measured
+   type, rail and target size without scaling the application as a bitmap. */
+
+@media (min-width: 1600px) and (min-height: 800px) {
+  :root {
+    --top-height: 56px;
+    --taskbar-height: 64px;
+    --taskbar-icon: 26px;
+    --operator-layout-hit-size: 40px;
+    --operator-layout-label-size: 12px;
+    --operator-layout-meta-size: 12px;
+    --graph-toolbar-layout-height: 52px;
+  }
+
+  .topbar {
+    grid-template-columns: minmax(420px, 1.05fr) minmax(380px, 0.8fr) auto;
+    padding-inline: 12px;
+  }
+
+  .top-cluster {
+    min-height: 44px;
+    gap: 12px;
+    padding-inline: 16px;
+    font-size: 12px;
+  }
+
+  .top-cluster > svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .brand-cluster {
+    min-width: 220px;
+  }
+
+  .brand-orb {
+    width: 56px;
+    height: 56px;
+  }
+
+  .brand-name {
+    font-size: 18px;
+  }
+
+  .jarvis-shell.is-layout-desktop .desktop-workspace {
+    grid-template-columns:
+      clamp(220px, 12.5vw, 260px)
+      minmax(0, 1fr)
+      clamp(360px, 20vw, 440px);
+  }
+
+  .desktop-shortcuts {
+    --desktop-icon-cell-width: clamp(108px, 5.8vw, 120px);
+    --desktop-icon-cell-height: clamp(96px, 5.2vw, 108px);
+    --desktop-icon-size: clamp(52px, 2.9vw, 60px);
+    --desktop-label-size: 14px;
+    padding: 20px;
+  }
+
+  .core-stage__readout.is-graph-source {
+    right: 24px;
+    bottom: 24px;
+    gap: 7px;
+    padding: 12px 0 0 16px;
+  }
+
+  .core-stage__readout strong {
+    font-size: 15px;
+  }
+
+  .core-stage__readout small,
+  .knowledge-graph-field__labels,
+  .knowledge-graph-field__labels text:not(:first-child) {
+    font-size: var(--operator-meta-size) !important;
+  }
+
+  .core-stage__graph-settings-trigger {
+    top: 16px;
+    right: 24px;
+    gap: 10px;
+    padding-inline: 12px;
+  }
+
+  .core-stage__graph-settings-trigger svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .telemetry-rail {
+    gap: 12px;
+    padding: 14px 18px 16px;
+  }
+
+  .telemetry-rail .hud-panel__header {
+    min-height: 38px;
+    padding-inline: 10px;
+    font-size: var(--operator-label-size) !important;
+  }
+
+  .telemetry-rail .hud-panel__toggle {
+    min-height: 37px;
+    gap: 10px;
+  }
+
+  .telemetry-priority {
+    min-height: 84px;
+    grid-template-columns: 26px minmax(0, 1fr) 18px;
+    gap: 12px;
+    padding: 12px 10px;
+  }
+
+  .telemetry-priority > svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .resource-row,
+  .process-grid:not(.process-grid--header),
+  .notification-row {
+    min-height: 36px;
+  }
+
+  .telemetry-rail :where(
+    .resource-heading strong,
+    .resource-heading b,
+    .resource-copy small,
+    .resource-secondary,
+    .process-title,
+    .process-grid,
+    .notification-copy strong,
+    .notification-copy small,
+    .notification-row time,
+    .telemetry-priority strong,
+    .telemetry-priority small,
+    .telemetry-priority em,
+    .telemetry-inline-action,
+    .telemetry-count
+  ) {
+    font-size: var(--operator-meta-size) !important;
+  }
+
+  .linked-system-rail > header {
+    min-height: 52px;
+    padding-inline: 18px;
+  }
+
+  .linked-system-rail > header strong {
+    font-size: 17px;
+  }
+
+  .linked-system-rail > section {
+    margin-inline: 16px;
+    padding-block: 20px;
+  }
+
+  .linked-system-rail :where(h2, dt, dd, button, small, time) {
+    font-size: var(--operator-meta-size) !important;
+  }
+
+  .taskbar,
+  .jarvis-taskbar-surface .taskbar {
+    grid-template-columns: 80px clamp(220px, 13vw, 264px) minmax(0, 1fr) auto 28px;
+  }
+
+  .jarvis-taskbar-surface .taskbar {
+    grid-template-columns:
+      80px
+      clamp(220px, 13vw, 264px)
+      minmax(0, min(680px, calc(50vw - var(--taskbar-leading-width) - var(--taskbar-core-reserve))))
+      1fr
+      auto
+      28px;
+  }
+
+  .taskbar-start button {
+    width: 48px;
+    height: 48px;
+  }
+
+  .taskbar-start-mark {
+    width: 28px;
+    height: 28px;
+  }
+
+  .jarvis-agent-launcher {
+    padding-inline: 16px;
+  }
+
+  .jarvis-agent-launcher__copy strong,
+  .taskbar-apps button > span,
+  .system-tray :where(strong, small, time) {
+    font-size: var(--operator-label-size) !important;
+  }
+
+  .taskbar-app-fallback-mark {
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    font-size: 11px;
+  }
+
+  .taskbar-apps > button[data-density] > .taskbar-app-fallback-mark,
+  .jarvis-taskbar-surface .taskbar-apps > button[data-density] > .taskbar-app-fallback-mark {
+    max-width: 26px;
+  }
+
+  .taskbar-show-desktop,
+  .jarvis-taskbar-surface .taskbar-show-desktop {
+    width: 28px;
+    min-width: 28px;
+  }
+
+}
+
+@media (min-width: 2400px) and (min-height: 1100px) {
+  :root {
+    --top-height: 64px;
+    --taskbar-height: 72px;
+    --taskbar-icon: 30px;
+    --operator-layout-hit-size: 44px;
+    --operator-layout-label-size: 13px;
+    --operator-layout-meta-size: 13px;
+    --operator-inspector-title-size: 17px;
+    --graph-toolbar-layout-height: 56px;
+  }
+
+  .knowledge-workspace__inspector :where(header span, dt, dd, footer button) {
+    font-size: var(--operator-meta-size);
+  }
+
+  .knowledge-workspace__inspector > footer button {
+    min-height: var(--operator-hit-size);
+  }
+
+  .top-cluster {
+    min-height: 48px;
+    padding-inline: 20px;
+    font-size: 13px;
+  }
+
+  .brand-name {
+    font-size: 20px;
+  }
+
+  .jarvis-shell.is-layout-desktop .desktop-workspace {
+    grid-template-columns:
+      clamp(260px, 11.5vw, 312px)
+      minmax(0, 1fr)
+      clamp(440px, 19vw, 520px);
+  }
+
+  .desktop-shortcuts {
+    --desktop-icon-cell-width: clamp(120px, 5.2vw, 144px);
+    --desktop-icon-cell-height: clamp(108px, 4.8vw, 128px);
+    --desktop-icon-size: clamp(60px, 2.6vw, 72px);
+    --desktop-label-size: 15px;
+    padding: 24px;
+  }
+
+  .core-stage__readout strong {
+    font-size: 17px;
+  }
+
+  .telemetry-rail {
+    gap: 16px;
+    padding: 16px 22px 20px;
+  }
+
+  .taskbar-start button {
+    width: 52px;
+    height: 52px;
+  }
+
+  .taskbar-start-mark {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+@media (min-width: 3200px) and (min-height: 1600px) {
+  :root {
+    --top-height: 72px;
+    --taskbar-height: 80px;
+    --taskbar-icon: 34px;
+    --operator-layout-hit-size: 48px;
+    --operator-layout-label-size: 14px;
+    --operator-layout-meta-size: 14px;
+    --operator-inspector-title-size: 19px;
+    --graph-toolbar-layout-height: 60px;
+  }
+
+  .top-cluster {
+    min-height: 52px;
+    font-size: 14px;
+  }
+
+  .brand-name {
+    font-size: 22px;
+  }
+
+  .jarvis-shell.is-layout-desktop .desktop-workspace {
+    grid-template-columns: 336px minmax(0, 1fr) 560px;
+  }
+
+  .desktop-shortcuts {
+    --desktop-icon-cell-width: 152px;
+    --desktop-icon-cell-height: 136px;
+    --desktop-icon-size: 76px;
+    --desktop-label-size: 16px;
+    padding: 28px;
+  }
+
+  .core-stage__readout strong {
+    font-size: 19px;
+  }
+}
+
+@media (pointer: coarse) {
+  :root {
+    --operator-density-hit-size: 44px;
+    --graph-toolbar-density-height: 52px;
+  }
+
+  .core-stage__graph-settings-trigger,
+  .knowledge-workspace__toolbar > label,
+  .knowledge-workspace__zoom :where(button, output),
+  .knowledge-workspace__inspector > footer button,
+  .linked-system-rail-toggle,
+  .telemetry-inline-action {
+    min-height: 44px;
   }
 }

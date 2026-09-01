@@ -18,6 +18,7 @@ import {
   useDesktopEntries,
   useTaskbarSnapshot,
 } from "../hooks/usePlatformData.js";
+import { getDesktopShortcutLabelKey } from "../desktop-shortcut-labels.js";
 import {
   createQuickSearchIndex,
   getQuickSearchScopeShortcut,
@@ -30,11 +31,80 @@ import {
   clearQuickSearchHistory,
   recordQuickSearchQuery,
 } from "../quick-search-history.js";
+import { useLanguage } from "../i18n/language-system.js";
 import { quickLaunchItems, quickSettingItems } from "../quick-search-catalog.js";
 import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
 import { useRecentApplicationIds } from "../hooks/useRecentApplications.js";
-import { AgentGlyph } from "./VectorMarks.jsx";
 import { useQuickSearchHistory } from "../hooks/useQuickSearchHistory.js";
+
+const QUICK_SETTING_LABEL_KEYS = Object.freeze({
+  bluetooth: "bluetooth",
+  display: "display",
+  network: "network",
+  privacy: "security",
+  settings: "allSettings",
+  sound: "sound",
+});
+
+function getLocalizedScope(scope, t) {
+  return {
+    label: t(scope.labelKey),
+    detail: t(scope.detailKey),
+  };
+}
+
+function getLocalizedResultLabel(result, t) {
+  if (result.kind === "setting") {
+    const key = QUICK_SETTING_LABEL_KEYS[result.id];
+    if (key) return t(`quickSearch.setting.${key}`);
+  }
+  if (result.kind === "desktop") {
+    const labelKey = getDesktopShortcutLabelKey(result.entry?.id);
+    if (labelKey) return t(labelKey);
+  }
+  return result.label;
+}
+
+function getLocalizedResultCategory(result, t) {
+  if (result.kind === "app") return t("quickSearch.category.application");
+  if (result.kind === "installed-app") return t("quickSearch.category.installedApplication");
+  if (result.kind === "window") return t("quickSearch.category.openWindow");
+  if (result.kind === "desktop") return result.entry?.kind === "directory"
+    ? t("quickSearch.category.desktopFolder")
+    : t("quickSearch.category.desktopItem");
+  if (result.kind === "setting") return t("quickSearch.category.windowsSetting");
+  return result.category;
+}
+
+function getLocalizedResultDetail(result, t) {
+  if (result.kind === "app") return result.id === "explorer"
+    ? t("quickSearch.result.browseFilesAndFolders")
+    : t("quickSearch.result.launchApplication", { application: result.label });
+  if (result.kind === "installed-app") {
+    return t("quickSearch.result.installedApplication", {
+      source: result.application?.source === "packaged"
+        ? t("quickSearch.source.windowsApplication")
+        : "Start Menu",
+      category: result.application?.category ?? "",
+    });
+  }
+  if (result.kind === "window") {
+    const state = result.window?.minimized
+      ? t("quickSearch.window.minimized")
+      : result.window?.active
+        ? t("quickSearch.window.active")
+        : t("quickSearch.window.running");
+    return t("quickSearch.result.window", {
+      process: result.window?.processName ?? t("taskbar.application"),
+      state,
+    });
+  }
+  if (result.kind === "desktop") {
+    return result.entry?.path ?? result.entry?.target ?? t("quickSearch.result.windowsDesktop");
+  }
+  if (result.kind === "setting") return result.target;
+  return result.detail;
+}
 
 function QuickSearchIcon({ result }) {
   if (result.iconDataUrl) {
@@ -65,12 +135,15 @@ function getQuickSearchOptionId(resultId) {
 
 export function CommandOverlay({
   open,
+  presenceState = "open",
+  onPresenceComplete,
   onClose,
   onExecute,
   busy = false,
   statusMessage = null,
-  surfaceLabel = "LOCAL QUICK ACCESS",
+  surfaceLabel = null,
 }) {
+  const { language, t } = useLanguage();
   const inputRef = useRef(null);
   const dialogRef = useRef(null);
   const [value, setValue] = useState("");
@@ -81,8 +154,10 @@ export function CommandOverlay({
   const taskbar = useTaskbarSnapshot();
   const recentApplicationIds = useRecentApplicationIds();
   const queryHistory = useQuickSearchHistory();
+  const closing = presenceState === "closing";
+  const interactive = open && !closing;
 
-  useDialogFocusTrap(dialogRef, open, { initialFocusRef: inputRef, onEscape: onClose });
+  useDialogFocusTrap(dialogRef, interactive, { initialFocusRef: inputRef, onEscape: onClose });
 
   const searchIndex = useMemo(() => createQuickSearchIndex({
     launchItems: quickLaunchItems,
@@ -99,8 +174,8 @@ export function CommandOverlay({
   ]);
 
   const results = useMemo(
-    () => searchQuickIndex(searchIndex, deferredValue),
-    [deferredValue, searchIndex],
+    () => searchQuickIndex(searchIndex, deferredValue, undefined, language),
+    [deferredValue, language, searchIndex],
   );
   const parsedQuery = useMemo(
     () => parseQuickSearchQuery(deferredValue),
@@ -108,6 +183,7 @@ export function CommandOverlay({
   );
   const activeScope = quickSearchScopes.find((scope) => scope.id === parsedQuery.scope)
     ?? quickSearchScopes[0];
+  const localizedActiveScope = getLocalizedScope(activeScope, t);
   const selectedIndex = results.length > 0
     ? Math.min(activeIndex, results.length - 1)
     : 0;
@@ -116,17 +192,20 @@ export function CommandOverlay({
     ? getQuickSearchOptionId(selectedResult.resultId)
     : undefined;
   const resultStatus = applicationCatalog.error
-    ? "START MENU UNAVAILABLE"
+    ? t("quickSearch.status.startMenuUnavailable")
     : applicationCatalog.loading
-      ? "INDEXING START MENU"
+      ? t("quickSearch.status.indexingStartMenu")
       : desktop.loading
-        ? "INDEXING DESKTOP"
-      : `${results.length} RESULTS · ${activeScope.label}`;
+        ? t("quickSearch.status.indexingDesktop")
+        : t("quickSearch.status.results", {
+          count: results.length,
+          scope: localizedActiveScope.label,
+        });
 
   useEffect(() => {
-    if (!open || !selectedOptionId) return;
+    if (!interactive || !selectedOptionId) return;
     document.getElementById(selectedOptionId)?.scrollIntoView({ block: "nearest" });
-  }, [open, selectedOptionId]);
+  }, [interactive, selectedOptionId]);
 
   if (!open) return null;
 
@@ -183,23 +262,27 @@ export function CommandOverlay({
   };
 
   return (
-    <div className="overlay-layer" role="presentation" onMouseDown={(event) => {
+    <div className="overlay-layer" data-state={presenceState} role="presentation" aria-hidden={closing ? "true" : undefined} onMouseDown={(event) => {
+      if (closing) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (event.target === event.currentTarget) onClose();
     }}>
       <section
         ref={dialogRef}
         className={`command-palette hud-panel${busy ? " is-busy" : ""}`}
+        data-state={presenceState}
+        inert={closing ? true : undefined}
+        onAnimationEnd={(event) => {
+          if (event.target === event.currentTarget) onPresenceComplete?.();
+        }}
         role="dialog"
         aria-modal="true"
-        aria-label="JARVIS quick search"
+        aria-label={surfaceLabel ?? t("quickSearch.title")}
         aria-busy={busy}
       >
-        <header className="command-header">
-          <span><AgentGlyph state="ready" /> JARVIS SEARCH</span>
-          <small>{surfaceLabel}</small>
-          <button type="button" onClick={onClose} aria-label="Close quick search" disabled={busy}><DismissRegular /></button>
-        </header>
-
         <form onSubmit={(event) => { event.preventDefault(); execute(selectedResult); }}>
           <SearchRegular />
           <input
@@ -210,8 +293,8 @@ export function CommandOverlay({
               setActiveIndex(0);
             }}
             onKeyDown={handleInputKeyDown}
-            placeholder="Search apps, windows, desktop items, and settings"
-            aria-label="Quick search"
+            placeholder={t("quickSearch.placeholder")}
+            aria-label={t("quickSearch.title")}
             role="combobox"
             aria-autocomplete="list"
             aria-expanded="true"
@@ -224,100 +307,122 @@ export function CommandOverlay({
             maxLength={160}
             disabled={busy}
           />
-          <button type="submit" className="run-command" aria-label="Open selected result" disabled={!selectedResult || busy}><ArrowRightRegular /></button>
+          <button
+            type="submit"
+            className="run-command"
+            aria-label={t("quickSearch.action.openSelectedResult")}
+            disabled={!selectedResult || busy}
+          >
+            <ArrowRightRegular />
+          </button>
+          <button
+            type="button"
+            className="command-close"
+            onClick={onClose}
+            aria-label={t("quickSearch.action.close")}
+            disabled={busy}
+          >
+            <DismissRegular />
+          </button>
         </form>
 
-        <div className="command-search-tools" aria-label="Quick search scopes">
-          <span>SCOPE</span>
-          {quickSearchScopes.map((scope, index) => (
-            <button
-              key={scope.id}
-              type="button"
-              className={scope.id === activeScope.id ? "is-active" : ""}
-              aria-pressed={scope.id === activeScope.id}
-              aria-keyshortcuts={`Control+${index + 1}`}
-              title={`Ctrl+${index + 1} · ${scope.prefix || "No prefix"} · ${scope.detail}`}
-              onClick={() => selectScope(scope)}
-            >
-              <span>{scope.label}</span>
-              <kbd>{index + 1}</kbd>
-            </button>
-          ))}
-          <small>TYPE A PREFIX TO FILTER LOCALLY</small>
+        <div className="command-results-surface">
+          {!value.trim() && queryHistory.length > 0 ? (
+            <div className="command-query-history" aria-label={t("quickSearch.history.aria")}>
+              <span>{t("quickSearch.history.recent")}</span>
+              {queryHistory.slice(0, 4).map((query) => (
+                <button
+                  key={query}
+                  type="button"
+                  title={t("quickSearch.history.reuse", { query })}
+                  onClick={() => reuseQuery(query)}
+                >
+                  {query}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="command-history-clear"
+                aria-label={t("quickSearch.history.clearAria")}
+                onClick={clearQuickSearchHistory}
+              >
+                {t("quickSearch.history.clear")}
+              </button>
+            </div>
+          ) : null}
+
+          <div
+            id="jarvis-quick-search-results"
+            className="command-results"
+            role="listbox"
+            aria-label={t("quickSearch.results.aria")}
+            aria-busy={applicationCatalog.loading || desktop.loading}
+          >
+            {results.length > 0 ? results.map((result, index) => (
+              <button
+                id={getQuickSearchOptionId(result.resultId)}
+                key={result.resultId}
+                type="button"
+                role="option"
+                tabIndex={-1}
+                aria-selected={index === selectedIndex}
+                className={index === selectedIndex ? "is-active" : ""}
+                disabled={busy}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => execute(result)}
+              >
+                <span className="command-result-icon" aria-hidden="true"><QuickSearchIcon result={result} /></span>
+                <span className="command-result-copy">
+                  <strong>
+                    <QuickSearchLabel
+                      label={getLocalizedResultLabel(result, t)}
+                      query={parsedQuery.query}
+                    />
+                  </strong>
+                  <small>{getLocalizedResultDetail(result, t)}</small>
+                </span>
+                <span className="command-result-category">
+                  {getLocalizedResultCategory(result, t)}
+                </span>
+                <ArrowRightRegular className="command-result-arrow" aria-hidden="true" />
+              </button>
+            )) : (
+              <div className="command-empty-state" role="status">
+                <SearchRegular />
+                <span>
+                  <strong>{t("quickSearch.empty.title")}</strong>
+                  <small>{t("quickSearch.empty.description")}</small>
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
-        {!value.trim() && queryHistory.length > 0 ? (
-          <div className="command-query-history" aria-label="Recent Quick Search queries">
-            <span>RECENT</span>
-            {queryHistory.slice(0, 4).map((query) => (
+        <footer className="command-shortcut-bar">
+          <div className="command-search-tools" aria-label={t("quickSearch.scope.aria")}>
+            {quickSearchScopes.map((scope, index) => (
               <button
-                key={query}
+                key={scope.id}
                 type="button"
-                title={`Reuse ${query}`}
-                onClick={() => reuseQuery(query)}
+                className={scope.id === activeScope.id ? "is-active" : ""}
+                aria-pressed={scope.id === activeScope.id}
+                aria-keyshortcuts={`Control+${index + 1}`}
+                title={t("quickSearch.scope.shortcutTitle", {
+                  shortcut: `Ctrl+${index + 1}`,
+                  prefix: scope.prefix || t("quickSearch.scope.noPrefix"),
+                  detail: getLocalizedScope(scope, t).detail,
+                })}
+                onClick={() => selectScope(scope)}
               >
-                {query}
+                <span>{getLocalizedScope(scope, t).label}</span>
+                <kbd>{index + 1}</kbd>
               </button>
             ))}
-            <button
-              type="button"
-              className="command-history-clear"
-              aria-label="Clear recent Quick Search queries"
-              onClick={clearQuickSearchHistory}
-            >
-              CLEAR
-            </button>
           </div>
-        ) : null}
-
-        <div className="command-results-heading">
-          <span>{value.trim() ? `${activeScope.label} MATCHES` : "QUICK ACCESS"}</span>
-          <small id="jarvis-quick-search-status" aria-live="polite" aria-atomic="true">
-            {resultStatus}
+          <span className="command-shortcut-hint">{t("quickSearch.shortcutHint")}</span>
+          <small id="jarvis-quick-search-status" role="status" aria-live="polite" aria-atomic="true">
+            {statusMessage ?? (busy ? t("quickSearch.status.checking") : resultStatus)}
           </small>
-        </div>
-
-        <div
-          id="jarvis-quick-search-results"
-          className="command-results"
-          role="listbox"
-          aria-label="Quick search results"
-          aria-busy={applicationCatalog.loading || desktop.loading}
-        >
-          {results.length > 0 ? results.map((result, index) => (
-            <button
-              id={getQuickSearchOptionId(result.resultId)}
-              key={result.resultId}
-              type="button"
-              role="option"
-              aria-selected={index === selectedIndex}
-              className={index === selectedIndex ? "is-active" : ""}
-              disabled={busy}
-              onMouseEnter={() => setActiveIndex(index)}
-              onClick={() => execute(result)}
-            >
-              <span className="command-result-icon" aria-hidden="true"><QuickSearchIcon result={result} /></span>
-              <span className="command-result-copy">
-                <strong><QuickSearchLabel label={result.label} query={parsedQuery.query} /></strong>
-                <small>{result.detail}</small>
-              </span>
-              <span className="command-result-category">{result.category}</span>
-              <ArrowRightRegular className="command-result-arrow" aria-hidden="true" />
-            </button>
-          )) : (
-            <div className="command-empty-state" role="status">
-              <SearchRegular />
-              <span><strong>No local result</strong><small>Try an application, open window, desktop item, or Windows setting.</small></span>
-            </div>
-          )}
-        </div>
-
-        <footer>
-          <span>↑ ↓ NAVIGATE</span>
-          <span>ENTER OPEN</span>
-          <span>ESC CLOSE</span>
-          {statusMessage ? <strong role="status" aria-live="polite">{statusMessage}</strong> : null}
-          <span>{busy ? "VERIFYING CAPABILITY" : "LOCAL INDEX · NO VOICE"}</span>
         </footer>
       </section>
     </div>

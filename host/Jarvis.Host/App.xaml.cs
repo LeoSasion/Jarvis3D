@@ -1,7 +1,9 @@
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using Jarvis.Host.Infrastructure;
+using Jarvis.Host.Localization;
 using Jarvis.Host.Services;
 using Microsoft.Web.WebView2.Core;
 
@@ -45,10 +47,16 @@ public partial class App : Application
 
             Directory.CreateDirectory(_rendererSmokeOptions!.DataRoot);
             HostLog.UseIsolatedLogDirectory(Path.Combine(_rendererSmokeOptions.DataRoot, "Logs"));
+            var smokeCulture = CultureInfo.GetCultureInfo(_rendererSmokeOptions.CultureName);
+            CultureInfo.CurrentCulture = smokeCulture;
+            CultureInfo.CurrentUICulture = smokeCulture;
+            CultureInfo.DefaultThreadCurrentCulture = smokeCulture;
+            CultureInfo.DefaultThreadCurrentUICulture = smokeCulture;
             Environment.SetEnvironmentVariable("JARVIS_KEEP_NATIVE_TASKBAR", "1");
             WebViewEnvironmentProvider.UseIsolatedUserDataDirectory(
                 Path.Combine(_rendererSmokeOptions.DataRoot, "WebView2"));
-            HostLog.Info("Renderer smoke requested in isolated native-taskbar-safe mode.");
+            HostLog.Info(
+                $"Renderer smoke requested in isolated native-taskbar-safe mode for {_rendererSmokeOptions.CultureName}.");
         }
 
         _singleInstance = SingleInstanceGuard.TryAcquire();
@@ -61,9 +69,10 @@ public partial class App : Application
                 return;
             }
 
+            var dialog = HostUiTextCatalog.GetDialog(HostUiMessage.AlreadyRunning);
             MessageBox.Show(
-                "JARVIS 已在当前 Windows 会话中运行。",
-                "JARVIS",
+                dialog.Message,
+                dialog.Title,
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             Shutdown(2);
@@ -108,9 +117,10 @@ public partial class App : Application
             }
             else
             {
+                var dialog = HostUiTextCatalog.GetDialog(HostUiMessage.WebView2Missing);
                 MessageBox.Show(
-                    "JARVIS 需要 Microsoft Edge WebView2 Runtime。请安装 Evergreen Runtime 后重新启动。\n\nWindows 原生桌面与任务栏未被修改。",
-                    "JARVIS 启动检查",
+                    dialog.Message,
+                    dialog.Title,
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
@@ -229,9 +239,10 @@ public partial class App : Application
         }
         else
         {
+            var dialog = HostUiTextCatalog.GetDialog(HostUiMessage.FatalHostError);
             MessageBox.Show(
-                "JARVIS 宿主遇到错误，已恢复 Windows 原生任务栏并安全退出。",
-                "JARVIS",
+                dialog.Message,
+                dialog.Title,
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }

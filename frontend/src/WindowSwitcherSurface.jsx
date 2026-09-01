@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLanguage } from "./i18n/language-system.js";
 import { mockTaskbarSnapshot } from "./platform/mock-platform.js";
 import {
   advanceWindowSwitcherState,
   getVisibleWindowSwitcherEntries,
+  getWindowSwitcherSelectionScrollTop,
   getWindowInitials,
   normalizeWindowSwitcherState,
 } from "./window-switcher-model.js";
-import { JarvisMark } from "./components/VectorMarks.jsx";
+import { localizeWorkspaceWindow } from "./workspace-window-labels.js";
 
 function createPreviewState() {
   const requestedIndex = Number.parseInt(
@@ -28,15 +30,21 @@ function WindowIcon({ entry }) {
 }
 
 export function WindowSwitcherSurface() {
+  const { t } = useLanguage();
+  const railRef = useRef(null);
+  const selectedCardRef = useRef(null);
   const [state, setState] = useState(createPreviewState);
   const visibleEntries = useMemo(
     () => getVisibleWindowSwitcherEntries(state),
     [state],
   );
-  const selectedWindow = state.selectedIndex >= 0
-    ? state.windows[state.selectedIndex]
-    : null;
-
+  const localizedVisibleEntries = useMemo(
+    () => visibleEntries.map((entry) => ({
+      ...entry,
+      window: localizeWorkspaceWindow(entry.window, t),
+    })),
+    [t, visibleEntries],
+  );
   useEffect(() => {
     const handleNativeState = (event) => {
       setState(normalizeWindowSwitcherState(event.detail));
@@ -44,6 +52,24 @@ export function WindowSwitcherSurface() {
     window.addEventListener("jarvis:window-switcher-state", handleNativeState);
     return () => window.removeEventListener("jarvis:window-switcher-state", handleNativeState);
   }, []);
+
+  useLayoutEffect(() => {
+    const rail = railRef.current;
+    const selectedCard = selectedCardRef.current;
+    if (!rail || !selectedCard) return;
+
+    const railBounds = rail.getBoundingClientRect();
+    const selectedBounds = selectedCard.getBoundingClientRect();
+    const selectedTop = rail.scrollTop + selectedBounds.top - railBounds.top;
+    const nextScrollTop = getWindowSwitcherSelectionScrollTop({
+      viewportHeight: rail.clientHeight,
+      scrollHeight: rail.scrollHeight,
+      scrollTop: rail.scrollTop,
+      selectedTop,
+      selectedHeight: selectedBounds.height,
+    });
+    if (nextScrollTop !== rail.scrollTop) rail.scrollTop = nextScrollTop;
+  }, [visibleEntries]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -56,33 +82,28 @@ export function WindowSwitcherSurface() {
   }, []);
 
   return (
-    <main className="jarvis-window-switcher" aria-label="JARVIS window switcher">
-      <div className="window-switcher-field" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </div>
-
+    <main className="jarvis-window-switcher" aria-label={t("windowSwitcher.accessibility.surface")}>
       <section className="window-switcher-chassis" aria-live="polite">
         <header className="window-switcher-header">
           <div className="window-switcher-brand">
-            <JarvisMark />
             <div>
-              <span>JARVIS WINDOW CHANNEL</span>
-              <small>FOREGROUND ROUTING · SECURE LOCAL CONTROL</small>
+              <span>{t("windowSwitcher.title")}</span>
+              <small>Alt + Tab</small>
             </div>
           </div>
-          <div className="window-switcher-counter">
-            <strong>{String(Math.max(0, state.selectedIndex + 1)).padStart(2, "0")}</strong>
-            <span>/</span>
-            <small>{String(state.windows.length).padStart(2, "0")}</small>
-          </div>
+          <small>{t("windowSwitcher.openCount", { count: state.windows.length })}</small>
         </header>
 
-        <div className="window-switcher-rail" role="listbox" aria-label="Open windows">
-          {visibleEntries.map(({ window: entry, index, selected }) => (
+        <div
+          ref={railRef}
+          className="window-switcher-rail"
+          role="listbox"
+          aria-label={t("windowSwitcher.accessibility.windows")}
+        >
+          {localizedVisibleEntries.map(({ window: entry, index, selected }) => (
             <button
               key={entry.windowId}
+              ref={selected ? selectedCardRef : undefined}
               type="button"
               className={`window-switcher-card ${selected ? "is-selected" : ""}`}
               role="option"
@@ -92,44 +113,32 @@ export function WindowSwitcherSurface() {
                 selectedIndex: index,
               }))}
             >
-              <span className="window-switcher-card-index">
-                {String(index + 1).padStart(2, "0")}
-              </span>
               <span className="window-switcher-icon">
                 <WindowIcon entry={entry} />
               </span>
               <span className="window-switcher-copy">
                 <strong>{entry.title}</strong>
                 <small>
-                  {entry.processName.toUpperCase()}
+                  {entry.processName}
                   <i aria-hidden="true">·</i>
-                  {entry.minimized ? "SUSPENDED" : entry.active ? "ACTIVE" : "READY"}
+                  {entry.minimized
+                    ? t("windowSwitcher.state.minimized")
+                    : entry.active
+                      ? t("windowSwitcher.state.active")
+                      : t("windowSwitcher.state.open")}
                 </small>
               </span>
-              <span className="window-switcher-corners" aria-hidden="true" />
             </button>
           ))}
         </div>
 
         <footer className="window-switcher-footer">
-          <div className="window-switcher-selected">
-            <span>SELECTED TARGET</span>
-            <strong>{selectedWindow?.title ?? "NO ELIGIBLE WINDOW"}</strong>
-          </div>
-          <div className="window-switcher-progress" aria-hidden="true">
-            {state.windows.slice(0, 12).map((entry, index) => (
-              <span
-                key={entry.windowId}
-                className={index === state.selectedIndex ? "is-current" : ""}
-              />
-            ))}
-          </div>
           <div className="window-switcher-instructions">
             <kbd>ALT</kbd>
-            <span>RELEASE TO ACTIVATE</span>
+            <span>{t("windowSwitcher.instruction.release")}</span>
             <i />
             <kbd>SHIFT + TAB</kbd>
-            <span>REVERSE</span>
+            <span>{t("windowSwitcher.instruction.previous")}</span>
           </div>
         </footer>
       </section>

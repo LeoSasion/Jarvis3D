@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Taskbar } from "./components/Taskbar.jsx";
 import { useAgentState } from "./hooks/useAgentState.js";
+import { translate, useLanguage } from "./i18n/language-system.js";
 import { platform } from "./platform/index.js";
 import { recordRecentApplication } from "./recent-applications.js";
 import { publishShellFeedback } from "./shell-feedback-channel.js";
@@ -16,6 +17,7 @@ import {
 } from "./workspace-runtime-channel.js";
 
 export function TaskbarSurface() {
+  const { t } = useLanguage();
   const [activeApp, setActiveApp] = useState("builtin:explorer");
   const [internalWindows, setInternalWindows] = useState(readWorkspaceRuntime);
   const agentState = useAgentState();
@@ -25,7 +27,9 @@ export function TaskbarSurface() {
   useEffect(() => subscribeWorkspaceRuntime(setInternalWindows), []);
 
   const reportTaskbarFault = useCallback((title, error, severity = "error") => {
-    const detail = error instanceof Error ? error.message : String(error ?? "Unexpected taskbar failure");
+    const detail = error instanceof Error
+      ? error.message
+      : String(error ?? translate("taskbarSurface.error.unexpected"));
     const fault = { source: "taskbar", severity, title, detail, persistent: true };
     if (!publishShellFeedback(fault)) {
       void platform.feed.reportFault(fault).catch(() => {
@@ -46,7 +50,7 @@ export function TaskbarSurface() {
     try {
       await platform.taskbar.showFlyout(options);
     } catch (error) {
-      reportTaskbarFault("Unable to show window preview", error);
+      reportTaskbarFault(translate("feedback.taskbar.previewFailed"), error);
     }
   }, [reportTaskbarFault]);
 
@@ -55,7 +59,7 @@ export function TaskbarSurface() {
     try {
       await platform.lifecycle.showDesktop({ panel });
     } catch (error) {
-      reportTaskbarFault("Unable to open the JARVIS desktop", error);
+      reportTaskbarFault(translate("taskbarSurface.error.openDesktop"), error);
     }
   }, [hideTaskbarFlyout, reportTaskbarFault]);
 
@@ -79,7 +83,7 @@ export function TaskbarSurface() {
     try {
       await platform.taskbar.closeWindow(windowId);
     } catch (error) {
-      reportTaskbarFault("Unable to close window", error);
+      reportTaskbarFault(translate("feedback.window.closeFailed"), error);
     }
   }, [reportTaskbarFault, showDesktopPanel]);
 
@@ -100,7 +104,7 @@ export function TaskbarSurface() {
       });
       showDesktopRestoreIdsRef.current = plan.nextRestoreIds;
     } catch (error) {
-      reportTaskbarFault("Unable to toggle desktop", error);
+      reportTaskbarFault(translate("feedback.desktop.toggleFailed"), error);
     }
   }, [hideTaskbarFlyout, internalWindows, reportTaskbarFault]);
 
@@ -142,7 +146,9 @@ export function TaskbarSurface() {
       if (!item.pinnedApplication) return;
       await platform.shell.open(item.pinnedApplication.target);
     } catch (error) {
-      reportTaskbarFault(`Unable to open ${item.label ?? "application"}`, error);
+      reportTaskbarFault(translate("feedback.shell.openFailed", {
+        label: item.label ?? translate("taskbar.application"),
+      }), error);
     }
   }, [hideTaskbarFlyout, reportTaskbarFault, showDesktopPanel]);
 
@@ -158,7 +164,7 @@ export function TaskbarSurface() {
         platform.isNative ? "is-native" : "",
         taskbarMode === "hybrid" ? "is-hybrid" : "",
       ].filter(Boolean).join(" ")}
-      aria-label="JARVIS taskbar surface"
+      aria-label={t("taskbarSurface.accessibility.label")}
     >
       <Taskbar
         activeApp={activeApp}

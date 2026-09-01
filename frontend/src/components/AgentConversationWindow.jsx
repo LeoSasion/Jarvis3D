@@ -1,12 +1,14 @@
 import {
   AddRegular,
   ArrowRightRegular,
+  BotRegular,
   DismissRegular,
   DocumentRegular,
+  InfoRegular,
   LinkRegular,
   MaximizeRegular,
+  PersonRegular,
   PulseRegular,
-  ShieldRegular,
   SquareMultipleRegular,
   SubtractRegular,
 } from "@fluentui/react-icons";
@@ -15,78 +17,113 @@ import { getLatestAgentRelationMessage } from "../agent-context-model.js";
 import { getAgentProviderLabel } from "../agent-provider-model.js";
 import {
   AGENT_CAPABILITIES,
+  AGENT_HISTORY_UNAVAILABLE,
   agentSupportsCapability,
   canUseAgentChat,
   getAgentTranscriptAnnouncement,
 } from "../agent-session-model.js";
+import { useLanguage } from "../i18n/language-system.js";
+import { formatTime } from "../i18n/locale-format.js";
 import { SystemNotice } from "./SystemNotice.jsx";
 
-const STATUS_COPY = Object.freeze({
-  unavailable: "RUNTIME OFFLINE",
-  starting: "CONNECTING",
-  ready: "RUNTIME VERIFIED",
-  running: "PROCESSING",
-  error: "CHANNEL DEGRADED",
+const STATUS_COPY_KEYS = Object.freeze({
+  unavailable: "agent.status.offline",
+  starting: "agent.status.connecting",
+  ready: "agent.status.ready",
+  running: "agent.status.responding",
+  error: "agent.status.needsAttention",
 });
 
-const ERROR_COPY = Object.freeze({
+const ERROR_COPY_KEYS = Object.freeze({
   AUTH_REQUIRED: {
-    status: "SIGN-IN REQUIRED",
-    heading: "Provider authentication is required",
-    guidance: "Complete Provider authentication outside the WebView, then send again. JARVIS never collects Provider secrets here.",
+    status: "agent.error.authRequired.status",
+    heading: "agent.error.authRequired.heading",
+    guidance: "agent.error.authRequired.guidance",
   },
   MODEL_REQUIRED: {
-    status: "MODEL REQUIRED",
-    heading: "A default model is required",
-    guidance: "Configure an available default model in the active Provider, then retry this channel.",
+    status: "agent.error.modelRequired.status",
+    heading: "agent.error.modelRequired.heading",
+    guidance: "agent.error.modelRequired.guidance",
   },
   NETWORK_UNAVAILABLE: {
-    status: "NETWORK DEGRADED",
-    heading: "The Provider network is unavailable",
-    guidance: "Check connectivity and send again. The secure runtime remains locally contained.",
+    status: "agent.error.networkUnavailable.status",
+    heading: "agent.error.networkUnavailable.heading",
+    guidance: "agent.error.networkUnavailable.guidance",
   },
   RATE_LIMITED: {
-    status: "RATE LIMITED",
-    heading: "The Provider is rate limited",
-    guidance: "Wait for the Provider window to recover, then send again.",
+    status: "agent.error.rateLimited.status",
+    heading: "agent.error.rateLimited.heading",
+    guidance: "agent.error.rateLimited.guidance",
   },
   QUOTA_EXCEEDED: {
-    status: "QUOTA REQUIRED",
-    heading: "Provider quota is unavailable",
-    guidance: "Review the Provider account quota, then retry this channel.",
+    status: "agent.error.quotaExceeded.status",
+    heading: "agent.error.quotaExceeded.heading",
+    guidance: "agent.error.quotaExceeded.guidance",
   },
 });
 
-const LINKED_FLOW_COPY = Object.freeze({
-  staged: { label: "CONTEXT STAGED", detail: "READY FOR DIRECTIVE" },
-  submitting: { label: "HANDOFF QUEUED", detail: "WAITING FOR AGENT RUN" },
-  running: { label: "PROCESSING REFERENCE", detail: "RESPONSE STREAM ACTIVE" },
-  complete: { label: "RESPONSE READY", detail: "AVAILABLE FOR NEXT DIRECTIVE" },
-  error: { label: "LINK FAILED", detail: "REFERENCE PRESERVED FOR RETRY" },
-  aborted: { label: "RUN STOPPED", detail: "REFERENCE PRESERVED" },
+const LINKED_FLOW_COPY_KEYS = Object.freeze({
+  staged: {
+    label: "agent.context.phase.staged.label",
+    detail: "agent.context.phase.staged.detail",
+  },
+  submitting: {
+    label: "agent.context.phase.submitting.label",
+    detail: "agent.context.phase.submitting.detail",
+  },
+  running: {
+    label: "agent.context.phase.running.label",
+    detail: "agent.context.phase.running.detail",
+  },
+  complete: {
+    label: "agent.context.phase.complete.label",
+    detail: "agent.context.phase.complete.detail",
+  },
+  error: {
+    label: "agent.context.phase.error.label",
+    detail: "agent.context.phase.error.detail",
+  },
+  aborted: {
+    label: "agent.context.phase.aborted.label",
+    detail: "agent.context.phase.aborted.detail",
+  },
 });
 
-function errorPresentation(error) {
+function errorPresentation(error, t) {
   if (!error) return null;
-  return ERROR_COPY[error.code] ?? {
-    status: "CHANNEL DEGRADED",
-    heading: error.retryable ? "The Agent channel can be retried" : "The Agent channel needs attention",
-    guidance: error.retryable
-      ? "The next send will establish a fresh contained Provider process if recovery is required."
-      : "Review the status detail before continuing.",
+  const keys = ERROR_COPY_KEYS[error.code];
+  if (keys) {
+    return {
+      status: t(keys.status),
+      heading: t(keys.heading),
+      guidance: t(keys.guidance),
+    };
+  }
+  return {
+    status: t("agent.status.needsAttention"),
+    heading: t(error.retryable
+      ? "agent.error.generic.retryable.heading"
+      : "agent.error.generic.attention.heading"),
+    guidance: t(error.retryable
+      ? "agent.error.generic.retryable.guidance"
+      : "agent.error.generic.attention.guidance"),
   };
 }
 
-function formatMessageTime(value) {
+function formatMessageTime(value, language, t) {
   const date = new Date(value ?? Date.now());
-  if (Number.isNaN(date.getTime())) return "NOW";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (Number.isNaN(date.getTime())) return t("agent.message.time.now");
+  return formatTime(date, language);
 }
 
-function messageLabel(role, providerLabel) {
-  if (role === "user") return "YOU";
-  if (role === "assistant") return providerLabel === "NO PROVIDER" ? "AGENT" : `AGENT · ${providerLabel}`;
-  return "SYSTEM";
+function messageLabel(role, providerLabel, t) {
+  if (role === "user") return t("agent.message.author.you");
+  if (role === "assistant") {
+    return providerLabel === "NO PROVIDER"
+      ? t("agent.message.author.agent")
+      : t("agent.message.author.provider", { provider: providerLabel });
+  }
+  return t("agent.message.author.system");
 }
 
 function messageDisplayText(message) {
@@ -99,6 +136,16 @@ function messageDisplayText(message) {
   return markerIndex < 0 ? text : text.slice(markerIndex + marker.length).trim();
 }
 
+function MessageAvatar({ role }) {
+  if (role === "user") {
+    return <PersonRegular />;
+  }
+  if (role === "assistant") {
+    return <BotRegular />;
+  }
+  return <InfoRegular />;
+}
+
 function LinkedContextEvent({
   context,
   phase,
@@ -106,47 +153,77 @@ function LinkedContextEvent({
   chatAvailable = true,
   onLinkSelection,
   onClear,
+  t,
 }) {
   const items = context?.items ?? [];
   if (items.length === 0) {
     if (!selectionItems?.length) return null;
     return (
-      <section className="agent-link-cue" aria-label="Explorer selection available for Agent">
+      <section
+        className="agent-link-cue"
+        aria-label={t("agent.context.selection.availableAria")}
+      >
         <span className="agent-flow-node" aria-hidden="true"><LinkRegular /></span>
         <span>
-          <small>EXPLORER SELECTION AVAILABLE</small>
-          <strong>{selectionItems.length === 1 ? selectionItems[0].name : `${selectionItems.length} ITEMS SELECTED`}</strong>
-          <p>Link the visible selection as metadata-only context. File contents stay outside this chat channel.</p>
+          <small>{t("agent.context.selection.label")}</small>
+          <strong>
+            {selectionItems.length === 1
+              ? selectionItems[0].name
+              : t("agent.context.selection.itemsSelected", { count: selectionItems.length })}
+          </strong>
+          <p>{t("agent.context.selection.metadataExplanation")}</p>
         </span>
         <button
           type="button"
           onClick={() => onLinkSelection?.(selectionItems)}
           disabled={!chatAvailable}
-          title={chatAvailable ? undefined : "The active Provider does not support chat"}
+          title={chatAvailable
+            ? undefined
+            : t("agent.context.selection.chatUnsupportedTitle")}
         >
-          {chatAvailable ? "LINK TO DIRECTIVE" : "CHAT UNAVAILABLE"}
+          {chatAvailable
+            ? t("agent.context.selection.addToMessage")
+            : t("agent.status.chatUnavailable")}
         </button>
       </section>
     );
   }
 
-  const copy = LINKED_FLOW_COPY[phase] ?? LINKED_FLOW_COPY.staged;
+  const copyKeys = LINKED_FLOW_COPY_KEYS[phase] ?? LINKED_FLOW_COPY_KEYS.staged;
+  const copy = {
+    label: t(copyKeys.label),
+    detail: t(copyKeys.detail),
+  };
   return (
     <section
       className={`agent-linked-context is-${phase}`}
-      aria-label={`Linked Explorer context: ${copy.label}`}
+      aria-label={t("agent.context.linked.aria", { status: copy.label })}
     >
       <span className="agent-flow-node" aria-hidden="true"><DocumentRegular /></span>
       <span className="agent-linked-context__identity">
-        <small>EXPLORER REFERENCE · METADATA ONLY</small>
-        <strong>{items.length === 1 ? items[0].name : `${items.length} LINKED ITEMS`}</strong>
-        <code>{items.length === 1 ? items[0].path : `${items.length} immutable selection snapshots`}</code>
+        <small>{t("agent.context.linked.metadataLabel")}</small>
+        <strong>
+          {items.length === 1
+            ? items[0].name
+            : t("agent.context.linked.items", { count: items.length })}
+        </strong>
+        <code>
+          {items.length === 1
+            ? items[0].path
+            : t("agent.context.linked.snapshots", { count: items.length })}
+        </code>
       </span>
       <span className="agent-linked-context__state" role="status">
         <strong>{copy.label}</strong>
         <small>{copy.detail}</small>
       </span>
-      <button type="button" onClick={onClear} disabled={["submitting", "running"].includes(phase)}>CLEAR LINK</button>
+      <button
+        type="button"
+        onClick={onClear}
+        disabled={["submitting", "running"].includes(phase)}
+      >
+        {t("agent.context.action.clear")}
+      </button>
     </section>
   );
 }
@@ -177,19 +254,28 @@ export function AgentConversationWindow({
   onMinimize,
   onToggleMaximize,
 }) {
+  const { language, t } = useLanguage();
   const transcriptRef = useRef(null);
   const composerRef = useRef(null);
+  const alertRef = useRef(null);
   const messageStatusesRef = useRef(new Map());
   const [transcriptAnnouncement, setTranscriptAnnouncement] = useState(null);
   const status = state?.status ?? "unavailable";
-  const errorView = errorPresentation(state?.error);
+  const errorView = useMemo(
+    () => errorPresentation(state?.error, t),
+    [state?.error, t],
+  );
+  const historyErrorText = historyError === AGENT_HISTORY_UNAVAILABLE
+    ? t("agent.history.temporarilyUnavailable")
+    : historyError;
   const visualStatus = errorView ? "error" : status;
   const providerLabel = getAgentProviderLabel(state);
   const statusCopy = sessionTransitioning
-    ? "SWITCHING SESSION"
+    ? t("agent.status.switchingSession")
     : errorView?.status
-    ?? (status === "ready" && state?.connected ? "CHANNEL CONNECTED" : STATUS_COPY[status])
-    ?? "STANDBY";
+    ?? (status === "ready" && state?.connected
+      ? t("agent.status.connected")
+      : t(STATUS_COPY_KEYS[status] ?? STATUS_COPY_KEYS.ready));
   const isRunning = status === "running" || status === "starting";
   const supportsChat = canUseAgentChat(state);
   const supportsAbort = agentSupportsCapability(state, AGENT_CAPABILITIES.abort);
@@ -204,20 +290,25 @@ export function AgentConversationWindow({
   const canSend = channelReady
     && draft.trim().length > 0;
   const connectionCopy = useMemo(() => {
-    if (!state?.available) return "NO PROVIDER CONFIGURED";
-    if (errorView) return errorView.status;
-    if (!state?.connected) return "RUNTIME VERIFIED · PROVIDER CHECKS ON FIRST SEND";
-    const provider = providerLabel;
-    const model = state.model || "MODEL CHECK PENDING";
-    return `${provider} · ${model}`.toUpperCase();
-  }, [errorView, providerLabel, state?.available, state?.connected, state?.model]);
+    const provider = state?.available
+      ? providerLabel
+      : t("agent.connection.noProvider");
+    const model = state?.model || t("agent.connection.modelPending");
+    const connection = !state?.available
+      ? t("agent.status.offline")
+      : errorView?.status
+        ?? (state?.connected
+          ? t("agent.status.connected")
+          : t("agent.connection.connectsOnSend"));
+    return `${provider} · ${model} · ${connection}`;
+  }, [errorView, providerLabel, state?.available, state?.connected, state?.model, t]);
 
   const emptyCopy = useMemo(() => {
     if (!state?.available) {
       return {
-        eyebrow: "RUNTIME BOUNDARY",
-        heading: "Agent Provider is unavailable",
-        detail: state?.error?.message ?? "Install, connect, or repair a verified Provider before using Agent chat.",
+        eyebrow: t("agent.empty.unavailable.eyebrow"),
+        heading: t("agent.empty.unavailable.heading"),
+        detail: state?.error?.message ?? t("agent.empty.unavailable.detail"),
       };
     }
     if (errorView) {
@@ -229,30 +320,38 @@ export function AgentConversationWindow({
     }
     if (!supportsChat) {
       return {
-        eyebrow: "CHAT CAPABILITY UNAVAILABLE",
-        heading: "This Provider is status-only here",
-        detail: "Choose a Provider that declares chat capability before sending a directive.",
+        eyebrow: t("agent.status.chatUnavailable"),
+        heading: t("agent.empty.statusOnly.heading"),
+        detail: t("agent.empty.statusOnly.detail"),
       };
     }
     if (!state?.connected) {
       return {
-        eyebrow: "SECURE RUNTIME VERIFIED",
-        heading: "Provider checks on first send",
-        detail: "The selected Provider starts only when needed. Model and Provider availability are verified without exposing credentials to this desktop surface.",
+        eyebrow: t("agent.empty.readyToConnect.eyebrow"),
+        heading: t("agent.empty.readyToConnect.heading"),
+        detail: t("agent.empty.readyToConnect.detail"),
       };
     }
     return {
-      eyebrow: "PRIVATE SESSION CONNECTED",
-      heading: "What should we work on?",
-      detail: "Messages stream through the Windows host. System tools remain disabled in this integration.",
+      eyebrow: t("agent.status.connected"),
+      heading: t("agent.empty.connected.heading"),
+      detail: t("agent.empty.connected.detail"),
     };
-  }, [errorView, state?.available, state?.connected, state?.error?.message, supportsChat]);
+  }, [errorView, state?.available, state?.connected, state?.error?.message, supportsChat, t]);
 
   useEffect(() => {
     const transcript = transcriptRef.current;
     if (!transcript) return;
     transcript.scrollTop = transcript.scrollHeight;
   }, [messages]);
+
+  useEffect(() => {
+    if (!state?.error && !historyErrorText) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      alertRef.current?.scrollIntoView({ block: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [historyErrorText, state?.error]);
 
   const linkedContextKey = linkedContext?.relationId
     ?? (linkedContext?.items ?? []).map((item) => item.id).join("|");
@@ -263,6 +362,8 @@ export function AgentConversationWindow({
   const linkedRelationMessageId = linkedRelationMessage?.id ?? null;
   const linkedDirectiveArmed = Boolean(linkedContext?.items?.length)
     && linkedFlowPhase === "staged";
+  const hasLinkedContextControl = Boolean(linkedContext?.items?.length)
+    || Boolean(explorerSelection?.length);
   useEffect(() => {
     if (!linkedContextKey) return;
     window.requestAnimationFrame(() => composerRef.current?.focus());
@@ -274,7 +375,7 @@ export function AgentConversationWindow({
       messages,
     );
     messageStatusesRef.current = nextStatuses;
-    if (announcement) setTranscriptAnnouncement(announcement);
+    if (announcement) setTranscriptAnnouncement(announcement.id);
   }, [messages]);
 
   if (!open) return null;
@@ -290,8 +391,9 @@ export function AgentConversationWindow({
         className="agent-workbench"
         role="dialog"
         aria-modal="false"
-        aria-label="JARVIS Agent"
+        aria-label={t("agent.accessibility.window")}
         aria-busy={isRunning || sessionTransitioning}
+        data-window-active={active ? "true" : "false"}
       >
         <header
           className="agent-titlebar"
@@ -300,8 +402,8 @@ export function AgentConversationWindow({
         >
           <span className={`agent-titlebar__mark is-${visualStatus}`}><PulseRegular /></span>
           <span className="agent-titlebar__identity">
-            <small>EMBEDDED OPERATIONS CHANNEL · {providerLabel}</small>
-            <strong>JARVIS · AGENT</strong>
+            <strong>JARVIS Agent</strong>
+            <small className="agent-connection-summary">{connectionCopy}</small>
           </span>
           <span className={`agent-runtime-state is-${visualStatus}`} role="status">
             <i />{statusCopy}
@@ -316,14 +418,19 @@ export function AgentConversationWindow({
               || !state?.available
               || !supportsNewSession
             }
-            aria-label="Start new Agent session"
+            aria-label={t("agent.action.newSession.aria")}
             title={supportsNewSession
-              ? "New session"
-              : "This Provider does not support new sessions"}
+              ? t("agent.action.newSession.title")
+              : t("agent.action.newSession.unsupportedTitle")}
           >
             <AddRegular />
           </button>
-          <button type="button" data-no-window-drag onClick={onMinimize} aria-label="Minimize Agent">
+          <button
+            type="button"
+            data-no-window-drag
+            onClick={onMinimize}
+            aria-label={t("agent.action.minimize.aria")}
+          >
             <SubtractRegular />
           </button>
           <button
@@ -332,41 +439,54 @@ export function AgentConversationWindow({
             onClick={onToggleMaximize}
             disabled={!canMaximize}
             aria-label={canMaximize
-              ? maximized ? "Restore Agent" : "Maximize Agent"
-              : "Agent layout is controlled by the linked workspace"}
-            title={canMaximize ? maximized ? "Restore" : "Maximize" : "Linked layout"}
+              ? maximized
+                ? t("agent.action.restore.aria")
+                : t("agent.action.maximize.aria")
+              : t("agent.action.layoutControlled.aria")}
+            title={canMaximize
+              ? maximized
+                ? t("agent.action.restore.title")
+                : t("agent.action.maximize.title")
+              : t("agent.action.layoutControlled.title")}
           >
             {maximized ? <SquareMultipleRegular /> : <MaximizeRegular />}
           </button>
-          <button type="button" data-no-window-drag onClick={onClose} aria-label="Close Agent">
+          <button
+            type="button"
+            data-no-window-drag
+            onClick={onClose}
+            aria-label={t("agent.action.close.aria")}
+          >
             <DismissRegular />
           </button>
         </header>
 
-        <div className="agent-context-strip">
-          <span>
-            <ShieldRegular />
-            {supportsChat ? "CHAT ONLY · TOOLS DISABLED" : "STATUS ONLY · CHAT UNAVAILABLE"}
-          </span>
-          <code>{connectionCopy}</code>
-          <small>{state?.sessionId ? `SESSION ${String(state.sessionId).slice(0, 8)}` : "EPHEMERAL SESSION"}</small>
-        </div>
-
         <div
           ref={transcriptRef}
           className="agent-transcript"
+          role="log"
+          aria-live="off"
           data-linked-scroll-viewport="agent"
-          aria-label="Agent transcript"
+          aria-label={t("agent.accessibility.transcript")}
         >
           <SystemNotice notice={notice} onDismiss={onDismissNotice} placement="inline" />
-          <LinkedContextEvent
-            context={linkedContext}
-            phase={linkedFlowPhase}
-            selectionItems={explorerSelection}
-            chatAvailable={supportsChat}
-            onLinkSelection={onLinkExplorerSelection}
-            onClear={onClearLinkedContext}
-          />
+          {state?.error || historyErrorText ? (
+            <div ref={alertRef} className="agent-alert-region has-alert" role="alert">
+              {state?.error ? (
+                <>
+                  <strong>{state.error.code}</strong>
+                  <span>{state.error.message || t("agent.error.requestFailed")}</span>
+                  <small>{errorView?.guidance}</small>
+                </>
+              ) : (
+                <>
+                  <strong>{t("agent.history.unavailable")}</strong>
+                  <span>{historyErrorText}</span>
+                  <small>{t("agent.history.currentChatAvailable")}</small>
+                </>
+              )}
+            </div>
+          ) : null}
           {messages.length ? messages.map((message, index) => {
             const linkedRelation = message.id === linkedRelationMessageId;
             const reusableResult = linkedRelation
@@ -384,27 +504,45 @@ export function AgentConversationWindow({
                     aria-hidden="true"
                   />
                 ) : null}
-                <header>
-                  <span>{messageLabel(message.role, providerLabel)}</span>
-                  <time>{formatMessageTime(message.createdAt ?? message.timestamp)}</time>
-                  <code>{linkedRelation ? "FILE LINK" : message.status === "streaming" ? "LIVE" : message.status === "error" ? "ERROR" : "LOGGED"}</code>
-                </header>
-                <p>{messageDisplayText(message)}</p>
-                {reusableResult ? (
-                  <button
-                    type="button"
-                    className="agent-message-reuse"
-                    onClick={onReuseLinkedResult}
-                  >
-                    USE IN DIRECTIVE
-                  </button>
-                ) : null}
+                <span className="agent-message__avatar" aria-hidden="true">
+                  <MessageAvatar role={message.role} />
+                </span>
+                <div className="agent-message__group">
+                  <div className="agent-message__bubble">
+                    <p>{messageDisplayText(message)}</p>
+                  </div>
+                  <footer className="agent-message__meta">
+                    <span>{messageLabel(message.role, providerLabel, t)}</span>
+                    <time>
+                      {formatMessageTime(
+                        message.createdAt ?? message.timestamp,
+                        language,
+                        t,
+                      )}
+                    </time>
+                    {linkedRelation ? (
+                      <code>{t("agent.message.state.linkedFile")}</code>
+                    ) : message.status === "streaming" ? (
+                      <code>{t("agent.status.responding")}</code>
+                    ) : message.status === "error" ? (
+                      <code>{t("agent.message.state.error")}</code>
+                    ) : null}
+                    {reusableResult ? (
+                      <button
+                        type="button"
+                        className="agent-message-reuse"
+                        onClick={onReuseLinkedResult}
+                      >
+                        {t("agent.message.action.useInMessage")}
+                      </button>
+                    ) : null}
+                  </footer>
+                </div>
               </article>
             );
           }) : !linkedContext?.items?.length && !explorerSelection?.length ? (
             <div className={`agent-empty-state${channelReady && !errorView ? " is-ready" : ""}`}>
-              <PulseRegular />
-              <span>
+              <span className="agent-empty-state__copy">
                 <small>{emptyCopy.eyebrow}</small>
                 <strong>{emptyCopy.heading}</strong>
                 <p>{emptyCopy.detail}</p>
@@ -414,90 +552,98 @@ export function AgentConversationWindow({
         </div>
         <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
           {transcriptAnnouncement ? (
-            <span key={transcriptAnnouncement.id}>{transcriptAnnouncement.text}</span>
-          ) : null}
-        </div>
-
-        <div
-          className={`agent-alert-region${state?.error || historyError ? " has-alert" : ""}`}
-          role={state?.error || historyError ? "alert" : undefined}
-        >
-          {state?.error ? (
-            <>
-              <strong>{state.error.code}</strong>
-              <span>{state.error.message}</span>
-              <small>{errorView?.guidance}</small>
-            </>
-          ) : historyError ? (
-            <>
-              <strong>HISTORY UNAVAILABLE</strong>
-              <span>{historyError}</span>
-              <small>The live Agent channel can still be used.</small>
-            </>
+            <span key={transcriptAnnouncement}>
+              {t("agent.announcement.responseComplete")}
+            </span>
           ) : null}
         </div>
 
         <form className="agent-composer" onSubmit={submit}>
-          <label htmlFor="jarvis-agent-prompt">
-            <span>{linkedDirectiveArmed ? "DIRECTIVE // LINKED REFERENCE" : "DIRECTIVE"}</span>
-            <small>{draft.length} / 16000</small>
+          {hasLinkedContextControl ? (
+            <div className="agent-composer__attachments">
+              <LinkedContextEvent
+                context={linkedContext}
+                phase={linkedFlowPhase}
+                selectionItems={explorerSelection}
+                chatAvailable={supportsChat}
+                onLinkSelection={onLinkExplorerSelection}
+                onClear={onClearLinkedContext}
+                t={t}
+              />
+            </div>
+          ) : null}
+          <label className="sr-only" htmlFor="jarvis-agent-prompt">
+            {linkedDirectiveArmed
+              ? t("agent.composer.accessibility.linkedMessage")
+              : t("agent.composer.accessibility.message")}
           </label>
-          <textarea
-            ref={composerRef}
-            id="jarvis-agent-prompt"
-            value={draft}
-            maxLength={16000}
-            rows={3}
-            disabled={!channelReady}
-            placeholder={isRunning
-              ? "Agent response in progress…"
-              : channelReady
-                ? errorView?.guidance ?? "Ask the Agent…"
-                : state?.available && !supportsChat
-                  ? "This Provider does not support chat in JARVIS"
-                : state?.available
-                  ? "Wait for the Agent channel to become ready"
-                  : "Connect a verified Provider to enable Agent chat"}
-            onChange={(event) => onDraftChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-              event.preventDefault();
-              if (canSend) void onSend().catch(() => {});
-            }}
-          />
-          {isRunning && supportsAbort ? (
-            <button
-              type="button"
-              className="is-stop"
-              onClick={() => { void onAbort().catch(() => {}); }}
-              aria-label="Stop Agent response"
-            >
-              <DismissRegular /><span>STOP</span>
-            </button>
-          ) : isRunning ? (
-            <button
-              type="button"
-              className="is-stop"
-              disabled
-              aria-label="This Provider does not support stopping the active response"
-              title="This Provider does not support abort"
-            >
-              <DismissRegular /><span>NO STOP</span>
-            </button>
-          ) : (
-            <button type="submit" className="is-send" disabled={!canSend} aria-label="Send to Agent">
-              <ArrowRightRegular /><span>SEND</span>
-            </button>
-          )}
+          <div className="agent-composer__input-row">
+            <textarea
+              ref={composerRef}
+              id="jarvis-agent-prompt"
+              value={draft}
+              maxLength={16000}
+              rows={1}
+              disabled={!channelReady}
+              placeholder={isRunning
+                ? t("agent.composer.placeholder.responding")
+                : channelReady
+                  ? errorView?.guidance ?? t("agent.composer.placeholder.ready")
+                  : state?.available && !supportsChat
+                    ? t("agent.composer.placeholder.chatUnsupported")
+                    : state?.available
+                      ? t("agent.composer.placeholder.waiting")
+                      : t("agent.composer.placeholder.connectProvider")}
+              onChange={(event) => onDraftChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                if (canSend) void onSend().catch(() => {});
+              }}
+            />
+            {isRunning && supportsAbort ? (
+              <button
+                type="button"
+                className="is-stop"
+                onClick={() => { void onAbort().catch(() => {}); }}
+                aria-label={t("agent.composer.action.stop.aria")}
+              >
+                <DismissRegular /><span>{t("agent.composer.action.stop.label")}</span>
+              </button>
+            ) : isRunning ? (
+              <button
+                type="button"
+                className="is-stop"
+                disabled
+                aria-label={t("agent.composer.action.stopUnsupported.aria")}
+                title={t("agent.composer.action.stopUnsupported.title")}
+              >
+                <DismissRegular />
+                <span>{t("agent.composer.action.stopUnsupported.label")}</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="is-send"
+                disabled={!canSend}
+                aria-label={t("agent.composer.action.send.aria")}
+              >
+                <ArrowRightRegular /><span>{t("agent.composer.action.send.label")}</span>
+              </button>
+            )}
+          </div>
+          <footer className="agent-footer">
+            <small>{connectionCopy}</small>
+            <span className="agent-footer__status">
+              {draft.length >= 12000 ? <code>{draft.length} / 16,000</code> : null}
+              <code>
+                {supportsChat
+                  ? t("agent.connection.chatOnly")
+                  : t("agent.connection.statusOnly")}
+              </code>
+            </span>
+          </footer>
         </form>
-
-        <footer className="agent-footer">
-          <span><i className={`is-${visualStatus}`} />{active ? "FOCUSED CHANNEL" : "BACKGROUND CHANNEL"}</span>
-          <small>{supportsChat
-            ? "ENTER TO SEND · SHIFT+ENTER FOR NEW LINE"
-            : "CHAT NOT SUPPORTED BY ACTIVE PROVIDER"}</small>
-          <code>NO SHELL · NO FILE WRITE · NO SYSTEM CONTROL</code>
-        </footer>
       </section>
     </div>
   );

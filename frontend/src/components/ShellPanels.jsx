@@ -66,7 +66,6 @@ import {
   useWindowAppearanceState,
 } from "../hooks/usePlatformData.js";
 import {
-  CALENDAR_WEEKDAYS,
   createCalendarMonth,
   isTimestampOnLocalDate,
   moveCalendarDate,
@@ -75,7 +74,7 @@ import {
   toLocalDateKey,
 } from "../date-time-panel-model.js";
 import { mergeSystemFeedEvents } from "../feedback-model.js";
-import { filterHelpSections, helpCenterSections } from "../help-center-model.js";
+import { helpCenterSections } from "../help-center-model.js";
 import { useRecentApplicationIds } from "../hooks/useRecentApplications.js";
 import { clearRecentApplications } from "../recent-applications.js";
 import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
@@ -91,7 +90,9 @@ import {
   resolvePinnedApplications,
 } from "../pinned-application-model.js";
 import { platform } from "../platform/index.js";
-import { CoreNodeGlyph, JarvisMark } from "./VectorMarks.jsx";
+import { GraphSourceSettings } from "../graph/GraphSourceSettings.jsx";
+import { GraphProfileManager } from "../graph/GraphProfileManager.jsx";
+import { CoreNodeGlyph } from "./VectorMarks.jsx";
 import {
   quickLaunchItems as startApps,
   quickSettingItems as quickSettings,
@@ -118,6 +119,19 @@ const SESSION_ACTION_ICONS = Object.freeze({
   restart: ArrowClockwiseRegular,
   "shut-down": PowerRegular,
 });
+const SYSTEM_FEED_FILTER_IDS = Object.freeze([
+  "all",
+  "unread",
+  "attention",
+  "status",
+]);
+const SESSION_ACTION_TRANSLATION_IDS = Object.freeze({
+  "exit-jarvis": "exitJarvis",
+  lock: "lock",
+  "sign-out": "signOut",
+  restart: "restart",
+  "shut-down": "shutDown",
+});
 import {
   buildStartMenuApplications,
   createStartMenuVirtualRows,
@@ -134,10 +148,19 @@ import {
   getTaskbarTransitionToast,
 } from "../taskbar-mode-model.js";
 import {
+  customVisualPaletteFields,
+  getCustomVisualPaletteSnapshot,
+  getVisualPaletteContrastReport,
+  getVisualThemeDefinition,
+  getVisualThemeOptions,
   getVisualThemeSnapshot,
+  getVisualThemeVersionSnapshot,
+  parseCustomVisualTheme,
+  resetCustomVisualPalette,
+  serializeCustomVisualTheme,
+  setCustomVisualPalette,
   setVisualTheme,
   subscribeVisualTheme,
-  visualThemes,
 } from "../theme-system.js";
 import {
   getInterfacePreferencesSnapshot,
@@ -146,12 +169,25 @@ import {
   subscribeInterfacePreferences,
 } from "../interface-preferences.js";
 import {
+  LANGUAGE_OPTIONS,
+  setLanguagePreference,
+  useLanguage,
+} from "../i18n/language-system.js";
+import {
+  formatClockPresentation,
+  formatDate,
+  formatTime,
+  getCalendarWeekdayLabels,
+} from "../i18n/locale-format.js";
+import {
   getWindowCompatibilityReasonLabel,
   normalizeWindowAppearanceProcessName,
 } from "../window-appearance-model.js";
 
 const VisualEffectsSettings = lazy(() => import("../visual-effects/VisualEffectsSettings.jsx")
   .then((module) => ({ default: module.VisualEffectsSettings })));
+const GraphVisualSettings = lazy(() => import("../graphics/graph/GraphVisualSettings.jsx")
+  .then((module) => ({ default: module.GraphVisualSettings })));
 
 class OptionalSettingsBoundary extends Component {
   constructor(props) {
@@ -167,7 +203,8 @@ class OptionalSettingsBoundary extends Component {
     if (this.state.failed) {
       return (
         <p className="runtime-settings-error" role="status">
-          OPTIONAL SCREEN EFFECTS UNAVAILABLE · CORE SETTINGS REMAIN ACTIVE
+          {this.props.fallbackMessage ??
+            "OPTIONAL SCREEN EFFECTS UNAVAILABLE · CORE SETTINGS REMAIN ACTIVE"}
         </p>
       );
     }
@@ -180,33 +217,33 @@ const windowAppearanceOptions = [
     mode: "off",
     level: "L0",
     title: "OFF",
-    label: "关闭",
-    tag: "原生",
-    description: "不处理第三方窗口，保留 Windows 原生外观。",
+    labelKey: "settings.windows.appearance.option.off.label",
+    tagKey: "settings.windows.appearance.option.off.tag",
+    descriptionKey: "settings.windows.appearance.option.off.description",
   },
   {
     mode: "conservative",
     level: "L1",
     title: "CONSERVATIVE",
-    label: "安全外框",
-    tag: "安全",
-    description: "只添加点击穿透的 JARVIS 辉光外框，不改标题栏。",
+    labelKey: "settings.windows.appearance.option.conservative.label",
+    tagKey: "settings.windows.appearance.option.conservative.tag",
+    descriptionKey: "settings.windows.appearance.option.conservative.description",
   },
   {
     mode: "enhanced",
     level: "L2",
     title: "ENHANCED",
-    label: "Win11 标题栏增强",
-    tag: "推荐",
-    description: "安全外框 + 深色标题栏、橙色信号边框与系统圆角。",
+    labelKey: "settings.windows.appearance.option.enhanced.label",
+    tagKey: "settings.windows.appearance.option.enhanced.tag",
+    descriptionKey: "settings.windows.appearance.option.enhanced.description",
   },
   {
     mode: "immersive",
     level: "L3",
     title: "IMMERSIVE",
-    label: "沉浸接管",
-    tag: "实验",
-    description: "覆盖全部合格窗口；自动跳过受保护与安全窗口。",
+    labelKey: "settings.windows.appearance.option.immersive.label",
+    tagKey: "settings.windows.appearance.option.immersive.tag",
+    descriptionKey: "settings.windows.appearance.option.immersive.description",
   },
 ];
 
@@ -218,34 +255,111 @@ const taskbarModeOptions = [
   {
     mode: "native",
     title: "NATIVE",
-    label: "原生回退",
-    description: "完整保留 Windows 任务栏；JARVIS 只运行桌面与工具层。",
+    labelKey: "settings.taskbar.option.native.label",
+    descriptionKey: "settings.taskbar.option.native.description",
   },
   {
     mode: "hybrid",
     title: "HYBRID",
-    label: "混合任务栏",
-    description: "推荐默认；由 Explorer 保留通知区，JARVIS 接管其余主任务栏区域。",
+    labelKey: "settings.taskbar.option.hybrid.label",
+    descriptionKey: "settings.taskbar.option.hybrid.description",
   },
   {
     mode: "full",
     title: "FULL",
-    label: "完整替换",
-    description: "实验模式；隐藏原生任务栏，第三方托盘功能可能不可用。",
+    labelKey: "settings.taskbar.option.full.label",
+    descriptionKey: "settings.taskbar.option.full.description",
   },
 ];
 
+const windowCompatibilityReasonKeys = Object.freeze({
+  automatic: "settings.windows.compatibility.reason.automatic",
+  "user-allow": "settings.windows.compatibility.reason.userAllow",
+  "user-deny": "settings.windows.compatibility.reason.userDeny",
+  "system-protected": "settings.windows.compatibility.reason.systemProtected",
+  "jarvis-host": "settings.windows.compatibility.reason.jarvisHost",
+  "integrity-or-access": "settings.windows.compatibility.reason.integrityOrAccess",
+  "non-application-window": "settings.windows.compatibility.reason.nonApplicationWindow",
+  "no-standard-caption": "settings.windows.compatibility.reason.noStandardCaption",
+  "system-window-class": "settings.windows.compatibility.reason.systemWindowClass",
+  "window-cloaked": "settings.windows.compatibility.reason.windowCloaked",
+  fullscreen: "settings.windows.compatibility.reason.fullscreen",
+  "no-compatible-window": "settings.windows.compatibility.reason.noCompatibleWindow",
+});
+
 const interfaceMotionOptions = Object.freeze([
-  Object.freeze({ id: "system", label: "SYSTEM", detail: "Follow Windows motion preference" }),
-  Object.freeze({ id: "reduced", label: "REDUCED", detail: "Minimize animation and transitions" }),
-  Object.freeze({ id: "full", label: "FULL", detail: "Use the complete JARVIS motion profile" }),
+  Object.freeze({
+    id: "system",
+    labelKey: "settings.interface.motion.option.system.label",
+    detailKey: "settings.interface.motion.option.system.description",
+  }),
+  Object.freeze({
+    id: "reduced",
+    labelKey: "settings.interface.motion.option.reduced.label",
+    detailKey: "settings.interface.motion.option.reduced.description",
+  }),
+  Object.freeze({
+    id: "full",
+    labelKey: "settings.interface.motion.option.full.label",
+    detailKey: "settings.interface.motion.option.full.description",
+  }),
 ]);
 
 const interfaceEmissionOptions = Object.freeze([
-  Object.freeze({ id: "standard", label: "STANDARD", detail: "Approved layered glow profile" }),
-  Object.freeze({ id: "subtle", label: "SUBTLE", detail: "Lower halo for long sessions" }),
-  Object.freeze({ id: "minimal", label: "MINIMAL", detail: "Keep luminous lines, suppress bloom" }),
+  Object.freeze({
+    id: "standard",
+    labelKey: "settings.interface.emission.option.standard.label",
+    detailKey: "settings.interface.emission.option.standard.description",
+  }),
+  Object.freeze({
+    id: "subtle",
+    labelKey: "settings.interface.emission.option.subtle.label",
+    detailKey: "settings.interface.emission.option.subtle.description",
+  }),
+  Object.freeze({
+    id: "minimal",
+    labelKey: "settings.interface.emission.option.minimal.label",
+    detailKey: "settings.interface.emission.option.minimal.description",
+  }),
 ]);
+
+const interfaceThemeTranslationKeys = Object.freeze({
+  nexus: Object.freeze({
+    labelKey: "settings.interface.theme.option.nexus.label",
+    descriptionKey: "settings.interface.theme.option.nexus.description",
+  }),
+  stealth: Object.freeze({
+    labelKey: "settings.interface.theme.option.stealth.label",
+    descriptionKey: "settings.interface.theme.option.stealth.description",
+  }),
+  clarity: Object.freeze({
+    labelKey: "settings.interface.theme.option.clarity.label",
+    descriptionKey: "settings.interface.theme.option.clarity.description",
+  }),
+  custom: Object.freeze({
+    labelKey: "settings.interface.theme.option.custom.label",
+    descriptionKey: "settings.interface.theme.option.custom.description",
+  }),
+});
+
+const interfacePaletteFieldLabelKeys = Object.freeze({
+  background: "settings.interface.palette.field.background",
+  surface: "settings.interface.palette.field.surface",
+  card: "settings.interface.palette.field.card",
+  text: "settings.interface.palette.field.text",
+  textStrong: "settings.interface.palette.field.textStrong",
+  muted: "settings.interface.palette.field.muted",
+  border: "settings.interface.palette.field.border",
+  accent: "settings.interface.palette.field.accent",
+});
+
+const interfaceContrastCheckLabelKeys = Object.freeze({
+  "text-background": "settings.interface.palette.contrast.textBackground",
+  "text-surface": "settings.interface.palette.contrast.textSurface",
+  "strong-card": "settings.interface.palette.contrast.strongCard",
+  "muted-background": "settings.interface.palette.contrast.mutedBackground",
+  "accent-background": "settings.interface.palette.contrast.accentBackground",
+});
 
 function getWindowsReleaseLabel(windows11, osBuild) {
   if (!windows11) return "WIN10";
@@ -264,32 +378,30 @@ function formatUptime(seconds) {
   return days > 0 ? `${days}D ${hours}H` : `${hours}H ${minutes}M`;
 }
 
-function formatFeedTime(timestamp) {
-  if (!timestamp) return "—";
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(date);
+function formatFeedTime(timestamp, language) {
+  return formatTime(timestamp, language, { second: "2-digit" });
 }
 
-function PanelHeader({ eyebrow, title, onClose }) {
+function PanelHeader({ eyebrow, title, onClose, closeLabel }) {
   return (
     <header className="shell-panel-header">
-      <JarvisMark />
-      <span><small>{eyebrow}</small><strong>{title}</strong></span>
-      <button type="button" onClick={onClose} aria-label={`Close ${title}`}><DismissRegular /></button>
+      <span><strong>{title}</strong><small>{eyebrow}</small></span>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={closeLabel ?? `Close ${title}`}
+      >
+        <DismissRegular />
+      </button>
     </header>
   );
 }
 
-function getApplicationSourceLabel(source) {
-  if (source === "packaged") return "WINDOWS APP";
-  if (source === "user") return "USER START";
-  if (source === "common") return "SYSTEM START";
-  return "PINNED";
+function getApplicationSourceLabel(source, t) {
+  if (source === "packaged") return t("start.applicationSource.packaged");
+  if (source === "user") return t("start.applicationSource.user");
+  if (source === "common") return t("start.applicationSource.common");
+  return t("start.applicationSource.pinned");
 }
 
 function StartMenuApplicationIcon({ application }) {
@@ -308,7 +420,12 @@ function StartMenuApplicationRow({
   onNavigate = null,
   onOpen,
   onTogglePin,
+  t,
 }) {
+  const sourceLabel = getApplicationSourceLabel(application.source, t);
+  const categoryLabel = application.kind === "pinned"
+    ? t("start.applicationCategory.pinned")
+    : application.category;
   return (
     <div className={`start-application-row${isPinned ? " is-pinned" : ""}`}>
       <button
@@ -317,20 +434,24 @@ function StartMenuApplicationRow({
         data-start-application-index={applicationIndex}
         onKeyDown={onNavigate}
         onClick={() => onOpen(application)}
-        title={`${application.label} · ${getApplicationSourceLabel(application.source)}`}
+        title={`${application.label} · ${sourceLabel}`}
       >
         <span className="start-application-icon"><StartMenuApplicationIcon application={application} /></span>
         <span className="start-application-copy">
           <strong>{application.label}</strong>
-          <small>{getApplicationSourceLabel(application.source)} · {application.category}</small>
+          <small>{sourceLabel} · {categoryLabel}</small>
         </span>
       </button>
       <button
         type="button"
         className="start-application-pin"
         onClick={() => onTogglePin(application)}
-        aria-label={`${isPinned ? "Unpin" : "Pin"} ${application.label}`}
-        title={`${isPinned ? "Unpin from" : "Pin to"} JARVIS taskbar`}
+        aria-label={t(isPinned
+          ? "start.action.unpinApplication"
+          : "start.action.pinApplication", { application: application.label })}
+        title={t(isPinned
+          ? "start.action.unpinFromTaskbar"
+          : "start.action.pinToTaskbar")}
       >
         {isPinned ? <PinOffRegular /> : <PinRegular />}
       </button>
@@ -338,7 +459,14 @@ function StartMenuApplicationRow({
   );
 }
 
-function StartApplicationGroups({ groups, pinnedKeys, onOpen, onTogglePin, emptyLabel }) {
+function StartApplicationGroups({
+  groups,
+  pinnedKeys,
+  onOpen,
+  onTogglePin,
+  emptyLabel,
+  t,
+}) {
   const viewportRef = useRef(null);
   const frameRef = useRef(null);
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 320 });
@@ -468,7 +596,7 @@ function StartApplicationGroups({ groups, pinnedKeys, onOpen, onTogglePin, empty
       ref={viewportRef}
       className="start-all-apps"
       onScroll={handleScroll}
-      aria-label="All applications"
+      aria-label={t("start.allApplications")}
     >
       {groups.length === 0 ? (
         <p className="shell-empty-state start-app-empty">{emptyLabel}</p>
@@ -499,6 +627,7 @@ function StartApplicationGroups({ groups, pinnedKeys, onOpen, onTogglePin, empty
                     onNavigate={handleApplicationNavigation}
                     onOpen={onOpen}
                     onTogglePin={onTogglePin}
+                    t={t}
                   />
                 ))}
               </div>
@@ -512,13 +641,13 @@ function StartApplicationGroups({ groups, pinnedKeys, onOpen, onTogglePin, empty
 
 function StartPanel({
   onClose,
-  onOpenCommand,
   onLaunch,
   onLaunchInstalled,
   onActivateWindow,
   onOpenHelp,
   onOpenSession,
 }) {
+  const { language, t } = useLanguage();
   const taskbar = useTaskbarSnapshot();
   const system = useSystemSnapshot();
   const applicationCatalog = useApplicationCatalog();
@@ -534,10 +663,11 @@ function StartPanel({
   const menuApplications = useMemo(() => buildStartMenuApplications(
     startApps,
     applicationCatalog.applications,
-  ), [applicationCatalog.applications]);
+    language,
+  ), [applicationCatalog.applications, language]);
   const filteredApplications = useMemo(
-    () => filterStartMenuApplications(menuApplications, normalizedQuery),
-    [menuApplications, normalizedQuery],
+    () => filterStartMenuApplications(menuApplications, normalizedQuery, language),
+    [language, menuApplications, normalizedQuery],
   );
   const applicationGroups = useMemo(
     () => groupStartMenuApplications(filteredApplications),
@@ -593,17 +723,27 @@ function StartPanel({
   }, [pinnedKeys]);
   const contentMode = normalizedQuery ? "search" : view;
   const catalogStatus = applicationCatalog.error
-    ? "WINDOWS CATALOG UNAVAILABLE"
+    ? t("start.catalog.unavailable")
     : applicationCatalog.loading
-      ? "INDEXING WINDOWS APPS"
+      ? t("start.catalog.indexing")
       : applicationCatalog.truncated
-        ? `${applicationCatalog.applications.length} APPS · PARTIAL`
+        ? t("start.catalog.partial", {
+          count: applicationCatalog.applications.length,
+        })
         : applicationCatalog.watching
-          ? `${applicationCatalog.applications.length} APPS · LIVE R${applicationCatalog.revision}`
-          : `${applicationCatalog.applications.length} WINDOWS APPS`;
+          ? t("start.catalog.live", {
+            count: applicationCatalog.applications.length,
+            revision: applicationCatalog.revision,
+          })
+          : t("start.catalog.ready", {
+            count: applicationCatalog.applications.length,
+          });
   const catalogStatusTitle = applicationCatalog.indexedAtUtc
-    ? `Indexed ${formatFeedTime(applicationCatalog.indexedAtUtc)} · ${applicationCatalog.refreshReason}`
-    : "The Windows application catalog has not finished indexing.";
+    ? t("start.catalog.indexed", {
+      time: formatFeedTime(applicationCatalog.indexedAtUtc, language),
+      reason: applicationCatalog.refreshReason,
+    })
+    : t("start.catalog.pending");
   const setStartView = useCallback((nextView, focus = false) => {
     setQuery("");
     setView(nextView);
@@ -636,10 +776,15 @@ function StartPanel({
       className="shell-panel start-panel"
       role="dialog"
       aria-modal="false"
-      aria-label="JARVIS Start"
+      aria-label={t("start.accessibility.dialog")}
       onKeyDownCapture={handleStartKeyboard}
     >
-      <PanelHeader eyebrow="WINDOWS CONTROL" title="START" onClose={onClose} />
+      <PanelHeader
+        eyebrow={t("start.header.eyebrow")}
+        title={t("start.header.title")}
+        closeLabel={t("common.action.close")}
+        onClose={onClose}
+      />
       <div className="start-search">
         <SearchRegular />
         <input
@@ -648,13 +793,16 @@ function StartPanel({
           data-dialog-initial-focus="true"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search all apps and running windows"
-          aria-label="Search applications"
+          placeholder={t("start.search.placeholder")}
+          aria-label={t("start.search.accessibility.label")}
         />
-        <button type="button" onClick={onOpenCommand}>QUICK SEARCH</button>
       </div>
 
-      <div className="start-view-switch" role="tablist" aria-label="Start menu view">
+      <div
+        className="start-view-switch"
+        role="tablist"
+        aria-label={t("start.view.accessibility.label")}
+      >
         <button
           ref={pinnedViewRef}
           type="button"
@@ -664,7 +812,7 @@ function StartPanel({
           onClick={() => setStartView("pinned")}
           onKeyDown={handleViewKeyboard}
         >
-          <span>PINNED</span><small>{pinnedApplications.length}</small>
+          <span>{t("start.view.pinned")}</span><small>{pinnedApplications.length}</small>
         </button>
         <button
           ref={allViewRef}
@@ -675,7 +823,7 @@ function StartPanel({
           onClick={() => setStartView("all")}
           onKeyDown={handleViewKeyboard}
         >
-          <span>ALL APPS</span><small>{menuApplications.length}</small>
+          <span>{t("start.view.allApps")}</span><small>{menuApplications.length}</small>
         </button>
         <span
           className={applicationCatalog.error ? "is-error" : ""}
@@ -688,8 +836,8 @@ function StartPanel({
           className="start-catalog-refresh"
           onClick={() => refreshApplicationCatalog(true)}
           disabled={applicationCatalog.loading}
-          aria-label="Refresh application catalog"
-          title="Refresh Windows application catalog"
+          aria-label={t("start.action.refreshCatalog")}
+          title={t("start.action.refreshWindowsCatalog")}
         >
           <ArrowClockwiseRegular />
         </button>
@@ -701,7 +849,10 @@ function StartPanel({
       >
         {contentMode === "pinned" ? (
           <>
-            <div className="start-section-heading"><span>PINNED</span><small>{pinnedApplications.length} APPS</small></div>
+            <div className="start-section-heading">
+              <span>{t("start.section.pinned")}</span>
+              <small>{t("start.count.apps", { count: pinnedApplications.length })}</small>
+            </div>
             <div className="start-app-grid">
               {pinnedApplications.length > 0 ? pinnedApplications.map((application) => (
                 <div className="start-pinned-tile" key={application.menuId}>
@@ -718,27 +869,37 @@ function StartPanel({
                     type="button"
                     className="start-pinned-remove"
                     onClick={() => unpinApplication(getMenuApplicationPinKey(application))}
-                    aria-label={`Unpin ${application.label}`}
-                    title={`Unpin ${application.label}`}
+                    aria-label={t("start.action.unpinApplication", {
+                      application: application.label,
+                    })}
+                    title={t("start.action.unpinApplication", {
+                      application: application.label,
+                    })}
                   >
                     <PinOffRegular />
                   </button>
                 </div>
-              )) : <p className="shell-empty-state start-pinned-empty">No pinned applications. Open All Apps to add one.</p>}
+              )) : (
+                <p className="shell-empty-state start-pinned-empty">
+                  {t("start.empty.pinned")}
+                </p>
+              )}
             </div>
 
             {recentApplications.length > 0 ? (
               <>
                 <div className="start-section-heading">
-                  <span>RECENTLY OPENED</span>
+                  <span>{t("start.section.recent")}</span>
                   <span className="start-heading-actions">
-                    <small>{recentApplications.length} LOCAL</small>
+                    <small>{t("start.count.local", {
+                      count: recentApplications.length,
+                    })}</small>
                     <button
                       type="button"
                       onClick={clearRecentApplications}
-                      aria-label="Clear recently opened applications"
+                      aria-label={t("start.action.clearRecent")}
                     >
-                      CLEAR
+                      {t("start.action.clear")}
                     </button>
                   </span>
                 </div>
@@ -750,6 +911,7 @@ function StartPanel({
                       isPinned={pinnedKeys.has(getMenuApplicationPinKey(application))}
                       onOpen={openMenuApplication}
                       onTogglePin={togglePinnedApplication}
+                      t={t}
                     />
                   ))}
                 </div>
@@ -759,22 +921,36 @@ function StartPanel({
         ) : (
           <>
             <div className="start-section-heading">
-              <span>{contentMode === "search" ? "APPLICATION MATCHES" : "ALL APPLICATIONS"}</span>
-              <small>{filteredApplications.length} RESULTS</small>
+              <span>{t(contentMode === "search"
+                ? "start.section.matches"
+                : "start.section.allApplications")}</span>
+              <small>{t("start.count.results", {
+                count: filteredApplications.length,
+              })}</small>
             </div>
             <StartApplicationGroups
               groups={applicationGroups}
               pinnedKeys={pinnedKeys}
               onOpen={openMenuApplication}
               onTogglePin={togglePinnedApplication}
-              emptyLabel={applicationCatalog.loading ? "Indexing Windows applications…" : "No matching applications."}
+              emptyLabel={t(applicationCatalog.loading
+                ? "start.empty.indexing"
+                : "start.empty.noMatches")}
+              t={t}
             />
           </>
         )}
 
         {contentMode !== "all" ? (
           <>
-            <div className="start-section-heading"><span>RUNNING NOW</span><small>{taskbar.windows.length} WINDOWS</small></div>
+            <div className="start-section-heading">
+              <span>{t("start.section.running")}</span>
+              <small>{t(taskbar.windows.length === 1
+                ? "start.count.window.one"
+                : "start.count.window.other", {
+                count: taskbar.windows.length,
+              })}</small>
+            </div>
             <div className="start-running-list">
               {runningApps.length > 0 ? runningApps.map((group) => {
                 const selected = group.windows.find((window) => window.active) ?? group.windows[0];
@@ -783,10 +959,19 @@ function StartPanel({
                     {selected.iconDataUrl
                       ? <img src={selected.iconDataUrl} alt="" />
                       : <WindowAppsRegular />}
-                    <span><strong>{selected.title || group.process}</strong><small>{group.process} · {group.windows.length} WINDOW{group.windows.length === 1 ? "" : "S"}</small></span>
+                    <span>
+                      <strong>{selected.title || group.process}</strong>
+                      <small>{group.process} · {t(group.windows.length === 1
+                        ? "start.count.window.one"
+                        : "start.count.window.other", {
+                        count: group.windows.length,
+                      })}</small>
+                    </span>
                   </button>
                 );
-              }) : <p className="shell-empty-state">No matching running applications.</p>}
+              }) : (
+                <p className="shell-empty-state">{t("start.empty.running")}</p>
+              )}
             </div>
           </>
         ) : null}
@@ -794,27 +979,44 @@ function StartPanel({
 
       <footer className="start-footer">
         <span><strong>{system.status.machineName}</strong><small>{system.status.osDescription}</small></span>
-        <button type="button" onClick={onOpenHelp}><PulseRegular /><span>Help</span></button>
-        <button type="button" onClick={() => onLaunch({ label: "JARVIS Settings", target: "jarvis-settings:" })}><SettingsRegular /><span>Settings</span></button>
-        <button type="button" className="is-exit" onClick={onOpenSession}><PowerRegular /><span>Session controls</span></button>
+        <button type="button" onClick={onOpenHelp}>
+          <PulseRegular /><span>{t("start.footer.help")}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onLaunch({
+            label: t("start.footer.jarvisSettings"),
+            target: "jarvis-settings:",
+          })}
+        >
+          <SettingsRegular /><span>{t("start.footer.settings")}</span>
+        </button>
+        <button type="button" className="is-exit" onClick={onOpenSession}>
+          <PowerRegular /><span>{t("start.footer.sessionControls")}</span>
+        </button>
       </footer>
     </section>
   );
 }
 
 function QuickSettingsPanel({ onClose, onLaunch }) {
+  const { t } = useLanguage();
   const system = useSystemSnapshot();
   const tray = useTrayStatus();
   const volumeCommitRef = useRef(null);
   const [volume, setVolume] = useState(tray.audio.volumePercent ?? 0);
   const [audioError, setAudioError] = useState("");
-  const cpu = system.resources.find((resource) => resource.id === "cpu");
-  const memory = system.resources.find((resource) => resource.id === "memory");
   const { network, power, audio } = tray;
   const AudioIcon = audio.muted ? SpeakerOffRegular : Speaker2Regular;
   const powerLabel = power.batteryPresent
-    ? `${Math.round(power.percentage ?? 0)}%${power.charging ? " · charging" : ""}`
-    : power.acConnected ? "AC power" : "Desktop power";
+    ? power.charging
+      ? t("quickSettings.power.batteryCharging", {
+        percent: Math.round(power.percentage ?? 0),
+      })
+      : `${Math.round(power.percentage ?? 0)}%`
+    : t(power.acConnected
+      ? "quickSettings.power.acPower"
+      : "quickSettings.power.desktopPower");
 
   useEffect(() => {
     if (audio.volumePercent !== null) {
@@ -850,19 +1052,48 @@ function QuickSettingsPanel({ onClose, onLaunch }) {
   };
 
   return (
-    <section className="shell-panel quick-settings-panel" role="dialog" aria-modal="false" aria-label="Quick settings">
-      <PanelHeader eyebrow="LIVE WINDOWS STATUS" title="QUICK SETTINGS" onClose={onClose} />
+    <section
+      className="shell-panel quick-settings-panel"
+      role="dialog"
+      aria-modal="false"
+      aria-label={t("quickSettings.accessibility.dialog")}
+    >
+      <PanelHeader
+        eyebrow={t("quickSettings.header.eyebrow")}
+        title={t("quickSettings.header.title")}
+        closeLabel={t("common.action.close")}
+        onClose={onClose}
+      />
       <div className="quick-status-strip">
-        <span className={network.available ? "is-online" : "is-offline"}><GlobeRegular /><strong>{network.available ? "ONLINE" : "OFFLINE"}</strong><small>{network.interfaceName}</small></span>
-        <span><PlugConnectedRegular /><strong>{powerLabel}</strong><small>{power.batteryPresent ? "BATTERY" : "POWER"}</small></span>
-        <span><PulseRegular /><strong>{cpu?.value ?? "—"}</strong><small>CPU</small></span>
-        <span><WindowAppsRegular /><strong>{memory?.value ?? "—"}</strong><small>MEMORY</small></span>
+        <span className={network.available ? "is-online" : "is-offline"}>
+          <GlobeRegular />
+          <strong>{t(network.available
+            ? "quickSettings.network.online"
+            : "quickSettings.network.offline")}</strong>
+          <small>{network.interfaceName}</small>
+        </span>
+        <span>
+          <PlugConnectedRegular />
+          <strong>{powerLabel}</strong>
+          <small>{t(power.batteryPresent
+            ? "quickSettings.power.battery"
+            : "quickSettings.power.power")}</small>
+        </span>
       </div>
-      <section className="quick-volume-card" aria-label="Windows output volume">
+      <section
+        className="quick-volume-card"
+        aria-label={t("quickSettings.audio.outputVolume")}
+      >
         <span className="runtime-setting-icon"><AudioIcon /></span>
         <span>
-          <strong>{audio.available ? audio.muted ? "MUTED" : `${volume}%` : "UNAVAILABLE"}</strong>
-          <small>{tray.simulation ? "SIMULATION" : audio.deviceLabel ?? "DEFAULT WINDOWS OUTPUT"}</small>
+          <strong>{audio.available
+            ? audio.muted
+              ? t("quickSettings.audio.muted")
+              : `${volume}%`
+            : t("quickSettings.state.unavailable")}</strong>
+          <small>{tray.simulation
+            ? t("quickSettings.audio.simulation")
+            : audio.deviceLabel ?? t("quickSettings.audio.defaultWindowsOutput")}</small>
         </span>
         <input
           type="range"
@@ -871,8 +1102,10 @@ function QuickSettingsPanel({ onClose, onLaunch }) {
           step="1"
           value={volume}
           disabled={!audio.available}
-          aria-label="Windows output volume"
-          aria-valuetext={audio.available ? `${volume} percent` : "Audio unavailable"}
+          aria-label={t("quickSettings.audio.outputVolume")}
+          aria-valuetext={audio.available
+            ? t("quickSettings.audio.volumePercent", { volume })
+            : t("quickSettings.audio.unavailable")}
           onChange={(event) => {
             const nextVolume = Number(event.target.value);
             setVolume(nextVolume);
@@ -886,24 +1119,42 @@ function QuickSettingsPanel({ onClose, onLaunch }) {
           className={`runtime-switch ${audio.muted ? "" : "is-on"}`}
           role="switch"
           aria-checked={!audio.muted}
+          aria-label={t(audio.muted
+            ? "quickSettings.audio.action.unmute"
+            : "quickSettings.audio.action.mute")}
           disabled={!audio.available}
           onClick={toggleMute}
         >
-          <span /><strong>{audio.muted ? "MUTED" : "LIVE"}</strong>
+          <span />
+          <strong>{t(audio.muted
+            ? "quickSettings.audio.muted"
+            : "quickSettings.audio.live")}</strong>
         </button>
       </section>
       {audioError ? <p className="runtime-settings-error" role="alert"><AlertRegular />{audioError}</p> : null}
       <div className="quick-setting-grid">
-        {quickSettings.map(({ id, label, target, Icon }) => (
-          <button key={id} type="button" onClick={() => onLaunch({ label, target })}>
+        {quickSettings.map(({ id, target, Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onLaunch({
+              label: t(`quickSettings.control.${id}`),
+              target,
+            })}
+          >
             <span><Icon /></span>
-            <strong>{label}</strong>
-            <small>{id === "network" ? (network.available ? network.interfaceType : "Unavailable") : "OPEN CONTROL"}</small>
+            <strong>{t(`quickSettings.control.${id}`)}</strong>
+            <small>{id === "network"
+              ? network.available
+                ? network.interfaceType
+                : t("quickSettings.state.unavailable")
+              : t("quickSettings.action.openControl")}</small>
           </button>
         ))}
       </div>
       <footer className="quick-settings-footer">
-        <span>SESSION UPTIME</span><strong>{formatUptime(system.status.uptimeSeconds)}</strong>
+        <span>{t("quickSettings.sessionUptime")}</span>
+        <strong>{formatUptime(system.status.uptimeSeconds)}</strong>
       </footer>
     </section>
   );
@@ -916,6 +1167,7 @@ function NotificationsPanel({
   onLaunch,
   onMarkLocalFeedRead,
 }) {
+  const { language, t } = useLanguage();
   const feed = useSystemFeed();
   const notificationHistory = useNotificationHistory();
   const [feedFilter, setFeedFilter] = useState("all");
@@ -936,6 +1188,16 @@ function NotificationsPanel({
     () => getSystemFeedFilterSummary(events, visibleFeedItems),
     [events, visibleFeedItems],
   );
+  const feedSummaryLabel = t(
+    `${feedSummary.visible === feedSummary.total
+      ? "notifications.summary.all"
+      : "notifications.summary.filtered"}.${feedSummary.total === 1 ? "one" : "other"}`,
+    {
+      count: feedSummary.total,
+      total: feedSummary.total,
+      visible: feedSummary.visible,
+    },
+  );
   const unreadCount = events.filter((item) => item.unread).length;
   const markAllRead = async () => {
     await Promise.allSettled([markSystemFeedRead()]);
@@ -946,10 +1208,22 @@ function NotificationsPanel({
     onClearLocalFeed?.();
   };
   const actionTargets = {
-    "open-network-settings": { label: "Network settings", target: "ms-settings:network-status" },
-    "open-sound-settings": { label: "Sound settings", target: "ms-settings:sound" },
-    "open-power-settings": { label: "Power settings", target: "ms-settings:powersleep" },
-    "open-runtime-settings": { label: "JARVIS Settings", target: "jarvis-settings:" },
+    "open-network-settings": {
+      label: t("notifications.action.networkSettings"),
+      target: "ms-settings:network-status",
+    },
+    "open-sound-settings": {
+      label: t("notifications.action.soundSettings"),
+      target: "ms-settings:sound",
+    },
+    "open-power-settings": {
+      label: t("notifications.action.powerSettings"),
+      target: "ms-settings:powersleep",
+    },
+    "open-runtime-settings": {
+      label: t("notifications.action.jarvisSettings"),
+      target: "jarvis-settings:",
+    },
   };
 
   return (
@@ -957,7 +1231,7 @@ function NotificationsPanel({
       className="shell-panel shell-notifications-panel"
       role="dialog"
       aria-modal="false"
-      aria-label="JARVIS system feed"
+      aria-label={t("notifications.accessibility.dialog")}
       onKeyDown={(event) => {
         const nextFilter = getSystemFeedFilterShortcut(event);
         if (!nextFilter) return;
@@ -965,26 +1239,32 @@ function NotificationsPanel({
         setFeedFilter(nextFilter);
       }}
     >
-      <PanelHeader eyebrow="CURRENT SESSION · MAX 50 EVENTS" title="JARVIS SYSTEM FEED" onClose={onClose} />
+      <PanelHeader
+        eyebrow={t("notifications.header.eyebrow")}
+        title={t("notifications.header.title")}
+        closeLabel={t("common.action.close")}
+        onClose={onClose}
+      />
       <div className={`windows-history-status is-${notificationHistory.historyAvailable ? "ready" : "limited"}`}>
         <span><WindowAppsRegular /></span>
         <span>
-          <strong>WINDOWS NOTIFICATION HISTORY</strong>
+          <strong>{t("notifications.history.title")}</strong>
           <small>{notificationHistory.historyAvailable
-            ? `${notificationHistory.items.length} Windows notifications available`
-            : notificationHistory.reason ?? "Checking Windows notification access…"}</small>
+            ? t("notifications.history.available", {
+              count: notificationHistory.items.length,
+            })
+            : notificationHistory.reason ?? t("notifications.history.checkingAccess")}</small>
         </span>
         <code>{notificationHistory.loading
-          ? "CHECKING"
+          ? t("notifications.history.checking")
           : notificationHistory.accessStatus.toUpperCase()}</code>
       </div>
-      <div className="system-feed-controls" role="toolbar" aria-label="Filter JARVIS system feed">
-        {[
-          ["all", "ALL"],
-          ["unread", "UNREAD"],
-          ["attention", "ATTENTION"],
-          ["status", "STATUS"],
-        ].map(([id, label], index) => (
+      <div
+        className="system-feed-controls"
+        role="toolbar"
+        aria-label={t("notifications.filter.accessibility.label")}
+      >
+        {SYSTEM_FEED_FILTER_IDS.map((id, index) => (
           <button
             key={id}
             type="button"
@@ -995,7 +1275,7 @@ function NotificationsPanel({
             data-dialog-initial-focus={index === 0 ? "true" : undefined}
             onClick={() => setFeedFilter(id)}
           >
-            <span>{label}</span><kbd>{index + 1}</kbd>
+            <span>{t(`notifications.filter.${id}`)}</span><kbd>{index + 1}</kbd>
           </button>
         ))}
         <label>
@@ -1003,21 +1283,23 @@ function NotificationsPanel({
           <input
             value={feedQuery}
             maxLength={96}
-            placeholder="Filter events"
-            aria-label="Filter system feed text"
+            placeholder={t("notifications.search.placeholder")}
+            aria-label={t("notifications.search.accessibility.label")}
             onChange={(event) => setFeedQuery(event.target.value)}
           />
         </label>
-        <code>{feedSummary.label}</code>
+        <code>{feedSummaryLabel}</code>
       </div>
       <div className="shell-notification-list">
-        {feed.loading ? <p className="system-feed-empty">Connecting to the JARVIS event stream…</p> : null}
+        {feed.loading ? (
+          <p className="system-feed-empty">{t("notifications.status.connecting")}</p>
+        ) : null}
         {feed.error ? <p className="runtime-settings-error" role="alert"><AlertRegular />{feed.error}</p> : null}
         {!feed.loading && !feed.error && events.length === 0
-          ? <p className="system-feed-empty">No JARVIS events in this session.</p>
+          ? <p className="system-feed-empty">{t("notifications.empty.session")}</p>
           : null}
         {!feed.loading && !feed.error && events.length > 0 && visibleFeedItems.length === 0
-          ? <p className="system-feed-empty">No events match the current feed filter.</p>
+          ? <p className="system-feed-empty">{t("notifications.empty.filter")}</p>
           : null}
         {visibleFeedItems.map((item) => {
           const target = actionTargets[item.actionId];
@@ -1033,23 +1315,41 @@ function NotificationsPanel({
             >
               <span><Icon /></span>
               <span><strong>{item.title}</strong><small>{item.detail}</small></span>
-              <time dateTime={item.timestamp ?? undefined}>{formatFeedTime(item.timestamp)}</time>
+              <time dateTime={item.timestamp ?? undefined}>
+                {formatFeedTime(item.timestamp, language)}
+              </time>
             </Item>
           );
         })}
       </div>
       <footer className="notification-footer">
-        <span>{feedSummary.visibleUnread} VISIBLE UNREAD · {feedSummary.label}</span>
-        <button type="button" disabled={unreadCount === 0} onClick={() => void markAllRead()}>MARK ALL READ</button>
-        <button type="button" disabled={events.length === 0} onClick={() => void clearAll()}>CLEAR</button>
+        <span>{t(`notifications.footer.visibleUnread.${feedSummary.visibleUnread === 1 ? "one" : "other"}`, {
+          count: feedSummary.visibleUnread,
+        })} · {feedSummaryLabel}</span>
+        <button
+          type="button"
+          disabled={unreadCount === 0}
+          onClick={() => void markAllRead()}
+        >
+          {t("notifications.action.markAllRead")}
+        </button>
+        <button
+          type="button"
+          disabled={events.length === 0}
+          onClick={() => void clearAll()}
+        >
+          {t("notifications.action.clear")}
+        </button>
       </footer>
     </section>
   );
 }
 
 function DateTimePanel({ onClose, onLaunch }) {
+  const { language, t } = useLanguage();
   const clock = usePlatformClock();
   const feed = useSystemFeed();
+  const localizedClock = formatClockPresentation(clock.dateTime, language);
   const todayKey = toLocalDateKey(clock.dateTime) ??
     toLocalDateKey(new Date());
   const today = parseLocalDateKey(todayKey) ?? new Date();
@@ -1068,18 +1368,50 @@ function DateTimePanel({ onClose, onLaunch }) {
     ...visibleMonth,
     todayKey,
     eventTimestamps,
+    locale: language,
   }), [
     eventTimestamps,
+    language,
     todayKey,
-    visibleMonth,
+    visibleMonth.month,
+    visibleMonth.year,
   ]);
+  const calendarWeekdays = useMemo(
+    () => getCalendarWeekdayLabels(language),
+    [language],
+  );
   const selectedDate = parseLocalDateKey(selectedDateKey) ?? today;
-  const selectedDateLabel = selectedDate.toLocaleDateString("en-US", {
+  const selectedDateLabel = formatDate(selectedDate, language, {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
-  }).toUpperCase();
+  });
+  const calendarCellLabels = useMemo(() => new Map(
+    calendar.cells.map((cell) => {
+      const dateLabel = formatDate(
+        parseLocalDateKey(cell.key),
+        language,
+        {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        },
+      );
+      return [
+        cell.key,
+        cell.eventCount > 0
+          ? t(cell.eventCount === 1
+            ? "dateTime.calendar.cellEvent.one"
+            : "dateTime.calendar.cellEvent.other", {
+            date: dateLabel,
+            count: cell.eventCount,
+          })
+          : dateLabel,
+      ];
+    }),
+  ), [calendar.cells, language, t]);
   const selectedEvents = useMemo(
     () => feed.items
       .filter((item) =>
@@ -1161,11 +1493,12 @@ function DateTimePanel({ onClose, onLaunch }) {
       className="shell-panel date-time-panel"
       role="dialog"
       aria-modal="false"
-      aria-label="Date and time"
+      aria-label={t("dateTime.accessibility.dialog")}
     >
       <PanelHeader
-        eyebrow="LOCAL SYSTEM TIME · CURRENT SESSION"
-        title="DATE & TIME"
+        eyebrow={t("dateTime.header.eyebrow")}
+        title={t("dateTime.header.title")}
+        closeLabel={t("common.action.close")}
         onClose={onClose}
       />
 
@@ -1175,34 +1508,34 @@ function DateTimePanel({ onClose, onLaunch }) {
           <i />
         </span>
         <span>
-          <strong>{clock.time}</strong>
-          <small>{clock.longDate}</small>
+          <strong>{localizedClock.time}</strong>
+          <small>{localizedClock.longDate}</small>
         </span>
-        <code>LOCAL</code>
+        <code>{t("dateTime.local")}</code>
       </div>
 
       <div className="date-time-calendar-header">
         <span>
-          <small>CALENDAR MATRIX</small>
+          <small>{t("dateTime.calendar.label")}</small>
           <strong>{calendar.monthLabel}</strong>
         </span>
         <div>
           <button
             type="button"
             onClick={() => navigateMonth(-1)}
-            aria-label="Previous month"
-            title="Previous month · Page Up"
+            aria-label={t("dateTime.calendar.previousMonth")}
+            title={t("dateTime.calendar.previousMonthShortcut")}
           >
             <ChevronLeftRegular />
           </button>
           <button type="button" className="is-today" onClick={goToToday}>
-            TODAY
+            {t("dateTime.calendar.today")}
           </button>
           <button
             type="button"
             onClick={() => navigateMonth(1)}
-            aria-label="Next month"
-            title="Next month · Page Down"
+            aria-label={t("dateTime.calendar.nextMonth")}
+            title={t("dateTime.calendar.nextMonthShortcut")}
           >
             <ChevronRightRegular />
           </button>
@@ -1216,7 +1549,7 @@ function DateTimePanel({ onClose, onLaunch }) {
         aria-label={calendar.monthLabel}
       >
         <div className="date-time-weekdays" role="row">
-          {CALENDAR_WEEKDAYS.map((weekday) => (
+          {calendarWeekdays.map((weekday) => (
             <span key={weekday} role="columnheader">{weekday}</span>
           ))}
         </div>
@@ -1232,10 +1565,10 @@ function DateTimePanel({ onClose, onLaunch }) {
                   cell.inMonth ? "" : "is-adjacent",
                   cell.today ? "is-today" : "",
                   selected ? "is-selected" : "",
-                  cell.eventCount ? "has-events" : "",
+                  cell.eventCount > 0 ? "has-events" : "",
                 ].filter(Boolean).join(" ")}
                 aria-selected={selected}
-                aria-label={`${cell.key}${cell.eventCount ? `, ${cell.eventCount} session events` : ""}`}
+                aria-label={calendarCellLabels.get(cell.key)}
                 tabIndex={selected ? 0 : -1}
                 data-date-key={cell.key}
                 onClick={() => selectDate(cell.key)}
@@ -1243,7 +1576,7 @@ function DateTimePanel({ onClose, onLaunch }) {
                   handleCalendarKeyDown(event, cell.key)}
               >
                 <span>{cell.day}</span>
-                {cell.eventCount ? (
+                {cell.eventCount > 0 ? (
                   <small aria-hidden="true">
                     {Math.min(cell.eventCount, 9)}
                   </small>
@@ -1260,26 +1593,23 @@ function DateTimePanel({ onClose, onLaunch }) {
       >
         <header>
           <span>
-            <small>JARVIS SESSION ACTIVITY</small>
+            <small>{t("dateTime.agenda.label")}</small>
             <strong id="date-time-agenda-title">{selectedDateLabel}</strong>
           </span>
           <code>{selectedEvents.length.toString().padStart(2, "0")}</code>
         </header>
-        {selectedEvents.length ? (
+        {selectedEvents.length > 0 ? (
           <div className="date-time-event-list">
             {selectedEvents.map((item) => (
               <article key={item.id} className={`is-${item.severity}`}>
                 <i aria-hidden="true" />
                 <span>
                   <strong>{item.title}</strong>
-                  <small>{item.detail || "No additional detail."}</small>
+                  <small>{item.detail || t("dateTime.agenda.noAdditionalDetail")}</small>
                 </span>
                 <time dateTime={item.timestamp ?? undefined}>
                   {item.timestamp
-                    ? new Date(item.timestamp).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
+                    ? formatTime(item.timestamp, language)
                     : "--:--"}
                 </time>
               </article>
@@ -1289,31 +1619,75 @@ function DateTimePanel({ onClose, onLaunch }) {
           <div className="date-time-empty">
             <CalendarMonthRegular />
             <span>
-              <strong>NO SESSION EVENTS</strong>
-              <small>JARVIS has no recorded activity for this local date.</small>
+              <strong>{t("dateTime.agenda.empty.title")}</strong>
+              <small>{t("dateTime.agenda.empty.detail")}</small>
             </span>
           </div>
         )}
       </section>
 
       <footer className="date-time-footer">
-        <span>Calendar accounts are not connected.</span>
+        <span>{t("dateTime.footer.accountsDisconnected")}</span>
         <button
           type="button"
           onClick={() => onLaunch({
-            label: "Date & time settings",
+            label: t("dateTime.action.openWindowsSettings"),
             target: "ms-settings:dateandtime",
           })}
         >
           <OpenRegular />
-          OPEN WINDOWS SETTINGS
+          {t("dateTime.action.openWindowsSettings")}
         </button>
       </footer>
     </section>
   );
 }
 
+function localizeSessionAction(action, t) {
+  const translationId = SESSION_ACTION_TRANSLATION_IDS[action.id];
+  if (!translationId) return action;
+  const key = `session.action.${translationId}`;
+  return {
+    ...action,
+    label: t(`${key}.label`),
+    detail: t(`${key}.detail`),
+    consequence: t(`${key}.consequence`),
+  };
+}
+
+function localizeHelpSections(t) {
+  return helpCenterSections.map((section) => ({
+    ...section,
+    label: t(`help.section.${section.id}.label`),
+    title: t(`help.section.${section.id}.title`),
+    summary: t(`help.section.${section.id}.summary`),
+    entries: section.entries.map((entry, index) => ({
+      ...entry,
+      detail: t(`help.section.${section.id}.entry.${index}.detail`),
+    })),
+  }));
+}
+
+function filterLocalizedHelpSections(sections, query) {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return sections;
+  return sections
+    .map((section) => {
+      const sectionMatch = normalizeSearchText(
+        `${section.label} ${section.title} ${section.summary}`,
+      ).includes(normalizedQuery);
+      const entries = sectionMatch
+        ? section.entries
+        : section.entries.filter((entry) => normalizeSearchText(
+          `${entry.command} ${entry.detail}`,
+        ).includes(normalizedQuery));
+      return entries.length > 0 ? { ...section, entries } : null;
+    })
+    .filter(Boolean);
+}
+
 function SessionControlPanel({ onClose, onExit, onToast }) {
+  const { t } = useLanguage();
   const sessionActionRefs = useRef(new Map());
   const lastSessionActionRef = useRef(null);
   const cancelConfirmationRef = useRef(null);
@@ -1372,7 +1746,7 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
       const result = await platform.session.prepare(action.id);
       const normalized = normalizeSessionChallenge(result, action.id);
       if (!normalized) {
-        throw new Error("Windows returned an invalid confirmation capability.");
+        throw new Error(t("session.error.invalidCapability"));
       }
       setChallenge(normalized);
     } catch (nextError) {
@@ -1397,7 +1771,7 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
     if (!challenge || busy) return;
     if (isSessionChallengeExpired(challenge)) {
       setChallenge(null);
-      setError("Confirmation expired. Select the action again.");
+      setError(t("session.error.confirmationExpired"));
       restoreSessionActionFocus();
       return;
     }
@@ -1414,7 +1788,7 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
         challenge.token,
       );
       setChallenge(null);
-      onToast(result.message ?? "Windows accepted the session action.");
+      onToast(result.message ?? t("session.toast.accepted"));
       onClose();
     } catch (nextError) {
       setChallenge(null);
@@ -1425,21 +1799,28 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
     }
   };
 
-  const actions = [EXIT_TO_WINDOWS_ACTION, ...sessionState.actions];
+  const actions = [EXIT_TO_WINDOWS_ACTION, ...sessionState.actions]
+    .map((action) => localizeSessionAction(action, t));
   const ChallengeIcon = challenge
     ? SESSION_ACTION_ICONS[challenge.actionId] ?? PowerRegular
     : PowerRegular;
+  const localizedChallengeAction = challenge
+    ? actions.find((action) => action.id === challenge.actionId)
+    : null;
+  const challengeTitle = localizedChallengeAction?.label ?? challenge?.title;
+  const challengeDetail = localizedChallengeAction?.consequence ?? challenge?.detail;
 
   return (
     <section
       className="shell-panel session-control-panel"
       role="dialog"
       aria-modal="false"
-      aria-label="Session controls"
+      aria-label={t("session.accessibility.dialog")}
     >
       <PanelHeader
-        eyebrow="RECOVERY-BOUND · LOCAL WINDOWS SESSION"
-        title="SESSION CONTROL"
+        eyebrow={t("session.header.eyebrow")}
+        title={t("session.header.title")}
+        closeLabel={t("common.action.close")}
         onClose={onClose}
       />
 
@@ -1449,15 +1830,26 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
           <i />
         </span>
         <div>
-          <small>CONTROL BOUNDARY</small>
-          <strong>{sessionState.available ? "WINDOWS READY" : "JARVIS RECOVERY ONLY"}</strong>
-          <p>Every Windows session action requires a short-lived, single-use confirmation.</p>
+          <small>{t("session.status.controlBoundary")}</small>
+          <strong>{t(sessionState.available
+            ? "session.status.windowsReady"
+            : "session.status.recoveryOnly")}</strong>
+          <p>{t("session.status.description")}</p>
         </div>
-        <code>{status === "loading" ? "CHECKING" : sessionState.available ? "GUARDED" : "LIMITED"}</code>
+        <code>{t(status === "loading"
+          ? "session.status.checking"
+          : sessionState.available
+            ? "session.status.guarded"
+            : "session.status.limited")}</code>
       </div>
 
       {!challenge ? (
-        <div className="session-control-grid" aria-busy={busy || status === "loading"}>
+        <div
+          className="session-control-grid"
+          role="group"
+          aria-label={t("session.actions.accessibility.label")}
+          aria-busy={busy || status === "loading"}
+        >
           {actions.map((action) => {
             const Icon = SESSION_ACTION_ICONS[action.id] ?? PowerRegular;
             const disabled = busy ||
@@ -1482,7 +1874,11 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
                   <strong>{action.label}</strong>
                   <small>{action.detail}</small>
                 </span>
-                <code>{action.local ? "SAFE EXIT" : action.destructive ? "SYSTEM" : "SESSION"}</code>
+                <code>{t(action.local
+                  ? "session.action.badge.safeExit"
+                  : action.destructive
+                    ? "session.action.badge.system"
+                    : "session.action.badge.session")}</code>
               </button>
             );
           })}
@@ -1493,17 +1889,20 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
           role="alertdialog"
           aria-modal="false"
           aria-labelledby="session-confirmation-title"
+          aria-describedby="session-confirmation-detail"
         >
           <span className="session-confirmation-icon" aria-hidden="true">
             <ChallengeIcon />
           </span>
           <div>
-            <small>EXPLICIT CONFIRMATION REQUIRED</small>
-            <strong id="session-confirmation-title">{challenge.title}</strong>
-            <p>{challenge.detail}</p>
+            <small>{t("session.confirmation.eyebrow")}</small>
+            <strong id="session-confirmation-title">{challengeTitle}</strong>
+            <p id="session-confirmation-detail">{challengeDetail}</p>
             <code>{challenge.local
-              ? "JARVIS WILL CLOSE · WINDOWS STAYS ACTIVE"
-              : `SINGLE-USE CAPABILITY · ${sessionState.confirmationTimeoutSeconds} SECONDS`}</code>
+              ? t("session.confirmation.localCapability")
+              : t("session.confirmation.singleUseCapability", {
+                seconds: sessionState.confirmationTimeoutSeconds,
+              })}</code>
           </div>
           <div>
             <button
@@ -1513,7 +1912,7 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
               disabled={busy}
               onClick={() => void cancelChallenge()}
             >
-              CANCEL
+              {t("session.confirmation.cancel")}
             </button>
             <button
               type="button"
@@ -1521,7 +1920,11 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
               disabled={busy}
               onClick={() => void confirmAction()}
             >
-              {busy ? "REQUESTING" : `CONFIRM ${challenge.title}`}
+              {busy
+                ? t("session.confirmation.requesting")
+                : t("session.confirmation.confirmAction", {
+                  action: challengeTitle,
+                })}
             </button>
           </div>
         </section>
@@ -1535,25 +1938,38 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
       ) : null}
 
       <footer className="session-control-footer">
-        <span><ShieldRegular /> CTRL+SHIFT+Q ALWAYS RESTORES WINDOWS</span>
-        <small>No force-close flag is exposed to JARVIS.</small>
+        <span><ShieldRegular /> {t("session.footer.restoreWindows", {
+          shortcut: "CTRL+SHIFT+Q",
+        })}</span>
+        <small>{t("session.footer.noForceClose")}</small>
       </footer>
     </section>
   );
 }
 
 function HelpCenterPanel({ onClose, onOpenPanel }) {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
-  const visibleSections = useMemo(() => filterHelpSections(query), [query]);
+  const localizedSections = useMemo(() => localizeHelpSections(t), [t]);
+  const visibleSections = useMemo(
+    () => filterLocalizedHelpSections(localizedSections, query),
+    [localizedSections, query],
+  );
 
   return (
     <section
       className="shell-panel help-center-panel"
       role="dialog"
       aria-modal="false"
-      aria-label="JARVIS help and shortcuts"
+      aria-label={t("help.accessibility.dialog")}
+      data-smoke-id="help-center"
     >
-      <PanelHeader eyebrow="LOCAL GUIDE · F1" title="HELP / SHORTCUTS" onClose={onClose} />
+      <PanelHeader
+        eyebrow={t("help.header.eyebrow")}
+        title={t("help.header.title")}
+        closeLabel={t("common.action.close")}
+        onClose={onClose}
+      />
       <label className="help-center-search">
         <SearchRegular aria-hidden="true" />
         <input
@@ -1561,14 +1977,14 @@ function HelpCenterPanel({ onClose, onOpenPanel }) {
           data-dialog-initial-focus="true"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search tasks, shortcuts, privacy, recovery"
-          aria-label="Search JARVIS help"
+          placeholder={t("help.search.placeholder")}
+          aria-label={t("help.search.accessibility.label")}
         />
         <kbd>F1</kbd>
       </label>
       <div className="help-center-layout">
-        <nav aria-label="Help categories">
-          {helpCenterSections.map((section, index) => (
+        <nav aria-label={t("help.categories.accessibility.label")}>
+          {localizedSections.map((section, index) => (
             <button
               key={section.id}
               type="button"
@@ -1590,30 +2006,35 @@ function HelpCenterPanel({ onClose, onOpenPanel }) {
                 ))}
               </dl>
             </section>
-          )) : <p className="shell-empty-state">No help entry matches this search.</p>}
+          )) : <p className="shell-empty-state">{t("help.empty.search")}</p>}
         </div>
       </div>
       <footer className="help-center-footer">
-        <span><ShieldRegular /> EXPLORER STAYS RUNNING · NATIVE TASKBAR RESTORES ON EXIT</span>
-        <button type="button" onClick={() => onOpenPanel("session")}>SESSION CONTROL</button>
-        <button type="button" onClick={() => onOpenPanel("settings")}>RECOVERY CHECK</button>
+        <span><ShieldRegular /> {t("help.footer.recovery")}</span>
+        <button type="button" onClick={() => onOpenPanel("session")}>
+          {t("help.action.sessionControl")}
+        </button>
+        <button type="button" onClick={() => onOpenPanel("settings")}>
+          {t("help.action.recoveryCheck")}
+        </button>
       </footer>
     </section>
   );
 }
 
 const runtimeSettingsSections = Object.freeze([
-  { id: "settings-general", label: "GENERAL" },
-  { id: "settings-taskbar", label: "TASKBAR" },
-  { id: "settings-windows", label: "WINDOWS" },
-  { id: "settings-interface", label: "INTERFACE" },
-  { id: "settings-integration", label: "INTEGRATION" },
-  { id: "settings-help", label: "HELP" },
-  { id: "settings-recovery", label: "RECOVERY" },
+  { id: "settings-general", labelKey: "settings.navigation.general" },
+  { id: "settings-taskbar", labelKey: "settings.navigation.taskbar" },
+  { id: "settings-windows", labelKey: "settings.navigation.windows" },
+  { id: "settings-interface", labelKey: "settings.navigation.interface" },
+  { id: "settings-graph", labelKey: "settings.navigation.graph" },
+  { id: "settings-integration", labelKey: "settings.navigation.integration" },
+  { id: "settings-help", labelKey: "settings.navigation.help" },
+  { id: "settings-recovery", labelKey: "settings.navigation.recovery" },
 ]);
 
-function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp }) {
-  const panelRef = useRef(null);
+function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp, graphSourceState }) {
+  const { t } = useLanguage();
   const [runtime, setRuntime] = useState(null);
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
@@ -1649,7 +2070,9 @@ function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp }) {
       const result = await platform.lifecycle.setStartupEnabled(enabled);
       setRuntime(result);
       setStatus("ready");
-      onToast?.(enabled ? "JARVIS will start when you sign in" : "Windows startup disabled for JARVIS");
+      onToast?.(t(enabled
+        ? "settings.general.startup.enabledToast"
+        : "settings.general.startup.disabledToast"));
     } catch (nextError) {
       setError(nextError.message);
       setStatus("error");
@@ -1659,28 +2082,23 @@ function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp }) {
   const startupEnabled = Boolean(runtime?.startupEnabled && runtime?.startupCommandCurrent);
   const startupNeedsRepair = Boolean(runtime?.startupEnabled && !runtime?.startupCommandCurrent);
   const recoveryReady = Boolean(runtime?.recoveryReady);
-  const handleSettingsScroll = useCallback(() => {
-    const panel = panelRef.current;
-    if (!panel) return;
-    const threshold = panel.getBoundingClientRect().top + 112;
-    let nextSection = runtimeSettingsSections[0].id;
-    runtimeSettingsSections.forEach(({ id }) => {
-      const section = document.getElementById(id);
-      if (section && section.getBoundingClientRect().top <= threshold) {
-        nextSection = id;
-      }
-    });
-    setActiveSection((current) => current === nextSection ? current : nextSection);
-  }, []);
-  const jumpToSection = (sectionId) => {
-    const section = document.getElementById(sectionId);
-    if (!section) return;
-    setActiveSection(sectionId);
-    section.scrollIntoView({
-      behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-        ? "auto"
-        : "smooth",
-      block: "start",
+  const handleSettingsNavigationKeyDown = (event, sectionIndex) => {
+    const lastIndex = runtimeSettingsSections.length - 1;
+    const nextIndex = event.key === "ArrowDown" || event.key === "ArrowRight"
+      ? Math.min(lastIndex, sectionIndex + 1)
+      : event.key === "ArrowUp" || event.key === "ArrowLeft"
+        ? Math.max(0, sectionIndex - 1)
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? lastIndex
+            : null;
+    if (nextIndex === null || nextIndex === sectionIndex) return;
+    event.preventDefault();
+    const nextSection = runtimeSettingsSections[nextIndex];
+    setActiveSection(nextSection.id);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`settings-nav-${nextSection.id}`)?.focus();
     });
   };
 
@@ -1693,8 +2111,8 @@ function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp }) {
       setDiagnostics(result);
       setDiagnosticStatus("ready");
       onToast?.(result.overallStatus === "READY"
-        ? `Recovery diagnostics passed · ${result.verifiedFiles} files verified`
-        : `Recovery diagnostics: ${result.overallStatus}`);
+        ? t("settings.recovery.toast.passed", { count: result.verifiedFiles })
+        : t("settings.recovery.toast.status", { status: result.overallStatus }));
     } catch (nextError) {
       setError(nextError.message);
       setDiagnosticStatus("error");
@@ -1703,41 +2121,62 @@ function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp }) {
 
   return (
     <section
-      ref={panelRef}
       className="shell-panel runtime-settings-panel"
       role="dialog"
       aria-modal="false"
-      aria-label="JARVIS settings"
-      onScroll={handleSettingsScroll}
+      aria-label={t("settings.accessibility.dialog")}
     >
-      <PanelHeader eyebrow="CURRENT USER · NO ADMIN REQUIRED" title="JARVIS SETTINGS" onClose={onClose} />
+      <PanelHeader
+        eyebrow={t("settings.header.eyebrow")}
+        title={t("settings.title")}
+        closeLabel={t("common.action.close")}
+        onClose={onClose}
+      />
 
-      <nav className="runtime-settings-nav" aria-label="Settings sections">
-        {runtimeSettingsSections.map((section) => (
+      <div className="runtime-settings-workspace">
+        <nav className="runtime-settings-nav" aria-label={t("settings.navigation.aria")}>
+          {runtimeSettingsSections.map((section, sectionIndex) => (
           <button
             key={section.id}
+            id={`settings-nav-${section.id}`}
             type="button"
+            aria-controls="runtime-settings-detail"
             aria-current={activeSection === section.id ? "location" : undefined}
-            onClick={() => jumpToSection(section.id)}
+            onClick={() => setActiveSection(section.id)}
+            onKeyDown={(event) => handleSettingsNavigationKeyDown(event, sectionIndex)}
           >
-            {section.label}
+            {t(section.labelKey)}
           </button>
-        ))}
-      </nav>
+          ))}
+        </nav>
 
-      <section
-        id="settings-general"
-        className="runtime-settings-section-anchor"
-        aria-label="General runtime settings"
-      >
+        <div
+          id="runtime-settings-detail"
+          className="runtime-settings-detail"
+          role="region"
+          aria-labelledby={`settings-nav-${activeSection}`}
+        >
+
+          {activeSection === "settings-general" ? (
+            <section
+              id="settings-general"
+              className="runtime-settings-section-anchor"
+              aria-label={t("settings.general.accessibility.section")}
+            >
         <div className="runtime-identity">
           <CoreNodeGlyph />
           <span>
-            <small>RUNTIME CHANNEL</small>
+            <small>{t("settings.general.runtimeChannel")}</small>
             <strong>{runtime?.productName ?? "JARVIS"}</strong>
-            <code>VERSION {runtime?.version ?? "—"} · {runtime?.buildConfiguration ?? "LOADING"}</code>
+            <code>{t("settings.general.version", {
+              version: runtime?.version ?? "—",
+              configuration: runtime?.buildConfiguration ?? t("settings.general.state.loading"),
+            })}</code>
             <small className="runtime-environment">
-              {runtime?.installationMode ?? "DETECTING"} · WEBVIEW2 {runtime?.webView2Version ?? "—"}
+              {t("settings.general.environment", {
+                mode: runtime?.installationMode ?? t("settings.general.state.detecting"),
+                version: runtime?.webView2Version ?? "—",
+              })}
             </small>
           </span>
         </div>
@@ -1746,10 +2185,10 @@ function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp }) {
           <div className="runtime-setting-row">
             <span className="runtime-setting-icon"><PowerRegular /></span>
             <span className="runtime-setting-copy">
-              <strong>START WITH WINDOWS</strong>
+              <strong>{t("settings.general.startup.title")}</strong>
               <small>{startupNeedsRepair
-                ? "The saved startup path belongs to an older JARVIS build."
-                : "Launch JARVIS after the current Windows user signs in."}</small>
+                ? t("settings.general.startup.repairDescription")
+                : t("settings.general.startup.description")}</small>
             </span>
             <button
               type="button"
@@ -1760,76 +2199,124 @@ function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp }) {
               onClick={updateStartup}
             >
               <span />
-              <strong>{status === "saving" ? "SAVING" : startupNeedsRepair ? "REPAIR" : startupEnabled ? "ON" : "OFF"}</strong>
+              <strong>{status === "saving"
+                ? t("settings.general.state.saving")
+                : startupNeedsRepair
+                  ? t("settings.general.state.repair")
+                  : startupEnabled
+                    ? t("common.state.on")
+                    : t("common.state.off")}</strong>
             </button>
           </div>
 
           <div className="runtime-setting-row is-readonly">
             <span className="runtime-setting-icon"><ShieldRegular /></span>
             <span className="runtime-setting-copy">
-              <strong>WINDOWS RECOVERY PATH</strong>
-              <small>Explorer stays running and the native taskbar is restored on exit or failure.</small>
+              <strong>{t("settings.general.recovery.title")}</strong>
+              <small>{t("settings.general.recovery.description")}</small>
             </span>
             <span className={recoveryReady ? "runtime-state-ok" : "runtime-state-attention"}>
               {recoveryReady ? <CheckmarkCircleRegular /> : <AlertRegular />}
-              {recoveryReady ? "ARMED" : "CHECK"}
+              {recoveryReady
+                ? t("settings.general.recovery.armed")
+                : t("settings.general.recovery.check")}
             </span>
           </div>
         </div>
-      </section>
+            </section>
+          ) : null}
 
-      <div id="settings-taskbar" className="runtime-settings-section-anchor">
-        <TaskbarModeSettings onToast={onToast} />
-      </div>
+          {activeSection === "settings-taskbar" ? (
+            <div id="settings-taskbar" className="runtime-settings-section-anchor">
+              <TaskbarModeSettings onToast={onToast} />
+            </div>
+          ) : null}
 
-      <div id="settings-windows" className="runtime-settings-section-anchor">
-        <WindowAppearanceSettings onToast={onToast} />
-      </div>
+          {activeSection === "settings-windows" ? (
+            <div id="settings-windows" className="runtime-settings-section-anchor">
+              <WindowAppearanceSettings onToast={onToast} />
+            </div>
+          ) : null}
 
-      <div id="settings-interface" className="runtime-settings-section-anchor">
-        <InterfacePreferences onToast={onToast} />
-      </div>
+          {activeSection === "settings-interface" ? (
+            <div id="settings-interface" className="runtime-settings-section-anchor">
+              <InterfacePreferences onToast={onToast} />
+            </div>
+          ) : null}
 
-      <div id="settings-integration" className="runtime-settings-section-anchor">
-        <NativeIntegrationSettings onToast={onToast} />
-      </div>
+          {activeSection === "settings-graph" ? (
+            <div id="settings-graph" className="runtime-settings-section-anchor">
+              <GraphSourceSettings state={graphSourceState} onToast={onToast} />
+              <OptionalSettingsBoundary fallbackMessage={t("settings.graph.visuals.unavailable")}>
+                <Suspense fallback={(
+                  <p className="shell-empty-state">{t("settings.graph.visuals.loading")}</p>
+                )}>
+                  <GraphVisualSettings embedded onToast={onToast} />
+                </Suspense>
+              </OptionalSettingsBoundary>
+              <GraphProfileManager
+                vaultName={graphSourceState?.graph?.source?.name ?? ""}
+                onToast={onToast}
+              />
+            </div>
+          ) : null}
 
-      <section
-        id="settings-help"
-        className="runtime-settings-section-anchor runtime-help-entry"
-        aria-label="JARVIS help and shortcuts"
-      >
+          {activeSection === "settings-integration" ? (
+            <div id="settings-integration" className="runtime-settings-section-anchor">
+              <NativeIntegrationSettings onToast={onToast} />
+            </div>
+          ) : null}
+
+          {activeSection === "settings-help" ? (
+            <section
+              id="settings-help"
+              className="runtime-settings-section-anchor runtime-help-entry"
+              aria-label={t("settings.helpEntry.aria")}
+            >
         <span><PulseRegular /></span>
         <span>
-          <small>HELP / SHORTCUTS / RECOVERY</small>
-          <strong>OPEN THE LOCAL OPERATIONS MAP</strong>
-          <p>Press F1 anywhere in JARVIS for file, window, Agent-link, privacy, and safe-exit guidance.</p>
+          <small>{t("settings.helpEntry.eyebrow")}</small>
+          <strong>{t("settings.helpEntry.title")}</strong>
+          <p>{t("settings.helpEntry.description")}</p>
         </span>
-        <button type="button" onClick={onOpenHelp}>OPEN HELP CENTER</button>
-      </section>
+        <button type="button" onClick={onOpenHelp}>
+          {t("settings.helpEntry.open")}
+        </button>
+            </section>
+          ) : null}
 
-      <section
-        id="settings-recovery"
-        className="runtime-settings-section-anchor"
-        aria-label="Recovery diagnostics"
-      >
+          {activeSection === "settings-recovery" ? (
+            <section
+              id="settings-recovery"
+              className="runtime-settings-section-anchor"
+              aria-label={t("settings.recovery.aria")}
+            >
         <div className="runtime-path-card">
-          <small>ACTIVE EXECUTABLE</small>
-          <code title={runtime?.executablePath}>{runtime?.executablePath ?? "Resolving native runtime…"}</code>
+          <small>{t("settings.recovery.activeExecutable")}</small>
+          <code title={runtime?.executablePath}>
+            {runtime?.executablePath ?? t("settings.recovery.resolvingRuntime")}
+          </code>
         </div>
 
-        <section className="runtime-diagnostics" aria-label="Release and recovery diagnostics">
+        <section
+          className="runtime-diagnostics"
+          aria-label={t("settings.recovery.diagnosticsAria")}
+        >
           <header>
             <span>
-              <small>RELEASE &amp; RECOVERY</small>
-              <strong>{diagnostics?.overallStatus ?? "NOT CHECKED"}</strong>
+              <small>{t("settings.recovery.title")}</small>
+              <strong>{diagnostics?.overallStatus ?? t("settings.recovery.notChecked")}</strong>
             </span>
             <button
               type="button"
               disabled={!runtime || diagnosticStatus === "running"}
               onClick={runDiagnostics}
             >
-              {diagnosticStatus === "running" ? "VERIFYING…" : diagnostics ? "RUN AGAIN" : "RUN CHECK"}
+              {diagnosticStatus === "running"
+                ? t("settings.recovery.verifying")
+                : diagnostics
+                  ? t("settings.recovery.runAgain")
+                  : t("settings.recovery.runCheck")}
             </button>
           </header>
 
@@ -1844,22 +2331,34 @@ function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp }) {
               ))}
             </div>
           ) : (
-            <p>On demand only. Verifies Windows recovery, the global safe-exit path, native window guards, runtime, startup, installer records, and package hashes.</p>
+            <p>{t("settings.recovery.description")}</p>
           )}
         </section>
-      </section>
+            </section>
+          ) : null}
 
-      {error ? <p className="runtime-settings-error" role="alert"><AlertRegular />{error}</p> : null}
+          {error ? <p className="runtime-settings-error" role="alert"><AlertRegular />{error}</p> : null}
+        </div>
+      </div>
 
       <footer className="runtime-settings-footer">
-        <span>{runtime?.safeMode ? "SAFE MODE · NATIVE TASKBAR KEPT" : platform.isNative ? "NATIVE WINDOWS HOST" : "BROWSER PREVIEW"}</span>
-        <strong>{startupEnabled ? "AUTO START ARMED" : startupNeedsRepair ? "STARTUP REPAIR REQUIRED" : "MANUAL START"}</strong>
+        <span>{runtime?.safeMode
+          ? t("settings.footer.safeMode")
+          : platform.isNative
+            ? t("settings.footer.nativeHost")
+            : t("settings.footer.browserPreview")}</span>
+        <strong>{startupEnabled
+          ? t("settings.footer.autoStartArmed")
+          : startupNeedsRepair
+            ? t("settings.footer.startupRepairRequired")
+            : t("settings.footer.manualStart")}</strong>
       </footer>
     </section>
   );
 }
 
 function NativeIntegrationSettings({ onToast }) {
+  const { t } = useLanguage();
   const displays = useDisplayTopology();
   const notifications = useNotificationHistory();
   const [requesting, setRequesting] = useState(false);
@@ -1870,22 +2369,27 @@ function NativeIntegrationSettings({ onToast }) {
     try {
       const state = await requestNotificationHistoryAccess();
       onToast?.(state.historyAvailable
-        ? "Windows notification history connected"
-        : state.reason ?? "Windows notification history remains unavailable");
+        ? t("settings.integration.notifications.connectedToast")
+        : state.reason ?? t("settings.integration.notifications.unavailableToast"));
     } catch (nextError) {
-      onToast?.(`Notification access check failed · ${nextError.message}`);
+      onToast?.(t("settings.integration.notifications.accessCheckFailed", {
+        message: nextError.message,
+      }));
     } finally {
       setRequesting(false);
     }
   };
 
   return (
-    <section className="native-integration-settings" aria-label="Windows integration readiness">
+    <section
+      className="native-integration-settings"
+      aria-label={t("settings.integration.aria")}
+    >
       <header>
         <span><PlugConnectedRegular /></span>
         <span>
-          <strong>WINDOWS INTEGRATION</strong>
-          <small>R10 / R11 · 权限与显示器拓扑</small>
+          <strong>{t("settings.integration.title")}</strong>
+          <small>{t("settings.integration.description")}</small>
         </span>
         <button
           type="button"
@@ -1894,46 +2398,60 @@ function NativeIntegrationSettings({ onToast }) {
             void refreshNotificationHistory();
           }}
         >
-          REFRESH
+          {t("settings.integration.refresh")}
         </button>
       </header>
 
       <div className="native-integration-grid">
         <article>
-          <small>NOTIFICATION HISTORY</small>
-          <strong>{notifications.historyAvailable ? "CONNECTED" : "FEASIBILITY GATE"}</strong>
-          <p>{notifications.reason ?? "Windows notification history is available."}</p>
+          <small>{t("settings.integration.notifications.title")}</small>
+          <strong>{notifications.historyAvailable
+            ? t("settings.integration.notifications.connected")
+            : t("settings.integration.notifications.feasibilityGate")}</strong>
+          <p>{notifications.reason ?? t("settings.integration.notifications.available")}</p>
           <dl>
-            <div><dt>API</dt><dd>{notifications.apiAvailable ? "AVAILABLE" : "UNAVAILABLE"}</dd></div>
-            <div><dt>IDENTITY</dt><dd>{notifications.packaged ? "MSIX" : "UNPACKAGED"}</dd></div>
-            <div><dt>ACCESS</dt><dd>{notifications.accessStatus}</dd></div>
+            <div><dt>API</dt><dd>{notifications.apiAvailable
+              ? t("settings.integration.state.available")
+              : t("settings.integration.state.unavailable")}</dd></div>
+            <div><dt>{t("settings.integration.field.identity")}</dt><dd>{notifications.packaged
+              ? "MSIX"
+              : t("settings.integration.state.unpackaged")}</dd></div>
+            <div><dt>{t("settings.integration.field.access")}</dt><dd>{notifications.accessStatus}</dd></div>
           </dl>
           <button
             type="button"
             disabled={!notifications.canRequestAccess || requesting}
             onClick={requestAccess}
           >
-            {requesting ? "REQUESTING…" : notifications.canRequestAccess
-              ? "REQUEST ACCESS"
-              : notifications.packaged ? "ADAPTER NOT ENABLED" : "SIGNED MSIX REQUIRED"}
+            {requesting
+              ? t("settings.integration.notifications.requesting")
+              : notifications.canRequestAccess
+                ? t("settings.integration.notifications.requestAccess")
+                : notifications.packaged
+                  ? t("settings.integration.notifications.adapterDisabled")
+                  : t("settings.integration.notifications.signedMsixRequired")}
           </button>
         </article>
 
         <article>
-          <small>DISPLAY TOPOLOGY</small>
-          <strong>{displays.monitors.length} MONITOR{displays.monitors.length === 1 ? "" : "S"}</strong>
-          <p>
-            主桌面仅覆盖主显示器；副屏原生任务栏保持可用。
-          </p>
+          <small>{t("settings.integration.displays.title")}</small>
+          <strong>{t("settings.integration.displays.count", {
+            count: displays.monitors.length,
+          })}</strong>
+          <p>{t("settings.integration.displays.description")}</p>
           <dl>
             <div><dt>OS BUILD</dt><dd>{displays.osBuild || "—"}</dd></div>
-            <div><dt>WIN10 BASELINE</dt><dd>{displays.windows10Compatible ? "READY" : "UNSUPPORTED"}</dd></div>
-            <div><dt>POLICY</dt><dd>{displays.desktopSurfacePolicy}</dd></div>
+            <div><dt>WIN10 BASELINE</dt><dd>{displays.windows10Compatible
+              ? t("settings.integration.state.ready")
+              : t("settings.integration.state.unsupported")}</dd></div>
+            <div><dt>{t("settings.integration.field.policy")}</dt><dd>{displays.desktopSurfacePolicy}</dd></div>
           </dl>
           <div className="display-monitor-list">
             {displays.monitors.map((monitor) => (
               <span key={monitor.id} className={monitor.isPrimary ? "is-primary" : ""}>
-                <b>{monitor.isPrimary ? "PRIMARY" : monitor.deviceName.replace("\\\\.\\", "")}</b>
+                <b>{monitor.isPrimary
+                  ? t("settings.integration.displays.primary")
+                  : monitor.deviceName.replace("\\\\.\\", "")}</b>
                 <small>{monitor.bounds.width}×{monitor.bounds.height} · {monitor.scalePercent}%</small>
               </span>
             ))}
@@ -1948,6 +2466,7 @@ function NativeIntegrationSettings({ onToast }) {
 }
 
 function TaskbarModeSettings({ onToast }) {
+  const { t } = useLanguage();
   const state = useTaskbarModeState();
   const [pendingMode, setPendingMode] = useState(null);
   const [retrying, setRetrying] = useState(false);
@@ -1975,7 +2494,26 @@ function TaskbarModeSettings({ onToast }) {
   useEffect(() => {
     const previous = previousTransition.current;
     const toast = getTaskbarTransitionToast(previous, state);
-    if (toast) onToast?.(toast);
+    if (toast) {
+      const copy = toast.kind === "preview-saved"
+        ? {
+            title: t("settings.taskbar.toast.previewSaved", { mode: toast.mode }),
+            detail: t("settings.taskbar.toast.windowsUnchanged"),
+          }
+        : toast.kind === "switched"
+          ? {
+              title: t("settings.taskbar.toast.switched", { mode: toast.mode }),
+            }
+          : toast.kind === "cooldown"
+            ? {
+                title: t("settings.taskbar.toast.restored"),
+                detail: t("settings.taskbar.toast.cooldown"),
+              }
+            : {
+                title: t("settings.taskbar.toast.fallback", { mode: toast.mode }),
+              };
+      onToast?.({ ...toast, ...copy });
+    }
     previousTransition.current = {
       generation: state.transitionGeneration,
       status: state.transitionStatus,
@@ -1983,8 +2521,11 @@ function TaskbarModeSettings({ onToast }) {
   }, [
     onToast,
     state.effectiveMode,
+    state.requestedMode,
+    state.simulation,
     state.transitionGeneration,
     state.transitionStatus,
+    t,
   ]);
 
   useEffect(() => {
@@ -2033,18 +2574,20 @@ function TaskbarModeSettings({ onToast }) {
       <header className="window-appearance-header">
         <span className="window-appearance-icon"><WindowAppsRegular /></span>
         <span>
-          <strong id="taskbar-mode-title">任务栏接管模式</strong>
+          <strong id="taskbar-mode-title">{t("settings.taskbar.title")}</strong>
           <small>{simulation
-            ? "BROWSER PREVIEW · 仅保存本地预览选择"
-            : "TASKBAR MODE · 分层回退，不修改 Explorer"}</small>
+            ? t("settings.taskbar.description.preview")
+            : t("settings.taskbar.description.native")}</small>
         </span>
         <code className={!simulation && state.effectiveMode === state.requestedMode ? "is-compatible" : ""}>
-          {simulation ? "PREVIEW" : (state.effectiveMode ?? "native").toUpperCase()}
+          {simulation
+            ? t("settings.taskbar.state.preview")
+            : (state.effectiveMode ?? "native").toUpperCase()}
         </code>
       </header>
 
       <fieldset disabled={busy || state.safeMode}>
-        <legend>选择任务栏接管级别</legend>
+        <legend>{t("settings.taskbar.legend")}</legend>
         <div className="window-appearance-options">
           {taskbarModeOptions.map((option, index) => {
             const selected = selectedMode === option.mode;
@@ -2062,8 +2605,8 @@ function TaskbarModeSettings({ onToast }) {
                 />
                 <span className="window-appearance-level" aria-hidden="true">T{index}</span>
                 <span className="window-appearance-copy">
-                  <strong><span>{option.title}</span><b>{option.label}</b></strong>
-                  <small>{option.description}</small>
+                  <strong><span>{option.title}</span><b>{t(option.labelKey)}</b></strong>
+                  <small>{t(option.descriptionKey)}</small>
                 </span>
                 <span className="window-appearance-selector" aria-hidden="true"><i /></span>
               </label>
@@ -2073,20 +2616,42 @@ function TaskbarModeSettings({ onToast }) {
       </fieldset>
 
       <div className="window-appearance-telemetry is-taskbar" role="status" aria-live="polite">
-        <span><small>{simulation ? "预览选择 · PREVIEW" : "请求模式 · REQUESTED"}</small><strong>{busy ? (simulation ? "SAVING" : "APPLYING") : state.requestedMode.toUpperCase()}</strong></span>
-        <span><small>{simulation ? "Windows 状态 · WINDOWS" : "实际模式 · EFFECTIVE"}</small><strong>{simulation ? "NOT INSPECTED" : state.effectiveMode.toUpperCase()}</strong></span>
-        <span><small>{simulation ? "模拟状态 · SIMULATION" : "事务状态 · TRANSITION"}</small><strong>{simulation ? "LOCAL ONLY" : state.transitionStatus.toUpperCase()}</strong></span>
-        <span><small>{simulation ? "原生变更 · NATIVE CHANGE" : "恢复预算 · RECOVERY"}</small><strong>{simulation ? "NONE" : `${state.recoveryFailureCount}/3 · G${state.transitionGeneration}`}</strong></span>
+        <span><small>{simulation
+          ? t("settings.taskbar.telemetry.previewSelection")
+          : t("settings.taskbar.telemetry.requestedMode")}</small><strong>{busy
+          ? simulation
+            ? t("settings.taskbar.state.saving")
+            : t("settings.taskbar.state.applying")
+          : state.requestedMode.toUpperCase()}</strong></span>
+        <span><small>{simulation
+          ? t("settings.taskbar.telemetry.windowsStatus")
+          : t("settings.taskbar.telemetry.effectiveMode")}</small><strong>{simulation
+          ? t("settings.taskbar.state.notInspected")
+          : state.effectiveMode.toUpperCase()}</strong></span>
+        <span><small>{simulation
+          ? t("settings.taskbar.telemetry.simulation")
+          : t("settings.taskbar.telemetry.transition")}</small><strong>{simulation
+          ? t("settings.taskbar.state.localOnly")
+          : state.transitionStatus.toUpperCase()}</strong></span>
+        <span><small>{simulation
+          ? t("settings.taskbar.telemetry.nativeChange")
+          : t("settings.taskbar.telemetry.recovery")}</small><strong>{simulation
+          ? t("settings.taskbar.state.none")
+          : `${state.recoveryFailureCount}/3 · G${state.transitionGeneration}`}</strong></span>
       </div>
 
       {state.transitionReason ? (
         <p className="window-appearance-feedback" role="status">
-          <PulseRegular /><span>{simulation ? "预览状态" : "当前事务"}：{state.transitionReason}</span>
+          <PulseRegular /><span>{t(simulation
+            ? "settings.taskbar.feedback.preview"
+            : "settings.taskbar.feedback.transaction", {
+            reason: state.transitionReason,
+          })}</span>
         </p>
       ) : null}
       {state.safeMode ? (
         <p className="window-appearance-feedback is-fallback" role="status">
-          <ShieldRegular /><span>安全模式已启用：JARVIS_KEEP_NATIVE_TASKBAR=1。</span>
+          <ShieldRegular /><span>{t("settings.taskbar.feedback.safeMode")}</span>
         </p>
       ) : null}
       {state.fallbackReason ? (
@@ -2101,10 +2666,12 @@ function TaskbarModeSettings({ onToast }) {
             >
               <ArrowClockwiseRegular />
               {retrying
-                ? "RETRYING"
+                ? t("settings.taskbar.retry.retrying")
                 : cooldownRemaining > 0
-                  ? `RETRY ${cooldownRemaining}s`
-                  : `RETRY ${state.requestedMode.toUpperCase()}`}
+                  ? t("settings.taskbar.retry.cooldown", { seconds: cooldownRemaining })
+                  : t("settings.taskbar.retry.mode", {
+                    mode: state.requestedMode.toUpperCase(),
+                  })}
             </button>
           ) : null}
         </p>
@@ -2119,11 +2686,52 @@ function TaskbarModeSettings({ onToast }) {
 }
 
 function InterfacePreferences({ onToast }) {
-  const themeId = useSyncExternalStore(
+  const language = useLanguage();
+  const { t } = language;
+  const selectedLanguageOption = LANGUAGE_OPTIONS.find(
+    (option) => option.value === language.preference,
+  ) ?? LANGUAGE_OPTIONS[0];
+  const resolvedLanguageOption = LANGUAGE_OPTIONS.find(
+    (option) => option.value === language.language,
+  ) ?? LANGUAGE_OPTIONS.at(-1);
+  const selectedLanguageLabel = t(selectedLanguageOption.labelKey);
+  const resolvedLanguageLabel = t(resolvedLanguageOption.labelKey);
+  const languageStatusLabel = language.preference === "system"
+    ? `${selectedLanguageLabel} · ${resolvedLanguageLabel}`
+    : resolvedLanguageLabel;
+  const themeVersion = useSyncExternalStore(
     subscribeVisualTheme,
-    getVisualThemeSnapshot,
-    getVisualThemeSnapshot,
+    getVisualThemeVersionSnapshot,
+    getVisualThemeVersionSnapshot,
   );
+  const themeId = getVisualThemeSnapshot();
+  const currentTheme = getVisualThemeDefinition(themeId);
+  const currentThemeTranslation = interfaceThemeTranslationKeys[currentTheme.id];
+  const currentThemeLabel = currentThemeTranslation
+    ? t(currentThemeTranslation.labelKey)
+    : currentTheme.label;
+  const themeOptions = useMemo(
+    () => getVisualThemeOptions().map((theme) => getVisualThemeDefinition(theme.id)),
+    [themeVersion],
+  );
+  const savedCustomPalette = getCustomVisualPaletteSnapshot();
+  const savedPaletteSignature = customVisualPaletteFields
+    .map(({ key }) => savedCustomPalette[key])
+    .join("|");
+  const [customPaletteDraft, setCustomPaletteDraft] = useState(() => ({ ...savedCustomPalette }));
+  const previousSavedPaletteRef = useRef(savedCustomPalette);
+  const customPaletteDraftSignature = customVisualPaletteFields
+    .map(({ key }) => customPaletteDraft[key])
+    .join("|");
+  const isPaletteDirty = customVisualPaletteFields.some(({ key }) => (
+    customPaletteDraft[key] !== savedCustomPalette[key]
+  ));
+  const paletteContrast = useMemo(
+    () => getVisualPaletteContrastReport(customPaletteDraft),
+    [customPaletteDraftSignature],
+  );
+  const failedContrastChecks = paletteContrast.checks.filter((check) => !check.passes);
+  const themeImportRef = useRef(null);
   const audio = useSyncExternalStore(
     subscribeUiAudio,
     getUiAudioSnapshot,
@@ -2135,6 +2743,59 @@ function InterfacePreferences({ onToast }) {
     getInterfacePreferencesSnapshot,
   );
 
+  useEffect(() => {
+    const previousSavedPalette = previousSavedPaletteRef.current;
+    previousSavedPaletteRef.current = savedCustomPalette;
+    setCustomPaletteDraft((current) => {
+      const currentMatchedPreviousSaved = customVisualPaletteFields.every(({ key }) => (
+        current[key] === previousSavedPalette[key]
+      ));
+      return currentMatchedPreviousSaved ? { ...savedCustomPalette } : current;
+    });
+  }, [savedPaletteSignature]);
+
+  const applyCustomPalette = () => {
+    if (!paletteContrast.passes) {
+      onToast?.(t("settings.interface.toast.increaseContrast"));
+      return;
+    }
+    const palette = setCustomVisualPalette(customPaletteDraft);
+    setCustomPaletteDraft({ ...palette });
+    onToast?.(t("settings.interface.toast.paletteApplied"));
+  };
+
+  const resetCustomPalette = () => {
+    const palette = resetCustomVisualPalette();
+    setCustomPaletteDraft({ ...palette });
+    onToast?.(t("settings.interface.toast.paletteReset"));
+  };
+
+  const exportCustomPalette = () => {
+    const blob = new Blob([serializeCustomVisualTheme(customPaletteDraft)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "jarvis-theme.json";
+    link.click();
+    URL.revokeObjectURL(url);
+    onToast?.(t("settings.interface.toast.themeExported"));
+  };
+
+  const importCustomPalette = async (event) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    try {
+      const palette = parseCustomVisualTheme(await file.text());
+      setCustomPaletteDraft({ ...palette });
+      onToast?.(t("settings.interface.toast.themeImported"));
+    } catch (error) {
+      onToast?.(t("settings.interface.toast.themeImportFailed", {
+        message: error.message ?? t("settings.interface.error.unknown"),
+      }));
+    }
+  };
+
   const resetInterface = async () => {
     setVisualTheme("nexus");
     setUiAudioEnabled(false);
@@ -2143,9 +2804,9 @@ function InterfacePreferences({ onToast }) {
     try {
       const { resetVisualEffects } = await import("../visual-effects/visual-effects-system.js");
       resetVisualEffects();
-      onToast?.("Interface preferences restored to safe defaults");
+      onToast?.(t("settings.interface.toast.resetComplete"));
     } catch {
-      onToast?.("Core interface preferences restored; optional screen effects are unavailable");
+      onToast?.(t("settings.interface.toast.resetPartial"));
     }
   };
 
@@ -2153,37 +2814,219 @@ function InterfacePreferences({ onToast }) {
     <section className="interface-preferences" aria-labelledby="interface-preferences-title">
       <header>
         <span>
-          <strong id="interface-preferences-title">INTERFACE SIGNAL</strong>
-          <small>LAYERED EMISSION · ACCESSIBLE AUDIO</small>
+          <strong id="interface-preferences-title">
+            {t("settings.appearance.title")}
+          </strong>
+          <small>{t("settings.interface.description")}</small>
         </span>
-        <code>{themeId.toUpperCase()} · {interfacePreferences.emission.toUpperCase()}</code>
+        <code>{currentThemeLabel} · {isPaletteDirty
+          ? t("settings.interface.state.unsaved")
+          : t("settings.interface.state.noChanges")}</code>
       </header>
 
-      <div className="theme-choice-grid" role="radiogroup" aria-label="JARVIS visual theme">
-        {visualThemes.map((theme) => (
-          <button
-            key={theme.id}
-            type="button"
-            role="radio"
-            aria-checked={theme.id === themeId}
-            className={theme.id === themeId ? "is-selected" : ""}
-            onClick={() => {
-              setVisualTheme(theme.id);
-              onToast?.(`Visual profile: ${theme.label}`);
-            }}
-          >
-            <span className={`theme-swatch is-${theme.id}`} aria-hidden="true"><i /><i /><i /></span>
-            <span><strong>{theme.label}</strong><small>{theme.description}</small></span>
-          </button>
-        ))}
+      <div className="interface-option-group is-language">
+        <header>
+          <span>
+            <strong>{t("settings.language.title")}</strong>
+            <small>{t(platform.isNative
+              ? "settings.language.description"
+              : "settings.language.description.browser")}</small>
+          </span>
+          <code>{t("settings.language.current", { language: languageStatusLabel })}</code>
+        </header>
+        <div
+          className="interface-option-grid"
+          role="radiogroup"
+          aria-label={t("settings.language.title")}
+        >
+          {LANGUAGE_OPTIONS.map((option, index) => {
+            const selected = option.value === language.preference;
+            const detailKey = option.value === "system"
+              ? platform.isNative
+                ? "settings.language.option.system.windows"
+                : "settings.language.option.system.browser"
+              : `settings.language.option.${option.value}.description`;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                tabIndex={selected ? 0 : -1}
+                className={selected ? "is-selected" : ""}
+                onClick={() => setLanguagePreference(option.value)}
+                onKeyDown={(event) => {
+                  const lastIndex = LANGUAGE_OPTIONS.length - 1;
+                  const nextIndex = event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? lastIndex
+                      : ["ArrowRight", "ArrowDown"].includes(event.key)
+                        ? (index + 1) % LANGUAGE_OPTIONS.length
+                        : ["ArrowLeft", "ArrowUp"].includes(event.key)
+                          ? (index - 1 + LANGUAGE_OPTIONS.length) % LANGUAGE_OPTIONS.length
+                          : null;
+                  if (nextIndex === null) return;
+                  event.preventDefault();
+                  const nextButton = event.currentTarget.parentElement?.children[nextIndex];
+                  nextButton?.focus();
+                  setLanguagePreference(LANGUAGE_OPTIONS[nextIndex].value);
+                }}
+              >
+                <strong>{t(option.labelKey)}</strong>
+                <small>{t(detailKey)}</small>
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      <p className={`theme-draft-status${isPaletteDirty ? " is-dirty" : ""}`} role="status">
+        <span>{isPaletteDirty
+          ? t("settings.interface.palette.draftPending")
+          : t("settings.interface.palette.synchronized")}</span>
+        <code>{paletteContrast.passes
+          ? t("settings.interface.palette.contrastReady")
+          : t("settings.interface.palette.contrastCheck")}</code>
+      </p>
+
+      <div
+        className="theme-choice-grid"
+        role="radiogroup"
+        aria-label={t("settings.interface.theme.aria")}
+      >
+        {themeOptions.map((theme) => {
+          const translation = interfaceThemeTranslationKeys[theme.id];
+          const label = translation ? t(translation.labelKey) : theme.label;
+          const description = translation
+            ? t(translation.descriptionKey)
+            : theme.description;
+          return (
+            <button
+              key={theme.id}
+              type="button"
+              role="radio"
+              aria-checked={theme.id === themeId}
+              className={theme.id === themeId ? "is-selected" : ""}
+              onClick={() => {
+                setVisualTheme(theme.id);
+                onToast?.(t("settings.interface.toast.themeChanged", { theme: label }));
+              }}
+            >
+              <span
+                className="theme-swatch"
+                style={{
+                  "--theme-swatch-bg": theme.palette.background,
+                  "--theme-swatch-surface": theme.palette.surface,
+                  "--theme-swatch-card": theme.palette.card,
+                  "--theme-swatch-text": theme.palette.text,
+                  "--theme-swatch-text-strong": theme.palette.textStrong,
+                  "--theme-swatch-muted": theme.palette.muted,
+                  "--theme-swatch-border": theme.palette.border,
+                  "--theme-swatch-accent": theme.palette.accent,
+                }}
+                aria-hidden="true"
+              >
+                <i /><i /><i />
+              </span>
+              <span><strong>{label}</strong><small>{description}</small></span>
+            </button>
+          );
+        })}
+      </div>
+
+      <fieldset className="theme-customizer" aria-describedby="custom-palette-description">
+        <legend>{t("settings.interface.palette.title")}</legend>
+        <p id="custom-palette-description">
+          {t("settings.interface.palette.description")}
+        </p>
+        <div className="theme-customizer__fields">
+          {customVisualPaletteFields.map((field) => {
+            const labelKey = interfacePaletteFieldLabelKeys[field.key];
+            return (
+              <label key={field.key} htmlFor={`custom-palette-${field.key}`}>
+                <span>{labelKey ? t(labelKey) : field.label}</span>
+                <input
+                  id={`custom-palette-${field.key}`}
+                  type="color"
+                  value={customPaletteDraft[field.key]}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value.toUpperCase();
+                    setCustomPaletteDraft((current) => ({
+                      ...current,
+                      [field.key]: value,
+                    }));
+                  }}
+                />
+              </label>
+            );
+          })}
+        </div>
+        <div className="theme-customizer__actions">
+          <input
+            ref={themeImportRef}
+            className="sr-only"
+            type="file"
+            accept="application/json,.json"
+            onChange={importCustomPalette}
+            aria-label={t("settings.interface.palette.importAria")}
+          />
+          <button type="button" onClick={() => themeImportRef.current?.click()}>
+            {t("settings.interface.palette.importJson")}
+          </button>
+          <button type="button" onClick={exportCustomPalette}>
+            {t("settings.interface.palette.exportJson")}
+          </button>
+          <button
+            type="button"
+            className="is-primary"
+            disabled={!isPaletteDirty || !paletteContrast.passes}
+            onClick={applyCustomPalette}
+          >
+            {t("settings.interface.palette.apply")}
+          </button>
+          <button
+            type="button"
+            disabled={!isPaletteDirty}
+            onClick={() => setCustomPaletteDraft({ ...savedCustomPalette })}
+          >
+            {t("settings.interface.palette.discard")}
+          </button>
+          <button type="button" onClick={resetCustomPalette}>
+            {t("settings.interface.palette.resetToCarbon")}
+          </button>
+        </div>
+        {!paletteContrast.passes ? (
+          <p className="theme-contrast-warning" role="alert">
+            <AlertRegular />
+            <span>
+              {t("settings.interface.palette.contrastWarning", {
+                checks: failedContrastChecks
+                  .map((check) => {
+                    const labelKey = interfaceContrastCheckLabelKeys[check.id];
+                    const label = labelKey ? t(labelKey) : check.label;
+                    return `${label} ${check.ratio.toFixed(1)}:1`;
+                  })
+                  .join(" · "),
+              })}
+            </span>
+          </p>
+        ) : null}
+      </fieldset>
 
       <div className="interface-option-group">
         <header>
-          <span><strong>MOTION PROFILE</strong><small>ACCESSIBILITY · LOCAL PREFERENCE</small></span>
-          <code>{interfacePreferences.motion.toUpperCase()}</code>
+          <span>
+            <strong>{t("settings.motion.title")}</strong>
+            <small>{t("settings.interface.motion.description")}</small>
+          </span>
+          <code>{interfacePreferences.motion}</code>
         </header>
-        <div className="interface-option-grid" role="radiogroup" aria-label="JARVIS motion preference">
+        <div
+          className="interface-option-grid"
+          role="radiogroup"
+          aria-label={t("settings.interface.motion.aria")}
+        >
           {interfaceMotionOptions.map((option) => (
             <button
               key={option.id}
@@ -2193,8 +3036,8 @@ function InterfacePreferences({ onToast }) {
               className={option.id === interfacePreferences.motion ? "is-selected" : ""}
               onClick={() => setInterfacePreferences({ motion: option.id })}
             >
-              <strong>{option.label}</strong>
-              <small>{option.detail}</small>
+              <strong>{t(option.labelKey)}</strong>
+              <small>{t(option.detailKey)}</small>
             </button>
           ))}
         </div>
@@ -2202,10 +3045,17 @@ function InterfacePreferences({ onToast }) {
 
       <div className="interface-option-group">
         <header>
-          <span><strong>EMISSION LEVEL</strong><small>LINE LEGIBILITY REMAINS UNCHANGED</small></span>
-          <code>{interfacePreferences.emission.toUpperCase()}</code>
+          <span>
+            <strong>{t("settings.emission.title")}</strong>
+            <small>{t("settings.interface.emission.description")}</small>
+          </span>
+          <code>{interfacePreferences.emission}</code>
         </header>
-        <div className="interface-option-grid" role="radiogroup" aria-label="JARVIS emission preference">
+        <div
+          className="interface-option-grid"
+          role="radiogroup"
+          aria-label={t("settings.interface.emission.aria")}
+        >
           {interfaceEmissionOptions.map((option) => (
             <button
               key={option.id}
@@ -2215,15 +3065,19 @@ function InterfacePreferences({ onToast }) {
               className={option.id === interfacePreferences.emission ? "is-selected" : ""}
               onClick={() => setInterfacePreferences({ emission: option.id })}
             >
-              <strong>{option.label}</strong>
-              <small>{option.detail}</small>
+              <strong>{t(option.labelKey)}</strong>
+              <small>{t(option.detailKey)}</small>
             </button>
           ))}
         </div>
       </div>
 
-      <OptionalSettingsBoundary>
-        <Suspense fallback={<p className="shell-empty-state">Loading optional screen effects…</p>}>
+      <OptionalSettingsBoundary fallbackMessage={t("settings.interface.effects.unavailable")}>
+        <Suspense fallback={(
+          <p className="shell-empty-state">
+            {t("settings.interface.effects.loading")}
+          </p>
+        )}>
           <VisualEffectsSettings onToast={onToast} />
         </Suspense>
       </OptionalSettingsBoundary>
@@ -2231,8 +3085,8 @@ function InterfacePreferences({ onToast }) {
       <div className="audio-preference-row">
         <span className="runtime-setting-icon"><Speaker2Regular /></span>
         <span>
-          <strong>INTERACTION AUDIO</strong>
-          <small>Synthesized locally. No media asset or network request.</small>
+          <strong>{t("settings.interface.audio.title")}</strong>
+          <small>{t("settings.interface.audio.description")}</small>
         </span>
         <input
           type="range"
@@ -2242,7 +3096,7 @@ function InterfacePreferences({ onToast }) {
           value={audio.volume}
           disabled={!audio.enabled}
           onChange={(event) => setUiAudioVolume(event.target.value)}
-          aria-label="Interaction audio volume"
+          aria-label={t("settings.interface.audio.volumeAria")}
         />
         <button
           type="button"
@@ -2252,7 +3106,7 @@ function InterfacePreferences({ onToast }) {
           onClick={() => setUiAudioEnabled(!audio.enabled)}
         >
           <span />
-          <strong>{audio.enabled ? "ON" : "OFF"}</strong>
+          <strong>{audio.enabled ? t("common.state.on") : t("common.state.off")}</strong>
         </button>
       </div>
       <button
@@ -2262,8 +3116,8 @@ function InterfacePreferences({ onToast }) {
       >
         <ArrowClockwiseRegular />
         <span>
-          <strong>RESET INTERFACE</strong>
-          <small>Theme, motion, emission, optional visual effects, and local interaction audio only.</small>
+          <strong>{t("settings.interface.reset.title")}</strong>
+          <small>{t("settings.interface.reset.description")}</small>
         </span>
       </button>
     </section>
@@ -2271,6 +3125,7 @@ function InterfacePreferences({ onToast }) {
 }
 
 function WindowAppearanceSettings({ onToast }) {
+  const { t } = useLanguage();
   const appearance = useWindowAppearanceState();
   const [pendingMode, setPendingMode] = useState(null);
   const [pendingRule, setPendingRule] = useState(false);
@@ -2294,10 +3149,12 @@ function WindowAppearanceSettings({ onToast }) {
       const nextIsPreview = nextState.simulation === true ||
         nextState.provenance?.kind === "browser-preview";
       onToast?.(nextIsPreview
-        ? `Window appearance preview set to ${windowAppearanceLabels[mode] ?? mode} · Windows unchanged`
+        ? t("settings.windows.appearance.toast.previewSet", {
+          mode: windowAppearanceLabels[mode] ?? mode,
+        })
         : nextState.effectiveMode === mode
-          ? `Window appearance switched to ${nextLabel}`
-          : `Windows automatically fell back to ${nextLabel}`);
+          ? t("settings.windows.appearance.toast.switched", { mode: nextLabel })
+          : t("settings.windows.appearance.toast.fallback", { mode: nextLabel }));
     } catch {
       // The shared appearance store exposes the bridge error inline.
     } finally {
@@ -2309,7 +3166,7 @@ function WindowAppearanceSettings({ onToast }) {
     if (busy) return;
     const processName = normalizeWindowAppearanceProcessName(processNameValue);
     if (!processName) {
-      setRuleInputError("Enter a process filename such as notepad.exe; paths and wildcards are not allowed.");
+      setRuleInputError("settings.windows.rules.invalidProcess");
       return;
     }
 
@@ -2321,8 +3178,13 @@ function WindowAppearanceSettings({ onToast }) {
       const nextIsPreview = nextState.simulation === true ||
         nextState.provenance?.kind === "browser-preview";
       onToast?.(nextIsPreview
-        ? `${processName} preview rule saved locally · Windows unchanged`
-        : `${processName} is now ${action === "allow" ? "allowed" : "blocked"} for takeover`);
+        ? t("settings.windows.rules.toast.previewSaved", { process: processName })
+        : t("settings.windows.rules.toast.updated", {
+          process: processName,
+          action: t(action === "allow"
+            ? "settings.windows.rules.action.allowed"
+            : "settings.windows.rules.action.blocked"),
+        }));
     } catch {
       // The shared appearance store exposes native validation errors inline.
     } finally {
@@ -2339,8 +3201,8 @@ function WindowAppearanceSettings({ onToast }) {
       const nextIsPreview = nextState.simulation === true ||
         nextState.provenance?.kind === "browser-preview";
       onToast?.(nextIsPreview
-        ? `${processName} preview rule removed · Windows unchanged`
-        : `${processName} restored to automatic compatibility`);
+        ? t("settings.windows.rules.toast.previewRemoved", { process: processName })
+        : t("settings.windows.rules.toast.automatic", { process: processName }));
     } catch {
       // The shared appearance store exposes bridge errors inline.
     } finally {
@@ -2362,10 +3224,12 @@ function WindowAppearanceSettings({ onToast }) {
       <header className="window-appearance-header">
         <span className="window-appearance-icon"><WindowAppsRegular /></span>
         <span>
-          <strong id="window-appearance-title">原生窗口外观</strong>
+          <strong id="window-appearance-title">
+            {t("settings.windows.appearance.title")}
+          </strong>
           <small>{isBrowserPreview
-            ? "BROWSER PREVIEW · 仅保存本地预览选择"
-            : "WINDOW APPEARANCE · 分层接管，异常时自动回退"}</small>
+            ? t("settings.windows.appearance.description.preview")
+            : t("settings.windows.appearance.description.native")}</small>
         </span>
         <code className={!isBrowserPreview && appearance.windows11 ? "is-compatible" : ""}>
           {isBrowserPreview ? "PREVIEW" : windowsReleaseLabel}
@@ -2373,7 +3237,7 @@ function WindowAppearanceSettings({ onToast }) {
       </header>
 
       <fieldset disabled={busy}>
-        <legend>选择窗口外观接管级别</legend>
+        <legend>{t("settings.windows.appearance.legend")}</legend>
         <div className="window-appearance-options">
           {windowAppearanceOptions.map((option) => {
             const selected = selectedMode === option.mode;
@@ -2392,10 +3256,12 @@ function WindowAppearanceSettings({ onToast }) {
                 />
                 <span className="window-appearance-level" aria-hidden="true">{option.level}</span>
                 <span className="window-appearance-copy">
-                  <strong><span>{option.title}</span><b>{option.label}</b></strong>
-                  <small id={`window-appearance-${option.mode}-description`}>{option.description}</small>
+                  <strong><span>{option.title}</span><b>{t(option.labelKey)}</b></strong>
+                  <small id={`window-appearance-${option.mode}-description`}>
+                    {t(option.descriptionKey)}
+                  </small>
                 </span>
-                <span className="window-appearance-tag">{option.tag}</span>
+                <span className="window-appearance-tag">{t(option.tagKey)}</span>
                 <span className="window-appearance-selector" aria-hidden="true"><i /></span>
               </label>
             );
@@ -2406,40 +3272,73 @@ function WindowAppearanceSettings({ onToast }) {
       <div className="window-appearance-telemetry" role="status" aria-live="polite">
         {isBrowserPreview ? (
           <>
-            <span><small>预览选择 · PREVIEW</small><strong>{busy ? "SAVING" : selectedLabel}</strong></span>
-            <span><small>WINDOWS</small><strong>NOT INSPECTED</strong></span>
-            <span><small>NATIVE CHANGE</small><strong>NONE</strong></span>
+            <span><small>{t("settings.windows.telemetry.previewSelection")}</small><strong>{busy
+              ? t("settings.windows.state.saving")
+              : selectedLabel}</strong></span>
+            <span><small>WINDOWS</small><strong>{t("settings.windows.state.notInspected")}</strong></span>
+            <span><small>{t("settings.windows.telemetry.nativeChange")}</small><strong>{t("settings.windows.state.none")}</strong></span>
           </>
         ) : (
           <>
-            <span><small>实际层级 · EFFECTIVE</small><strong>{busy ? "APPLYING" : effectiveLabel}</strong></span>
-            <span><small>增强窗口 · STYLED</small><strong>{appearance.styledWindowCount}</strong></span>
-            <span><small>系统构建 · OS BUILD</small><strong>{appearance.osBuild ?? "—"}</strong></span>
+            <span><small>{t("settings.windows.telemetry.effective")}</small><strong>{busy
+              ? t("settings.windows.state.applying")
+              : effectiveLabel}</strong></span>
+            <span><small>{t("settings.windows.telemetry.styled")}</small><strong>{appearance.styledWindowCount}</strong></span>
+            <span><small>{t("settings.windows.telemetry.osBuild")}</small><strong>{appearance.osBuild ?? "—"}</strong></span>
           </>
         )}
       </div>
 
-      <div className="window-appearance-guards" aria-label="窗口接管安全状态">
+      <div
+        className="window-appearance-guards"
+        aria-label={t("settings.windows.guards.aria")}
+      >
         {isBrowserPreview ? (
           <>
-            <span className="is-warning"><i />EVENTS NOT INSPECTED</span>
-            <span className="is-warning"><i />INTEGRITY NOT INSPECTED</span>
-            <span className="is-warning"><i />SAFE EXIT NOT INSPECTED</span>
-            <span className="is-warning"><i />RECOVERY NOT INSPECTED</span>
+            <span className="is-warning"><i />{t("settings.windows.guards.events", {
+              status: t("settings.windows.state.notInspected"),
+            })}</span>
+            <span className="is-warning"><i />{t("settings.windows.guards.integrity", {
+              status: t("settings.windows.state.notInspected"),
+            })}</span>
+            <span className="is-warning"><i />{t("settings.windows.guards.safeExit", {
+              status: t("settings.windows.state.notInspected"),
+            })}</span>
+            <span className="is-warning"><i />{t("settings.windows.guards.recovery", {
+              status: t("settings.windows.state.notInspected"),
+            })}</span>
           </>
         ) : (
           <>
             <span className={appearance.effectiveMode === "off" || appearance.hooksReady ? "is-ready" : "is-warning"}>
-              <i />EVENTS {appearance.effectiveMode === "off" ? "IDLE" : appearance.hooksReady ? "READY" : "OFFLINE"}
+              <i />{t("settings.windows.guards.events", {
+                status: t(appearance.effectiveMode === "off"
+                  ? "settings.windows.state.idle"
+                  : appearance.hooksReady
+                    ? "settings.windows.state.ready"
+                    : "settings.windows.state.offline"),
+              })}
             </span>
             <span className={appearance.hostIntegrityVerified ? "is-ready" : "is-warning"}>
-              <i />INTEGRITY {appearance.hostIntegrityVerified ? "VERIFIED" : "BLOCKED"}
+              <i />{t("settings.windows.guards.integrity", {
+                status: t(appearance.hostIntegrityVerified
+                  ? "settings.windows.state.verified"
+                  : "settings.windows.state.blocked"),
+              })}
             </span>
             <span className={appearance.safetyHotkeyRegistered ? "is-ready" : "is-warning"}>
-              <i />SAFE EXIT {appearance.safetyHotkeyRegistered ? "ARMED" : "LOCAL ONLY"}
+              <i />{t("settings.windows.guards.safeExit", {
+                status: t(appearance.safetyHotkeyRegistered
+                  ? "settings.windows.state.armed"
+                  : "settings.windows.state.localOnly"),
+              })}
             </span>
             <span className={appearance.recoveryArmed ? "is-ready" : "is-warning"}>
-              <i />RECOVERY {appearance.recoveryArmed ? "ARMED" : "PENDING"}
+              <i />{t("settings.windows.guards.recovery", {
+                status: t(appearance.recoveryArmed
+                  ? "settings.windows.state.armed"
+                  : "settings.windows.state.pending"),
+              })}
             </span>
           </>
         )}
@@ -2448,15 +3347,19 @@ function WindowAppearanceSettings({ onToast }) {
       <section className="window-rule-editor" aria-labelledby="window-rule-title">
         <header>
           <span>
-            <strong id="window-rule-title">应用规则</strong>
+            <strong id="window-rule-title">{t("settings.windows.rules.title")}</strong>
             <small>{isBrowserPreview
-              ? `PREVIEW RULES · LOCAL ONLY · ${appearance.rules.length}/64`
-              : `APP RULES · 系统保护项不可覆盖 · ${appearance.rules.length}/64`}</small>
+              ? t("settings.windows.rules.description.preview", {
+                count: appearance.rules.length,
+              })
+              : t("settings.windows.rules.description.native", {
+                count: appearance.rules.length,
+              })}</small>
           </span>
         </header>
         <form onSubmit={submitRule}>
           <label>
-            <span className="sr-only">进程文件名</span>
+            <span className="sr-only">{t("settings.windows.rules.processLabel")}</span>
             <input
               type="text"
               value={processInput}
@@ -2473,14 +3376,18 @@ function WindowAppearanceSettings({ onToast }) {
               }}
             />
           </label>
-          <div className="window-rule-action" role="group" aria-label="规则动作">
+          <div
+            className="window-rule-action"
+            role="group"
+            aria-label={t("settings.windows.rules.actionAria")}
+          >
             <button
               type="button"
               className={ruleAction === "allow" ? "is-active is-allow" : ""}
               disabled={busy}
               onClick={() => setRuleAction("allow")}
             >
-              ALLOW
+              {t("settings.windows.rules.action.allow")}
             </button>
             <button
               type="button"
@@ -2488,20 +3395,25 @@ function WindowAppearanceSettings({ onToast }) {
               disabled={busy}
               onClick={() => setRuleAction("deny")}
             >
-              DENY
+              {t("settings.windows.rules.action.deny")}
             </button>
           </div>
           <button type="submit" className="window-rule-submit" disabled={busy || !processInput.trim()}>
-            {pendingRule ? "APPLYING" : "APPLY"}
+            {pendingRule
+              ? t("settings.windows.state.applying")
+              : t("common.action.apply")}
           </button>
         </form>
         {ruleInputError ? (
           <p id="window-rule-input-error" className="window-rule-inline-error" role="alert">
-            {ruleInputError}
+            {t(ruleInputError)}
           </p>
         ) : null}
         {appearance.rules.length ? (
-          <div className="window-rule-list" aria-label="已保存应用规则">
+          <div
+            className="window-rule-list"
+            aria-label={t("settings.windows.rules.savedAria")}
+          >
             {appearance.rules.map((rule) => (
               <div key={rule.processName}>
                 <code>{rule.processName}.exe</code>
@@ -2514,13 +3426,17 @@ function WindowAppearanceSettings({ onToast }) {
                     rule.action === "allow" ? "deny" : "allow",
                   )}
                 >
-                  {rule.action.toUpperCase()}
+                  {t(rule.action === "allow"
+                    ? "settings.windows.rules.action.allow"
+                    : "settings.windows.rules.action.deny")}
                 </button>
                 <button
                   type="button"
                   className="window-rule-remove"
                   disabled={busy}
-                  aria-label={`移除 ${rule.processName} 规则`}
+                  aria-label={t("settings.windows.rules.removeAria", {
+                    process: rule.processName,
+                  })}
                   onClick={() => removeRule(rule.processName)}
                 >
                   <DismissRegular />
@@ -2529,17 +3445,19 @@ function WindowAppearanceSettings({ onToast }) {
             ))}
           </div>
         ) : (
-          <p className="window-rule-empty">尚未添加规则；合格应用继续使用自动兼容判定。</p>
+          <p className="window-rule-empty">{t("settings.windows.rules.empty")}</p>
         )}
       </section>
 
       <section className="window-compatibility" aria-labelledby="window-compatibility-title">
         <header>
           <span>
-            <strong id="window-compatibility-title">当前窗口兼容矩阵</strong>
+            <strong id="window-compatibility-title">
+              {t("settings.windows.compatibility.title")}
+            </strong>
             <small>{isBrowserPreview
-              ? "BROWSER FIXTURE · WINDOWS NOT INSPECTED"
-              : "VISIBLE TOP-LEVEL WINDOWS · 按进程聚合"}</small>
+              ? t("settings.windows.compatibility.description.preview")
+              : t("settings.windows.compatibility.description.native")}</small>
           </span>
           <b>{appearance.compatibilityMatrix.length}</b>
         </header>
@@ -2552,7 +3470,9 @@ function WindowAppearanceSettings({ onToast }) {
                 <div key={entry.processName} className={`is-${entry.decision}`}>
                   <span>
                     <code>{entry.processName}.exe</code>
-                    <small>{getWindowCompatibilityReasonLabel(entry.reasonCode)}</small>
+                    <small>{windowCompatibilityReasonKeys[entry.reasonCode]
+                      ? t(windowCompatibilityReasonKeys[entry.reasonCode])
+                      : getWindowCompatibilityReasonLabel(entry.reasonCode)}</small>
                   </span>
                   <span className="window-compatibility-counts">
                     <small>WIN</small><b>{entry.windowCount}</b>
@@ -2564,30 +3484,41 @@ function WindowAppearanceSettings({ onToast }) {
                     disabled={busy || !actionable}
                     onClick={() => updateRule(entry.processName, nextAction)}
                   >
-                    {actionable ? nextAction.toUpperCase() : entry.decision.toUpperCase()}
+                    {actionable
+                      ? t(nextAction === "allow"
+                        ? "settings.windows.rules.action.allow"
+                        : "settings.windows.rules.action.deny")
+                      : entry.decision.toUpperCase()}
                   </button>
                 </div>
               );
             })}
           </div>
         ) : (
-          <p className="window-rule-empty">暂无可评估的用户可见顶层窗口。</p>
+          <p className="window-rule-empty">
+            {t("settings.windows.compatibility.empty")}
+          </p>
         )}
       </section>
 
       <p className="window-appearance-safety-note">
         <ShieldRegular />
         <span>{isBrowserPreview
-          ? "浏览器预览不会读取或更改 Windows；选择与规则仅保存在本地预览数据中。"
-          : "UAC、安全桌面和全屏独占窗口始终不接管；正常退出或异常终止后自动恢复。"}</span>
+          ? t("settings.windows.safety.preview")
+          : t("settings.windows.safety.native")}</span>
       </p>
 
       {appearance.fallbackReason ? (
         <p className="window-appearance-feedback is-fallback" role="status">
           <AlertRegular />
           <span>{isBrowserPreview
-            ? `PREVIEW ONLY：${appearance.fallbackReason}`
-            : `当前已回退至 ${effectiveLabel}：${appearance.fallbackReason}`}</span>
+            ? t("settings.windows.feedback.previewOnly", {
+              reason: appearance.fallbackReason,
+            })
+            : t("settings.windows.feedback.fallback", {
+              mode: effectiveLabel,
+              reason: appearance.fallbackReason,
+            })}</span>
         </p>
       ) : null}
       {appearance.error ? (
@@ -2602,6 +3533,8 @@ function WindowAppearanceSettings({ onToast }) {
 
 export function ShellPanelLayer({
   panel,
+  presenceState = "open",
+  onPresenceComplete,
   onClose,
   onOpenCommand,
   onLaunch,
@@ -2613,15 +3546,51 @@ export function ShellPanelLayer({
   localFeedEvents,
   onClearLocalFeed,
   onMarkLocalFeedRead,
+  graphSourceState,
 }) {
   const panelRef = useRef(null);
-  useDialogFocusTrap(panelRef, Boolean(panel), { onEscape: onClose });
+  const closing = presenceState === "closing";
+  const interactive = Boolean(panel) && !closing;
+  useDialogFocusTrap(panelRef, interactive, { onEscape: onClose });
+
+  useEffect(() => {
+    if (!interactive) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const container = panelRef.current;
+      if (!container || container.contains(document.activeElement)) return;
+      const target = container.querySelector(
+        "[data-dialog-initial-focus='true'], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]",
+      );
+      target?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [interactive, panel]);
 
   if (!panel) return null;
 
   return (
-    <div className={`shell-panel-layer is-${panel}`} onMouseDown={onClose}>
-      <div ref={panelRef} onMouseDown={(event) => event.stopPropagation()}>
+    <div
+      className={`shell-panel-layer is-${panel}`}
+      data-state={presenceState}
+      aria-hidden={closing ? "true" : undefined}
+      onMouseDown={(event) => {
+        if (closing) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        onClose();
+      }}
+    >
+      <div
+        ref={panelRef}
+        data-state={presenceState}
+        inert={closing ? true : undefined}
+        onAnimationEnd={(event) => {
+          if (event.target === event.currentTarget) onPresenceComplete?.();
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         {panel === "start" ? (
           <StartPanel
             onClose={onClose}
@@ -2656,6 +3625,7 @@ export function ShellPanelLayer({
             onClose={onClose}
             onToast={onToast}
             onOpenHelp={() => onOpenPanel("help")}
+            graphSourceState={graphSourceState}
           />
         ) : null}
         {panel === "help" ? <HelpCenterPanel onClose={onClose} onOpenPanel={onOpenPanel} /> : null}

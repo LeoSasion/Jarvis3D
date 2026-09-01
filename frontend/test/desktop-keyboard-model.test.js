@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   advanceDesktopTypeahead,
   getDesktopKeyboardTarget,
+  isDesktopContextMenuTrigger,
 } from "../src/desktop-keyboard-model.js";
 
 const positions = [
@@ -43,4 +44,11 @@ test("desktop typeahead appends briefly, resets later, and cycles repeated initi
   assert.deepEqual([appended.query, appended.index], ["bl", 3]);
   assert.deepEqual([reset.query, reset.index], ["a", 0]);
   assert.deepEqual([cycle.query, cycle.index], ["a", 1]);
+});
+
+test("desktop background accepts only the standard context-menu keyboard triggers", () => {
+  assert.equal(isDesktopContextMenuTrigger({ key: "ContextMenu" }), true);
+  assert.equal(isDesktopContextMenuTrigger({ key: "F10", shiftKey: true }), true);
+  assert.equal(isDesktopContextMenuTrigger({ key: "F10" }), false);
+  assert.equal(isDesktopContextMenuTrigger({ key: "F10", shiftKey: true, altKey: true }), false);
 });

@@ -41,6 +41,14 @@ export function getDesktopKeyboardTarget(items, currentIndex, key) {
   return bestIndex;
 }
 
+export function isDesktopContextMenuTrigger(eventLike) {
+  if (!eventLike || eventLike.ctrlKey || eventLike.altKey || eventLike.metaKey) {
+    return false;
+  }
+  return eventLike.key === "ContextMenu" ||
+    (eventLike.key === "F10" && eventLike.shiftKey === true);
+}
+
 export function advanceDesktopTypeahead(
   entries,
   currentIndex,

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { useLanguage } from "../i18n/language-system.js";
 
 export function DesktopOperationDialog({
-  confirmLabel = "CONFIRM",
+  confirmLabel,
   danger = false,
   description,
   initialValue = "",
@@ -10,6 +11,7 @@ export function DesktopOperationDialog({
   onConfirm,
   title,
 }) {
+  const { t } = useLanguage();
   const [value, setValue] = useState(initialValue);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -24,7 +26,7 @@ export function DesktopOperationDialog({
     event.preventDefault();
     const normalized = inputLabel ? value.trim() : value;
     if (inputLabel && !normalized) {
-      setError("A name is required.");
+      setError(t("desktop.operation.error.nameRequired"));
       return;
     }
     setBusy(true);
@@ -32,7 +34,7 @@ export function DesktopOperationDialog({
     try {
       await onConfirm(normalized);
     } catch (nextError) {
-      setError(nextError?.message ?? "The operation failed.");
+      setError(nextError?.message ?? t("desktop.operation.error.failed"));
       setBusy(false);
     }
   };
@@ -48,7 +50,7 @@ export function DesktopOperationDialog({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
-          <span>FILE OPERATION</span>
+          <span>{t("desktop.operation.eyebrow")}</span>
           <strong id="desktop-operation-title">{title}</strong>
         </header>
         {description ? <p>{description}</p> : null}
@@ -66,9 +68,13 @@ export function DesktopOperationDialog({
         ) : null}
         {error ? <div className="desktop-operation-error" role="alert">{error}</div> : null}
         <footer>
-          <button type="button" onClick={onCancel} disabled={busy}>CANCEL</button>
+          <button type="button" onClick={onCancel} disabled={busy}>
+            {t("common.action.cancel")}
+          </button>
           <button className={danger ? "is-danger" : "is-primary"} type="submit" disabled={busy}>
-            {busy ? "WORKING…" : confirmLabel}
+            {busy
+              ? t("desktop.operation.status.working")
+              : confirmLabel ?? t("desktop.operation.action.confirm")}
           </button>
         </footer>
       </form>

@@ -126,6 +126,7 @@ export function createCalendarMonth({
   month,
   todayKey,
   eventTimestamps = [],
+  locale = "en-US",
 }) {
   const firstOfMonth = createLocalDate(year, month, 1);
   const normalizedYear = firstOfMonth.getFullYear();
@@ -156,10 +157,10 @@ export function createCalendarMonth({
   return {
     year: normalizedYear,
     month: normalizedMonth,
-    monthLabel: firstOfMonth.toLocaleDateString("en-US", {
+    monthLabel: firstOfMonth.toLocaleDateString(locale, {
       month: "long",
       year: "numeric",
-    }).toUpperCase(),
+    }).toLocaleUpperCase(locale),
     cells,
   };
 }

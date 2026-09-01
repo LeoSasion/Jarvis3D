@@ -2,10 +2,17 @@ const STORAGE_KEY = "jarvis.explorer.preferences.v1";
 const VIEW_MODES = new Set(["list", "grid"]);
 const SORT_KEYS = new Set(["name", "type", "modified", "size"]);
 const SORT_DIRECTIONS = new Set(["ascending", "descending"]);
-const entryCollator = new Intl.Collator(undefined, {
+const technicalCollator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: "base",
 });
+
+function createEntryLabelCollator(language) {
+  return new Intl.Collator(language, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
 
 export const DEFAULT_EXPLORER_PREFERENCES = Object.freeze({
   version: 1,
@@ -108,10 +115,10 @@ export function getExplorerEscapeAction(state = {}) {
   return "close";
 }
 
-function compareEntryValue(left, right, key) {
+function compareEntryValue(left, right, key, labelCollator) {
   if (key === "type") {
-    return entryCollator.compare(left.typeLabel ?? "", right.typeLabel ?? "") ||
-      entryCollator.compare(left.extension ?? "", right.extension ?? "");
+    return labelCollator.compare(left.typeLabel ?? "", right.typeLabel ?? "") ||
+      technicalCollator.compare(left.extension ?? "", right.extension ?? "");
   }
   if (key === "modified") {
     const leftTime = Date.parse(left.modified ?? "") || 0;
@@ -121,17 +128,18 @@ function compareEntryValue(left, right, key) {
   if (key === "size") {
     return Number(left.sizeBytes ?? -1) - Number(right.sizeBytes ?? -1);
   }
-  return entryCollator.compare(left.name ?? left.label ?? "", right.name ?? right.label ?? "");
+  return labelCollator.compare(left.name ?? left.label ?? "", right.name ?? right.label ?? "");
 }
 
-export function sortExplorerEntries(entries, preferences) {
+export function sortExplorerEntries(entries, preferences, language = undefined) {
   const normalized = normalizeExplorerPreferences(preferences);
   const direction = normalized.sortDirection === "descending" ? -1 : 1;
+  const labelCollator = createEntryLabelCollator(language);
   return entries.map((entry, index) => ({ entry, index }))
     .sort((left, right) => (
       Number(Boolean(right.entry.isDirectory)) - Number(Boolean(left.entry.isDirectory)) ||
-      compareEntryValue(left.entry, right.entry, normalized.sortKey) * direction ||
-      entryCollator.compare(left.entry.name ?? "", right.entry.name ?? "") ||
+      compareEntryValue(left.entry, right.entry, normalized.sortKey, labelCollator) * direction ||
+      labelCollator.compare(left.entry.name ?? "", right.entry.name ?? "") ||
       left.index - right.index
     ))
     .map(({ entry }) => entry);

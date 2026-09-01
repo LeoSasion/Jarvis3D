@@ -1,8 +1,8 @@
-# JarvisV1
+# JARVIS
 
-JarvisV1 is an experimental HUD-style desktop shell for Windows 10 and Windows 11. It combines a native C#/WPF host with a React/WebView2 interface to provide a replacement taskbar, desktop command surface, system telemetry, native window styling, file tools, and an integrated ConPTY terminal.
+`JarvisV1` is the repository and release identity for JARVIS, an experimental operator-HUD desktop shell for Windows 10 and Windows 11. The passive neural field, compact telemetry rails, and vector instrument language are intentional product identity, while every system claim remains Host-backed or explicitly marked as simulated. A native C#/WPF host and React/WebView2 interface provide a replacement taskbar, desktop command surface, native window styling, file tools, a local knowledge graph, Agent workflows, and an integrated ConPTY terminal.
 
-![JARVIS desktop shell](frontend/design-reference/jarvis-night-shell-v1-approved.png)
+![JARVIS operator HUD](docs/design/references/jarvis-operator-hud-overview.png)
 
 ## Current scope
 
@@ -24,6 +24,7 @@ JarvisV1 is an experimental HUD-style desktop shell for Windows 10 and Windows 1
 - Truthful Windows notification-history readiness reporting; history remains disabled until a signed MSIX identity and user consent are available
 - Windows-native system telemetry and on-demand process/hardware inspection
 - Integrated PowerShell, Command Prompt, and WSL sessions through ConPTY
+- A source-bounded local Obsidian knowledge graph with 2D/3D views, persisted visual profiles, and metadata-only renderer contracts
 - Configurable conservative, enhanced, and experimental immersive window styling
 - Layered low-glare HUD themes and optional local interaction sounds
 - Per-user installer and startup registration
@@ -37,7 +38,8 @@ JarvisV1 is under active development. The experimental immersive mode can alter 
 - `installer/` — Inno Setup definition for per-user installation
 - `scripts/` — release and native lifecycle verification scripts
 - `third_party/pi/` — pinned Pi release trust manifest and retained MIT license; upstream binaries remain build artifacts, not source-control payloads
-- `assets/archive/` — approved source visual assets retained for restoration
+- `docs/design/` — current design-reference index and the smallest approved raster set
+- `docs/validation/` — native lifecycle and release-validation evidence
 
 The WebView renderer receives bounded capabilities rather than executable paths or arbitrary command lines. Windows integration and safety-sensitive operations remain in the native host. Bridge input, output, concurrency, and per-surface permissions are bounded independently. Agent providers also sit behind an explicit capability contract; a provider cannot use chat, streaming, history, abort, or session controls unless it declares that capability, and the current chat contract requires streaming support.
 
@@ -73,13 +75,16 @@ dotnet run --project .\host\Jarvis.Host\Jarvis.Host.csproj
 After both builds complete, run the isolated Host/WebView2 smoke gate:
 
 ```powershell
-.\scripts\verify-renderer-smoke.ps1
+.\scripts\verify-renderer-smoke.ps1 -Culture en-US
+.\scripts\verify-renderer-smoke.ps1 -Culture zh-CN
 ```
 
 It opens an off-screen 1040x720 renderer against an isolated WebView2 profile,
-checks Help, Explorer, Agent linking, notice bounds, and Reduced Motion, then
-exits automatically. The gate refuses to start while JARVIS is already running
-and verifies that the native Windows taskbar remains visible.
+checks Help through a locale-independent DOM contract, Explorer, Agent linking,
+notice bounds, and Reduced Motion, then exits automatically. The gate refuses to
+start while JARVIS is already running and verifies that the native Windows
+taskbar remains visible. Run both cultures from an interactive Windows desktop
+as a pre-release gate; hosted CI does not claim this desktop-only coverage.
 
 Run the controlled native lifecycle gates only when the desktop can briefly
 yield to JARVIS:

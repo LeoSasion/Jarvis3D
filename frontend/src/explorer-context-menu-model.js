@@ -1,6 +1,24 @@
 const MENU_MARGIN = 8;
 export const EXPLORER_CONTEXT_MENU_WIDTH = 272;
 
+const ACTION_LABEL_KEYS = Object.freeze({
+  open: "explorer.context.action.open",
+  "open-in-windows": "explorer.context.action.openInWindows",
+  copy: "explorer.context.action.copy",
+  cut: "explorer.context.action.cut",
+  "copy-path": "explorer.context.action.copyPath",
+  rename: "explorer.context.action.rename",
+  properties: "explorer.context.action.properties",
+  recycle: "explorer.context.action.recycle",
+  "new-folder": "explorer.context.action.newFolder",
+  paste: "explorer.context.action.paste",
+  refresh: "explorer.context.action.refresh",
+});
+
+function action(id, options) {
+  return { id, labelKey: ACTION_LABEL_KEYS[id], ...options };
+}
+
 function boundedCount(value) {
   return Math.max(0, Math.min(10_000, Math.floor(Number(value) || 0)));
 }
@@ -22,23 +40,23 @@ export function getExplorerContextMenuActions(options = {}) {
 
   if (options.kind === "item") {
     return Object.freeze([
-      { id: "open", label: "OPEN", shortcut: "ENTER", group: "open", disabled: !singleSelection },
-      { id: "open-in-windows", label: "OPEN IN WINDOWS", group: "open", disabled: !singleSelection },
-      { id: "copy", label: "COPY", shortcut: "CTRL+C", group: "clipboard", disabled: selectionCount === 0 || blocked },
-      { id: "cut", label: "CUT", shortcut: "CTRL+X", group: "clipboard", disabled: selectionCount === 0 || blocked },
-      { id: "copy-path", label: "COPY PATH", shortcut: "CTRL+SHIFT+C", group: "clipboard", disabled: selectionCount === 0 },
-      { id: "rename", label: "RENAME", shortcut: "F2", group: "manage", disabled: !singleSelection || blocked },
-      { id: "properties", label: "PROPERTIES", shortcut: "ALT+ENTER", group: "manage", disabled: !singleSelection },
-      { id: "recycle", label: "MOVE TO RECYCLE BIN", shortcut: "DEL", group: "danger", disabled: selectionCount === 0 || blocked, danger: true },
+      action("open", { shortcut: "ENTER", group: "open", disabled: !singleSelection }),
+      action("open-in-windows", { group: "open", disabled: !singleSelection }),
+      action("copy", { shortcut: "CTRL+C", group: "clipboard", disabled: selectionCount === 0 || blocked }),
+      action("cut", { shortcut: "CTRL+X", group: "clipboard", disabled: selectionCount === 0 || blocked }),
+      action("copy-path", { shortcut: "CTRL+SHIFT+C", group: "clipboard", disabled: selectionCount === 0 }),
+      action("rename", { shortcut: "F2", group: "manage", disabled: !singleSelection || blocked }),
+      action("properties", { shortcut: "ALT+ENTER", group: "manage", disabled: !singleSelection }),
+      action("recycle", { shortcut: "DEL", group: "danger", disabled: selectionCount === 0 || blocked, danger: true }),
     ]);
   }
 
   const hasCurrentPath = Boolean(options.hasCurrentPath);
   return Object.freeze([
-    { id: "new-folder", label: "NEW FOLDER", shortcut: "CTRL+SHIFT+N", group: "create", disabled: !hasCurrentPath || blocked },
-    { id: "paste", label: "PASTE", shortcut: "CTRL+V", group: "create", disabled: !options.canPaste || Boolean(options.busy) },
-    { id: "refresh", label: "REFRESH", shortcut: "F5", group: "location", disabled: !hasCurrentPath || Boolean(options.loading) },
-    { id: "open-in-windows", label: "OPEN IN WINDOWS", group: "location", disabled: !hasCurrentPath },
+    action("new-folder", { shortcut: "CTRL+SHIFT+N", group: "create", disabled: !hasCurrentPath || blocked }),
+    action("paste", { shortcut: "CTRL+V", group: "create", disabled: !options.canPaste || Boolean(options.busy) }),
+    action("refresh", { shortcut: "F5", group: "location", disabled: !hasCurrentPath || Boolean(options.loading) }),
+    action("open-in-windows", { group: "location", disabled: !hasCurrentPath }),
   ]);
 }
 

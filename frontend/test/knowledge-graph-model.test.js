@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   clampKnowledgeGraphZoom,
   createKnowledgeGraphModel,
+  getKnowledgeGraphNavigationIndex,
+  getKnowledgeGraphNodeConnections,
   getKnowledgeGraphNodeContextItem,
   getKnowledgeGraphPresentation,
   getKnowledgeGraphWheelZoomDelta,
@@ -30,14 +32,19 @@ test("knowledge graph remains disconnected without a verified source", () => {
   });
   const presentation = getKnowledgeGraphPresentation(null);
   assert.equal(presentation.status, "disconnected");
-  assert.equal(presentation.title, "SOURCE DISCONNECTED");
-  assert.match(presentation.announcement, /No verified knowledge source is connected/u);
   assert.deepEqual(presentation.actions.map((action) => action.id), [
     "search-local",
     "open-files",
     "desktop-only",
   ]);
-  assert.equal(presentation.actions.some((action) => /agent|connected/iu.test(`${action.label} ${action.detail}`)), false);
+  assert.deepEqual(presentation.actions, [
+    { id: "search-local" },
+    { id: "open-files" },
+    { id: "desktop-only" },
+  ]);
+  assert.equal("title" in presentation, false);
+  assert.equal("detail" in presentation, false);
+  assert.equal("announcement" in presentation, false);
 });
 
 test("knowledge graph exposes counts only after a verified connection", () => {
@@ -49,8 +56,8 @@ test("knowledge graph exposes counts only after a verified connection", () => {
   assert.equal(presentation.status, "connected");
   assert.equal(presentation.sourceCount, 2);
   assert.equal(presentation.relationCount, 48);
-  assert.match(presentation.detail, /2 SOURCES \/ 48 RELATIONS/u);
   assert.deepEqual(presentation.actions, []);
+  assert.equal("detail" in presentation, false);
 });
 
 test("knowledge graph builds deterministic relations from an Explorer metadata snapshot", () => {
@@ -67,6 +74,12 @@ test("knowledge graph builds deterministic relations from an Explorer metadata s
   assert.equal(graph.nodes.find((node) => node.name === "App.jsx").selected, true);
   assert.equal(graph.nodes.find((node) => node.name === "App.jsx").label, "App.jsx");
   assert.ok(["left", "right"].includes(graph.nodes.find((node) => node.name === "App.jsx").labelSide));
+  const documentGroup = graph.nodes.find((node) => node.groupKind === "document");
+  assert.equal(documentGroup.label, undefined);
+  assert.equal(documentGroup.labelKey, "graph.workspace.group.document");
+  assert.equal(documentGroup.meta, undefined);
+  assert.equal(documentGroup.metaKey, "graph.workspace.group.items.one");
+  assert.deepEqual(documentGroup.metaValues, { count: 1 });
   assert.equal(graph.nodes.some((node) => node.label === "ENTITIES"), false);
 });
 
@@ -95,6 +108,26 @@ test("search temporarily expands a previously collapsed group with a real match"
   assert.equal(filtered.visibleEntryCount, 1);
 });
 
+test("graph model exposes stable translation ids instead of English display copy", () => {
+  const graph = createKnowledgeGraphModel({
+    currentPath: "C:\\Work\\JARVIS",
+    entries: [
+      { path: "C:\\Work\\JARVIS\\one.md", name: "one.md", kind: "document" },
+      { path: "C:\\Work\\JARVIS\\two.md", name: "two.md", kind: "document" },
+    ],
+  }, { query: "one" });
+  const sourceNode = graph.nodes.find((node) => node.kind === "source");
+  const documentGroup = graph.nodes.find((node) => node.groupKind === "document");
+
+  assert.equal(sourceNode.metaKey, "graph.workspace.source.items");
+  assert.deepEqual(sourceNode.metaValues, { count: 2 });
+  assert.equal(documentGroup.labelKey, "graph.workspace.group.document");
+  assert.equal(documentGroup.metaKey, "graph.workspace.group.matches");
+  assert.deepEqual(documentGroup.metaValues, { visible: 1, total: 2 });
+  assert.equal("FOLDERS DOCUMENTS ITEMS MATCH".split(" ").some((copy) =>
+    JSON.stringify(graph).includes(copy)), false);
+});
+
 test("simulated Explorer provenance remains explicit in graph presentation", () => {
   const previewSource = {
     ...source,
@@ -111,9 +144,11 @@ test("simulated Explorer provenance remains explicit in graph presentation", () 
 
   assert.equal(normalized.simulation, true);
   assert.equal(normalized.provenance.kind, "browser-preview");
-  assert.equal(presentation.meta, "SIMULATED EXPLORER FIXTURE");
-  assert.match(presentation.announcement, /simulated Explorer preview source/u);
-  assert.doesNotMatch(presentation.announcement, /verified source/iu);
+  assert.equal(presentation.status, "connected");
+  assert.equal(presentation.simulation, true);
+  assert.deepEqual(presentation.actions, []);
+  assert.equal("meta" in presentation, false);
+  assert.equal("announcement" in presentation, false);
 });
 
 test("knowledge graph bounds source data and preserves the omitted count", () => {
@@ -141,6 +176,41 @@ test("only actionable source and entry nodes can become metadata-only Agent cont
   assert.equal(contextItem.name, "App.jsx");
   assert.equal(contextItem.sizeBytes, 4200);
   assert.equal("content" in contextItem, false);
+});
+
+test("selected graph nodes expose truthful typed incoming and outgoing connections", () => {
+  const graph = createKnowledgeGraphModel(source);
+  const sourceNode = graph.nodes.find((node) => node.kind === "source");
+  const codeGroup = graph.nodes.find((node) => node.groupKind === "code");
+  const appNode = graph.nodes.find((node) => node.name === "App.jsx");
+
+  const sourceConnections = getKnowledgeGraphNodeConnections(graph, sourceNode.id);
+  const groupConnections = getKnowledgeGraphNodeConnections(graph, codeGroup.id);
+  const appConnections = getKnowledgeGraphNodeConnections(graph, appNode.id);
+
+  assert.equal(sourceConnections.every((connection) => connection.kind === "contains"), true);
+  assert.equal(sourceConnections.every((connection) => connection.direction === "outgoing"), true);
+  assert.deepEqual(
+    groupConnections.map((connection) => [connection.kind, connection.direction, connection.node.id]),
+    [
+      ["contains", "incoming", sourceNode.id],
+      ["indexes", "outgoing", appNode.id],
+    ],
+  );
+  assert.equal(appConnections[0].direction, "incoming");
+  assert.equal(appConnections[0].node.id, codeGroup.id);
+  assert.deepEqual(getKnowledgeGraphNodeConnections(graph, "missing"), []);
+});
+
+test("graph composite controls use bounded arrow, Home, and End navigation", () => {
+  assert.equal(getKnowledgeGraphNavigationIndex(1, "ArrowDown", 4), 2);
+  assert.equal(getKnowledgeGraphNavigationIndex(1, "ArrowUp", 4), 0);
+  assert.equal(getKnowledgeGraphNavigationIndex(3, "ArrowRight", 4), 3);
+  assert.equal(getKnowledgeGraphNavigationIndex(0, "ArrowLeft", 4), 0);
+  assert.equal(getKnowledgeGraphNavigationIndex(2, "Home", 4), 0);
+  assert.equal(getKnowledgeGraphNavigationIndex(1, "End", 4), 3);
+  assert.equal(getKnowledgeGraphNavigationIndex(1, "Enter", 4), -1);
+  assert.equal(getKnowledgeGraphNavigationIndex(1, "ArrowDown", 0), -1);
 });
 
 test("graph zoom clamps invalid and extreme values", () => {

@@ -1,8 +1,10 @@
 using System.Text.Json;
 using Jarvis.Host.Agents;
 using Jarvis.Host.Infrastructure;
+using Jarvis.Host.Localization;
 using Jarvis.Host.Services;
 using Microsoft.Web.WebView2.Core;
+using Microsoft.Win32;
 using System.Windows.Threading;
 
 namespace Jarvis.Host.Bridge;
@@ -26,6 +28,7 @@ internal sealed class WebBridge : IDisposable
     private readonly DesktopService _desktopService;
     private readonly ShellService _shellService;
     private readonly FileExplorerService _fileExplorerService;
+    private readonly ObsidianGraphService _obsidianGraphService = new();
     private readonly FileTransferCoordinator _fileTransferCoordinator = new();
     private readonly TerminalSessionService _terminalSessionService;
     private readonly WindowTaskbarService _taskbarService;
@@ -131,6 +134,10 @@ internal sealed class WebBridge : IDisposable
         if (AllowsEvent("explorer.transferChanged"))
         {
             _fileTransferCoordinator.TransferChanged += OnFileTransferChanged;
+        }
+        if (AllowsEvent("knowledgeGraph.changed"))
+        {
+            _obsidianGraphService.SnapshotChanged += OnKnowledgeGraphChanged;
         }
         if (_agentCoordinator is not null)
         {
@@ -311,6 +318,20 @@ internal sealed class WebBridge : IDisposable
             "clipboard.clear" => _clipboardService.Clear(),
             "explorer.browse" => await Task.Run(
                 () => (object)_fileExplorerService.Browse(GetOptionalPath(parameters)),
+                cancellationToken),
+            "knowledgeGraph.getDefaultSource" => await Task.Run(
+                () => (object)_obsidianGraphService.GetDefaultSource(cancellationToken),
+                cancellationToken),
+            "knowledgeGraph.getDefaultManifest" => await Task.Run(
+                () => (object)(GetOptionalBoolean(parameters, "force", defaultValue: false)
+                    ? _obsidianGraphService.RefreshDefaultManifest(cancellationToken)
+                    : _obsidianGraphService.GetDefaultManifest(cancellationToken)),
+                cancellationToken),
+            "knowledgeGraph.getDefaultChunk" => await Task.Run(
+                () => GetKnowledgeGraphChunk(parameters, cancellationToken),
+                cancellationToken),
+            "knowledgeGraph.chooseVault" => await ChooseKnowledgeGraphVaultAsync(
+                parameters,
                 cancellationToken),
             "explorer.openFile" => _fileExplorerService.OpenFile(GetRequiredPath(parameters)),
             "explorer.openInWindows" => _fileExplorerService.OpenInWindows(GetRequiredPath(parameters)),
@@ -547,6 +568,159 @@ internal sealed class WebBridge : IDisposable
     {
         _hideTaskbarFlyout?.Invoke();
         return new { hidden = true };
+    }
+
+    private object GetKnowledgeGraphChunk(
+        JsonElement parameters,
+        CancellationToken cancellationToken)
+    {
+        var request = GetKnowledgeGraphChunkRequest(parameters);
+        try
+        {
+            return _obsidianGraphService.GetDefaultChunk(
+                request.Revision,
+                request.NodeOffset,
+                request.NodeLimit,
+                request.EdgeOffset,
+                request.EdgeLimit,
+                cancellationToken);
+        }
+        catch (ObsidianGraphRevisionMismatchException exception)
+        {
+            throw new BridgeFaultException("GRAPH_REVISION_STALE", exception.Message);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new BridgeFaultException("INVALID_PARAMS", exception.Message);
+        }
+    }
+
+    private async Task<object> ChooseKnowledgeGraphVaultAsync(
+        JsonElement parameters,
+        CancellationToken cancellationToken)
+    {
+        RequireEmptyParameters(parameters, "knowledgeGraph.chooseVault");
+        cancellationToken.ThrowIfCancellationRequested();
+        var dialog = new OpenFolderDialog
+        {
+            Title = HostUiTextCatalog.GetObsidianVaultPickerTitle(),
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog() is not true)
+        {
+            return new ObsidianVaultSelectionResult(
+                Canceled: true,
+                Manifest: _obsidianGraphService.GetDefaultManifest(cancellationToken));
+        }
+
+        try
+        {
+            var selectedFolder = dialog.FolderName;
+            var manifest = await Task.Run(
+                () => _obsidianGraphService.ConfigureVault(selectedFolder, cancellationToken),
+                cancellationToken);
+            return new ObsidianVaultSelectionResult(
+                Canceled: false,
+                Manifest: manifest);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new BridgeFaultException("INVALID_VAULT", exception.Message);
+        }
+    }
+
+    internal static ObsidianGraphChunkRequest GetKnowledgeGraphChunkRequest(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "knowledgeGraph.getDefaultChunk requires a params object.");
+        }
+
+        var allowedNames = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "revision",
+            "nodeOffset",
+            "nodeLimit",
+            "edgeOffset",
+            "edgeLimit"
+        };
+        foreach (var property in parameters.EnumerateObject())
+        {
+            if (!allowedNames.Contains(property.Name))
+            {
+                throw new BridgeFaultException(
+                    "INVALID_PARAMS",
+                    $"knowledgeGraph.getDefaultChunk does not accept params.{property.Name}.");
+            }
+        }
+
+        return new ObsidianGraphChunkRequest(
+            GetRequiredGraphRevision(parameters),
+            GetRequiredBoundedInt(parameters, "nodeOffset", 0, ObsidianGraphService.MaximumNodeCount),
+            GetRequiredBoundedInt(parameters, "nodeLimit", 0, ObsidianGraphService.MaximumNodeChunkSize),
+            GetRequiredBoundedInt(parameters, "edgeOffset", 0, ObsidianGraphService.MaximumEdgeCount),
+            GetRequiredBoundedInt(parameters, "edgeLimit", 0, ObsidianGraphService.MaximumEdgeChunkSize));
+    }
+
+    private static string GetRequiredGraphRevision(JsonElement parameters)
+    {
+        if (!parameters.TryGetProperty("revision", out var revisionElement) ||
+            revisionElement.ValueKind != JsonValueKind.String)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "knowledgeGraph.getDefaultChunk requires string params.revision.");
+        }
+
+        var revision = revisionElement.GetString();
+        if (string.IsNullOrWhiteSpace(revision) ||
+            revision.Length > 128 ||
+            revision.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '-' or '_')))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "knowledgeGraph.getDefaultChunk params.revision is malformed.");
+        }
+
+        return revision;
+    }
+
+    private static void RequireEmptyParameters(JsonElement parameters, string method)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object || parameters.EnumerateObject().Any())
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                $"{method} does not accept renderer-supplied parameters.");
+        }
+    }
+
+    private void OnKnowledgeGraphChanged(object? sender, ObsidianGraphManifest manifest)
+    {
+        if (_disposed || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = _dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (!_disposed)
+                    {
+                        PostEvent("knowledgeGraph.changed", manifest);
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing renderer can reject the final graph update.
+        }
     }
 
     private void OnSnapshotAvailable(RuntimeTelemetrySnapshot snapshot)
@@ -1821,6 +1995,7 @@ internal sealed class WebBridge : IDisposable
             _trayStatusService.SnapshotChanged -= OnTraySnapshotChanged;
             _systemFeedService.SnapshotChanged -= OnSystemFeedChanged;
             _fileTransferCoordinator.TransferChanged -= OnFileTransferChanged;
+            _obsidianGraphService.SnapshotChanged -= OnKnowledgeGraphChanged;
             if (_agentCoordinator is not null)
             {
                 _agentCoordinator.StateChanged -= OnAgentStateChanged;
@@ -1831,6 +2006,7 @@ internal sealed class WebBridge : IDisposable
         }
 
         _fileTransferCoordinator.Dispose();
+        _obsidianGraphService.Dispose();
         _shutdown.Dispose();
     }
 }
@@ -1850,3 +2026,14 @@ internal sealed record TaskbarOverflowItem(
     string Label,
     string Meta,
     string? WindowId);
+
+internal sealed record ObsidianGraphChunkRequest(
+    string Revision,
+    int NodeOffset,
+    int NodeLimit,
+    int EdgeOffset,
+    int EdgeLimit);
+
+internal sealed record ObsidianVaultSelectionResult(
+    bool Canceled,
+    ObsidianGraphManifest Manifest);

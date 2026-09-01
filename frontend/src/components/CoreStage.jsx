@@ -1,16 +1,44 @@
 import {
+  ArrowResetRegular,
+  ArrowSyncRegular,
   ChevronRightRegular,
   DesktopRegular,
+  FolderOpenRegular,
   FolderRegular,
   SearchRegular,
+  SettingsRegular,
 } from "@fluentui/react-icons";
-import { useEffect, useMemo, useRef } from "react";
-import { getKnowledgeGraphPresentation } from "../knowledge-graph-model.js";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { getGraphSourceDiagnostics } from "../graph/graph-source-diagnostics.js";
+import { isRenderableGraphSource } from "../graph/graph-source-model.js";
+import { GraphVisualSettings } from "../graphics/graph/GraphVisualSettings.jsx";
+import {
+  getGraphVisualSettingsSnapshot,
+  setGraphVisualSetting,
+  subscribeGraphVisualSettings,
+} from "../graphics/graph/graph-visual-settings.js";
 import { usePlatformKind } from "../hooks/usePlatformData.js";
 import { useReducedMotion } from "../hooks/useReducedMotion.js";
-import { KnowledgeGraphWorkspace } from "./KnowledgeGraphWorkspace.jsx";
+import { useLanguage } from "../i18n/language-system.js";
+import { getKnowledgeGraphPresentation } from "../knowledge-graph-model.js";
+import {
+  GraphAccessibleNavigator,
+  KnowledgeGraphWorkspace,
+} from "./KnowledgeGraphWorkspace.jsx";
 import { KnowledgeGraphField } from "./VectorMarks.jsx";
 
+const CoreVisualCanvas = lazy(() => import("../graphics/CoreVisualCanvas.jsx")
+  .then((module) => ({ default: module.CoreVisualCanvas })));
 const actionIcons = Object.freeze({
   "search-local": SearchRegular,
   "open-files": FolderRegular,
@@ -18,9 +46,65 @@ const actionIcons = Object.freeze({
 });
 const EMPTY_GRAPH_SELECTION = Object.freeze([]);
 
+function GraphFallback({ runtimeFallback = false }) {
+  return (
+    <div
+      className="core-stage__graphics-fallback"
+      data-runtime-fallback={runtimeFallback ? "resolved" : undefined}
+      aria-hidden="true"
+    >
+      <KnowledgeGraphField connected={false} />
+    </div>
+  );
+}
+
+function getDesktopGraphMotionMode() {
+  if (typeof window === "undefined") return "system";
+  const motion = new URLSearchParams(window.location.search).get("motion");
+  return motion === "full" || motion === "reduced" ? motion : "system";
+}
+
+function NeuralDesktopField({ motionMode }) {
+  return (
+    <Suspense fallback={<GraphFallback />}>
+      <CoreVisualCanvas
+        fallback={<GraphFallback runtimeFallback />}
+        motionMode={motionMode}
+        scene="neural-orb"
+      />
+    </Suspense>
+  );
+}
+
+function getLocalizedGraphDiagnostics(diagnostics, t) {
+  const title = t(`core.graph.health.${diagnostics.id}.title`);
+  if (diagnostics.id === "error") {
+    return {
+      title,
+      detail: diagnostics.detail || t("core.graph.health.error.detail"),
+    };
+  }
+  return {
+    title,
+    detail: t(`core.graph.health.${diagnostics.id}.detail`, diagnostics.counts),
+  };
+}
+
+function getLocalizedPresentationAnnouncement(presentation, t) {
+  if (!presentation.connected) return t("core.graph.announcement.disconnected");
+  return presentation.simulation
+    ? t("core.graph.announcement.preview")
+    : t("core.graph.announcement.connected", { count: presentation.sourceCount });
+}
+
+function isDefaultGraphNodeExpandable() {
+  return false;
+}
+
 export function CoreStage({
   graphState = null,
   graphSource = null,
+  defaultGraphState = null,
   graphSelection = EMPTY_GRAPH_SELECTION,
   desktopOnly = false,
   onOpenSearch,
@@ -30,14 +114,39 @@ export function CoreStage({
   onKeepDesktop,
   onRestoreLaunchpad,
 }) {
+  const { t } = useLanguage();
   const stageRef = useRef(null);
   const rectRef = useRef(null);
-  const pointerRef = useRef(null);
-  const frameRef = useRef(0);
   const motionReduced = useReducedMotion();
+  const graphMotionMode = getDesktopGraphMotionMode();
   const platformKind = usePlatformKind();
+  const [visualSettingsOpen, setVisualSettingsOpen] = useState(false);
+  const [graphExploreMode, setGraphExploreMode] = useState(false);
+  const [graphQuery, setGraphQuery] = useState("");
+  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState(null);
+  const [hoveredGraphNodeId, setHoveredGraphNodeId] = useState(null);
+  const [cameraCommand, setCameraCommand] = useState(null);
+  const cameraCommandIdRef = useRef(0);
+  const visualSettingsTriggerRef = useRef(null);
+  const defaultConnectionHeadingId = useId();
+  const defaultConnectionSummaryId = useId();
+  const graphVisualSettings = useSyncExternalStore(
+    subscribeGraphVisualSettings,
+    getGraphVisualSettingsSnapshot,
+    getGraphVisualSettingsSnapshot,
+  );
   const activeGraphSource = graphSource ?? graphState;
   const presentation = getKnowledgeGraphPresentation(activeGraphSource);
+  const defaultGraph = defaultGraphState?.graph ?? null;
+  const defaultGraphConnected = Boolean(defaultGraph?.available);
+  const defaultGraphReady = isRenderableGraphSource(defaultGraph);
+  const graphDiagnostics = useMemo(
+    () => getGraphSourceDiagnostics(defaultGraphState ?? {}),
+    [defaultGraphState],
+  );
+  const graphDiagnosticsCopy = getLocalizedGraphDiagnostics(graphDiagnostics, t);
+  const semanticGraphActive = presentation.connected || defaultGraphConnected;
+  const stageStatus = semanticGraphActive ? "connected" : presentation.status;
   const actionHandlers = useMemo(() => ({
     "search-local": onOpenSearch,
     "open-files": onOpenFiles,
@@ -47,58 +156,104 @@ export function CoreStage({
     () => graphSelection.map((entry) => entry.path).filter(Boolean),
     [graphSelection],
   );
+  const selectedGraphNode = useMemo(
+    () => defaultGraph?.nodes.find((node) => node.id === selectedGraphNodeId) ?? null,
+    [defaultGraph, selectedGraphNodeId],
+  );
+  const selectedGraphRelations = useMemo(
+    () => defaultGraph?.edges.filter((edge) => (
+      edge.source === selectedGraphNodeId || edge.target === selectedGraphNodeId
+    )) ?? [],
+    [defaultGraph, selectedGraphNodeId],
+  );
+  const defaultGraphNodeMap = useMemo(
+    () => new Map((defaultGraph?.nodes ?? []).map((node) => [node.id, node])),
+    [defaultGraph],
+  );
+  const selectedGraphConnections = useMemo(
+    () => selectedGraphRelations.flatMap((edge) => {
+      const outgoing = edge.source === selectedGraphNodeId;
+      const adjacentNode = defaultGraphNodeMap.get(outgoing ? edge.target : edge.source);
+      if (!adjacentNode) return [];
+      return [{
+        id: edge.id,
+        kind: edge.kind ?? "relates",
+        direction: outgoing ? "outgoing" : "incoming",
+        node: adjacentNode,
+      }];
+    }),
+    [defaultGraphNodeMap, selectedGraphNodeId, selectedGraphRelations],
+  );
+  const getDefaultGraphNodeLabel = useCallback(
+    (node) => node?.title ?? t("core.graph.node.untitled"),
+    [t],
+  );
+  const getDefaultGraphNodeMeta = useCallback(
+    (node) => [node?.group, node?.kind].filter(Boolean).join(" · ") ||
+      t("core.graph.node.local"),
+    [t],
+  );
+
+  const issueCameraCommand = useCallback((type) => {
+    cameraCommandIdRef.current += 1;
+    setCameraCommand({ id: cameraCommandIdRef.current, type });
+  }, []);
+
+  const selectDefaultGraphNode = useCallback((node) => {
+    setSelectedGraphNodeId(node?.id ?? null);
+  }, []);
+
+  const toggleGraphExplore = useCallback(() => {
+    setGraphExploreMode((current) => {
+      const next = !current;
+      if (!next) {
+        setGraphQuery("");
+        setSelectedGraphNodeId(null);
+        setHoveredGraphNodeId(null);
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return undefined;
+    if (graphVisualSettings.view.enabled) return;
+    setGraphExploreMode(false);
+    setGraphQuery("");
+    setSelectedGraphNodeId(null);
+    setHoveredGraphNodeId(null);
+  }, [graphVisualSettings.view.enabled]);
 
-    if (motionReduced || presentation.connected) {
-      rectRef.current = null;
-      pointerRef.current = null;
-      cancelAnimationFrame(frameRef.current);
-      frameRef.current = 0;
-      stage.style.setProperty("--parallax-x", "0px");
-      stage.style.setProperty("--parallax-y", "0px");
-      return undefined;
-    }
+  const selectDefaultGraphMatch = useCallback((value) => {
+    const query = value.trim().toLocaleLowerCase();
+    if (!query || !defaultGraph) return;
+    const match = defaultGraph.nodes.find((node) => (
+      `${node.title} ${node.relativePath} ${node.group} ${(node.tags ?? []).join(" ")}`
+        .toLocaleLowerCase()
+        .includes(query)
+    ));
+    if (match) setSelectedGraphNodeId(match.id);
+  }, [defaultGraph]);
 
-    const updateRect = () => {
-      rectRef.current = stage.getBoundingClientRect();
-    };
-    updateRect();
-    const observer = new ResizeObserver(updateRect);
-    observer.observe(stage);
-
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(frameRef.current);
-    };
-  }, [motionReduced, presentation.connected]);
-
-  const applyPointer = () => {
-    frameRef.current = 0;
-    const stage = stageRef.current;
-    const rect = rectRef.current;
-    const point = pointerRef.current;
-    if (!stage || !rect || !point || rect.width <= 0 || rect.height <= 0) return;
-
-    const x = ((point.x - rect.left) / rect.width - 0.5) * 2;
-    const y = ((point.y - rect.top) / rect.height - 0.5) * 2;
-    stage.style.setProperty("--parallax-x", `${x * 8}px`);
-    stage.style.setProperty("--parallax-y", `${y * 6}px`);
-  };
+  const searchDefaultGraph = useCallback((event) => {
+    event.preventDefault();
+    selectDefaultGraphMatch(graphQuery);
+  }, [graphQuery, selectDefaultGraphMatch]);
 
   const handlePointerMove = (event) => {
-    pointerRef.current = { x: event.clientX, y: event.clientY };
-    if (!frameRef.current) frameRef.current = requestAnimationFrame(applyPointer);
+    const stage = stageRef.current;
+    const rect = rectRef.current ?? stage?.getBoundingClientRect();
+    if (!stage || !rect || rect.width <= 0 || rect.height <= 0) return;
+    rectRef.current = rect;
+    const x = ((event.clientX - rect.left) / rect.width - 0.5) * 2;
+    const y = ((event.clientY - rect.top) / rect.height - 0.5) * 2;
+    stage.style.setProperty("--parallax-x", `${x * 8}px`);
+    stage.style.setProperty("--parallax-y", `${y * 6}px`);
   };
 
   const resetPointer = () => {
     const stage = stageRef.current;
     if (!stage) return;
-    pointerRef.current = null;
-    cancelAnimationFrame(frameRef.current);
-    frameRef.current = 0;
+    rectRef.current = null;
     stage.style.setProperty("--parallax-x", "0px");
     stage.style.setProperty("--parallax-y", "0px");
   };
@@ -106,15 +261,23 @@ export function CoreStage({
   return (
     <section
       ref={stageRef}
-      className={`core-stage is-${presentation.status} ${desktopOnly ? "is-desktop-only" : ""}`}
-      onPointerEnter={motionReduced || presentation.connected ? undefined : () => {
+      className={`core-stage is-${stageStatus} is-dimension-${graphVisualSettings.view.dimension} ${desktopOnly ? "is-desktop-only" : ""} ${graphExploreMode ? "is-graph-exploring" : "is-neural-idle"}`}
+      onPointerEnter={motionReduced || semanticGraphActive ? undefined : () => {
         rectRef.current = stageRef.current?.getBoundingClientRect() ?? null;
       }}
-      onPointerMove={motionReduced || presentation.connected ? undefined : handlePointerMove}
-      onPointerLeave={motionReduced || presentation.connected ? undefined : resetPointer}
-      aria-label="JARVIS knowledge graph workspace"
+      onPointerMove={motionReduced || semanticGraphActive ? undefined : handlePointerMove}
+      onPointerLeave={motionReduced || semanticGraphActive ? undefined : resetPointer}
+      aria-label={t("core.graph.accessibility.workspace")}
     >
-      <p className="sr-only">{presentation.announcement}</p>
+      <p className="sr-only">
+        {defaultGraphConnected
+          ? t("core.graph.announcement.defaultSource", {
+            name: defaultGraph.source.name,
+            nodes: defaultGraph.nodes.length,
+            relations: defaultGraph.edges.length,
+          })
+          : getLocalizedPresentationAnnouncement(presentation, t)}
+      </p>
       {presentation.connected ? (
         <div className="core-stage__media is-interactive">
           <KnowledgeGraphWorkspace
@@ -123,38 +286,248 @@ export function CoreStage({
             platformKind={platformKind}
             onOpenPath={onOpenGraphPath}
             onLinkNodeToAgent={onLinkGraphNode}
+            visualSettingsOpen={visualSettingsOpen}
+            visualSettingsTriggerRef={visualSettingsTriggerRef}
+            onOpenVisualSettings={() => setVisualSettingsOpen((current) => !current)}
           />
         </div>
+      ) : defaultGraphReady ? (
+        <div className={`core-stage__media is-graphics ${graphExploreMode ? "is-exploring" : ""} ${graphVisualSettings.view.enabled ? "" : "is-disabled"}`}>
+          {graphVisualSettings.view.enabled ? (
+            <Suspense fallback={<GraphFallback />}>
+              <CoreVisualCanvas
+                cameraCommand={cameraCommand}
+                fallback={<GraphFallback runtimeFallback />}
+                graph={defaultGraph}
+                hoveredNodeId={hoveredGraphNodeId}
+                interactive={graphExploreMode}
+                motionMode={graphMotionMode}
+                onNodeHover={(node) => setHoveredGraphNodeId(node?.id ?? null)}
+                onNodeSelect={selectDefaultGraphNode}
+                selectedNodeId={selectedGraphNodeId}
+              />
+            </Suspense>
+          ) : null}
+          <div className="core-stage__readout is-graph-source" aria-hidden="true">
+            <span>{graphExploreMode
+              ? t("core.graph.readout.localObsidian")
+              : t("core.graph.readout.neuralCore")}</span>
+            <strong>{defaultGraph.source.name}</strong>
+            <small>{graphVisualSettings.view.enabled
+              ? graphExploreMode
+                ? t("core.graph.readout.counts", {
+                  nodes: defaultGraph.nodes.length,
+                  relations: defaultGraph.edges.length,
+                })
+                : t("core.graph.readout.idleReady", {
+                  dimension: `${graphVisualSettings.view.dimension}D`,
+                })
+              : t("core.graph.readout.gpuReleased")}</small>
+            <small>{defaultGraph.source.simulation
+              ? t("core.graph.source.browserPreview")
+              : t("core.graph.source.windowsReadOnly")}</small>
+          </div>
+        </div>
+      ) : defaultGraphConnected ? (
+        <div className="core-stage__media is-graphics is-neural-fallback" aria-hidden="true">
+          <NeuralDesktopField motionMode={graphMotionMode} />
+          <div className="core-stage__readout is-graph-source">
+            <span>{t("core.graph.readout.neuralCore")}</span>
+            <strong>{defaultGraph.source.name}</strong>
+            <small>{t("core.graph.readout.emptyVault", { dimension: "3D" })}</small>
+            <small>{defaultGraph.source.simulation
+              ? t("core.graph.source.browserPreview")
+              : t("core.graph.source.windowsReadOnly")}</small>
+          </div>
+        </div>
       ) : (
-        <div className="core-stage__media" aria-hidden="true">
-          <KnowledgeGraphField connected={false} />
+        <div className="core-stage__media is-graphics is-neural-fallback" aria-hidden="true">
+          <NeuralDesktopField motionMode={graphMotionMode} />
           <div className="core-stage__readout">
-            <span>LOCAL KNOWLEDGE GRAPH</span>
-            <strong>{presentation.title}</strong>
-            <small>{presentation.detail}</small>
-            <small>{presentation.meta}</small>
+            <span>{t("core.graph.readout.neuralCore")}</span>
+            <strong>{defaultGraphState?.status === "loading"
+              ? t("core.graph.readout.discoveringVault")
+              : t("core.graph.readout.idleForm", { dimension: "3D" })}</strong>
+            <small>{defaultGraphState?.status === "loading"
+              ? t("core.graph.readout.readOnlyIndex")
+              : t("core.graph.presentation.disconnected.detail")}</small>
+            <small>{t("core.graph.presentation.disconnected.meta")}</small>
           </div>
         </div>
       )}
-      {!presentation.connected && !desktopOnly ? (
-        <nav className="core-stage__launchpad" aria-label="Start a local JARVIS task">
-          <header><span>NO VERIFIED SOURCE</span><strong>CHOOSE A LOCAL START</strong></header>
+      {defaultGraphReady && !presentation.connected ? (
+        <div
+          className="core-stage__graph-toolbar"
+          role="group"
+          aria-label={t("core.graph.toolbar.accessibility.label")}
+        >
+          {graphVisualSettings.view.enabled ? (
+            <button
+              type="button"
+              className="core-stage__graph-explore"
+              aria-pressed={graphExploreMode}
+              onClick={toggleGraphExplore}
+            >
+              {graphExploreMode
+                ? t("core.graph.toolbar.exitExplore")
+                : t("core.graph.toolbar.explore")}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="core-stage__graph-explore"
+              onClick={() => setGraphVisualSetting("view", "enabled", true)}
+            >
+              {t("core.graph.toolbar.show")}
+            </button>
+          )}
+          {graphVisualSettings.view.enabled && graphExploreMode ? (
+            <form role="search" onSubmit={searchDefaultGraph}>
+              <SearchRegular aria-hidden="true" />
+              <input
+                type="search"
+                value={graphQuery}
+                onChange={(event) => {
+                  setGraphQuery(event.currentTarget.value);
+                  selectDefaultGraphMatch(event.currentTarget.value);
+                }}
+                placeholder={t("core.graph.search.placeholder")}
+                aria-label={t("core.graph.search.accessibility.label")}
+              />
+              <button type="submit" className="sr-only">
+                {t("core.graph.search.submit")}
+              </button>
+            </form>
+          ) : null}
+          <button
+            type="button"
+            className={graphVisualSettings.view.dimension === 2 ? "is-active" : ""}
+            aria-pressed={graphVisualSettings.view.dimension === 2}
+            title={t("core.graph.toolbar.dimension2d")}
+            onClick={() => setGraphVisualSetting("view", "dimension", 2)}
+          >2D</button>
+          <button
+            type="button"
+            className={graphVisualSettings.view.dimension === 3 ? "is-active" : ""}
+            aria-pressed={graphVisualSettings.view.dimension === 3}
+            onClick={() => setGraphVisualSetting("view", "dimension", 3)}
+          >3D</button>
+          {graphVisualSettings.view.enabled && graphExploreMode ? (
+            <button type="button" onClick={() => issueCameraCommand("fit")}>
+              {t("core.graph.toolbar.fit")}
+            </button>
+          ) : null}
+          {graphVisualSettings.view.enabled && graphExploreMode ? (
+            <button
+              type="button"
+              onClick={() => issueCameraCommand("reset")}
+              aria-label={t("core.graph.toolbar.resetCamera")}
+            >
+              <ArrowResetRegular aria-hidden="true" />
+            </button>
+          ) : null}
+          <button
+            ref={visualSettingsTriggerRef}
+            type="button"
+            aria-label={t("core.graph.toolbar.visualSettings")}
+            aria-controls="graph-visual-settings-panel"
+            aria-expanded={visualSettingsOpen}
+            onClick={() => setVisualSettingsOpen((current) => !current)}
+          >
+            <SettingsRegular aria-hidden="true" />
+            <span className="sr-only">{t("core.graph.toolbar.visualSettings")}</span>
+          </button>
+        </div>
+      ) : null}
+      {defaultGraphReady && !presentation.connected ? (
+        <GraphAccessibleNavigator
+          active={graphVisualSettings.view.enabled && graphExploreMode}
+          nodes={defaultGraph.nodes}
+          selectedNodeId={selectedGraphNodeId}
+          connections={selectedGraphConnections}
+          onSelectNode={selectDefaultGraphNode}
+          onActivateNode={selectDefaultGraphNode}
+          connectionHeadingId={defaultConnectionHeadingId}
+          connectionSummaryId={defaultConnectionSummaryId}
+          getNodeLabel={getDefaultGraphNodeLabel}
+          getNodeMeta={getDefaultGraphNodeMeta}
+          isExpandableNode={isDefaultGraphNodeExpandable}
+        />
+      ) : null}
+      {!presentation.connected && defaultGraphState ? (
+        <aside className={`core-stage__graph-health is-${graphDiagnostics.severity}`} aria-live="polite">
+          <span><strong>{graphDiagnosticsCopy.title}</strong><small>{graphDiagnosticsCopy.detail}</small></span>
+          {typeof defaultGraphState.refresh === "function" ? (
+            <button
+              type="button"
+              disabled={defaultGraphState.refreshing}
+              onClick={() => defaultGraphState.refresh({ force: true, rescan: true })}
+            >
+              <ArrowSyncRegular aria-hidden="true" />
+              {defaultGraphState.refreshing
+                ? t("core.graph.health.scanning")
+                : t("core.graph.health.rescan")}
+            </button>
+          ) : null}
+          {defaultGraphState.canChooseVault && typeof defaultGraphState.chooseVault === "function" ? (
+            <button type="button" onClick={defaultGraphState.chooseVault}>
+              <FolderOpenRegular aria-hidden="true" />{t("core.graph.health.chooseVault")}
+            </button>
+          ) : null}
+        </aside>
+      ) : null}
+      {graphVisualSettings.view.enabled && graphExploreMode && selectedGraphNode ? (
+        <aside
+          className="core-stage__graph-inspector"
+          aria-label={t("core.graph.inspector.accessibility.label")}
+          aria-describedby={defaultConnectionSummaryId}
+        >
+          <span>{selectedGraphNode.kind.toUpperCase()}</span>
+          <strong>{selectedGraphNode.title}</strong>
+          <small>{selectedGraphNode.relativePath || t("core.graph.node.local")}</small>
+          <small>
+            {t("core.graph.inspector.relations", {
+              count: selectedGraphRelations.length,
+              types: [...new Set(selectedGraphRelations.map((edge) => edge.kind))].join(" · ") ||
+                t("core.graph.inspector.noType"),
+            })}
+          </small>
+        </aside>
+      ) : null}
+      {semanticGraphActive && visualSettingsOpen ? (
+        <GraphVisualSettings
+          onClose={() => setVisualSettingsOpen(false)}
+          returnFocusRef={visualSettingsTriggerRef}
+        />
+      ) : null}
+      {!semanticGraphActive && defaultGraphState?.status !== "loading" && !desktopOnly ? (
+        <nav className="core-stage__launchpad" aria-label={t("core.graph.launchpad.accessibility.label")}>
+          <header>
+            <span>{t("core.graph.launchpad.noSource")}</span>
+            <strong>{t("core.graph.launchpad.chooseStart")}</strong>
+          </header>
           {presentation.actions.map((action, index) => {
             const Icon = actionIcons[action.id];
+            const actionKey = `core.graph.launchpad.action.${action.id}`;
             return (
               <button key={action.id} type="button" onClick={actionHandlers[action.id]}>
                 <code>{String(index + 1).padStart(2, "0")}</code>
                 <Icon aria-hidden="true" />
-                <span><strong>{action.label}</strong><small>{action.detail}</small></span>
+                <span>
+                  <strong>{t(`${actionKey}.label`)}</strong>
+                  <small>{t(`${actionKey}.detail`)}</small>
+                </span>
                 <ChevronRightRegular aria-hidden="true" />
               </button>
             );
           })}
         </nav>
       ) : null}
-      {!presentation.connected && desktopOnly ? (
+      {!semanticGraphActive && defaultGraphState?.status !== "loading" && desktopOnly ? (
         <button type="button" className="core-stage__restore" onClick={onRestoreLaunchpad}>
-          <span>LOCAL GRAPH</span><strong>SHOW START OPTIONS</strong><ChevronRightRegular aria-hidden="true" />
+          <span>{t("core.graph.restore.localGraph")}</span>
+          <strong>{t("core.graph.restore.showOptions")}</strong>
+          <ChevronRightRegular aria-hidden="true" />
         </button>
       ) : null}
     </section>

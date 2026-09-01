@@ -4,9 +4,9 @@ export const KNOWLEDGE_GRAPH_MIN_ZOOM = 0.72;
 export const KNOWLEDGE_GRAPH_MAX_ZOOM = 2.2;
 
 export const DISCONNECTED_GRAPH_ACTIONS = Object.freeze([
-  Object.freeze({ id: "search-local", label: "SEARCH LOCAL", detail: "Find apps, files, and active windows" }),
-  Object.freeze({ id: "open-files", label: "OPEN FILES", detail: "Choose a verified local source" }),
-  Object.freeze({ id: "desktop-only", label: "DESKTOP ONLY", detail: "Keep the graph quiet for this session" }),
+  Object.freeze({ id: "search-local" }),
+  Object.freeze({ id: "open-files" }),
+  Object.freeze({ id: "desktop-only" }),
 ]);
 
 const GROUP_LAYOUT = Object.freeze([
@@ -19,12 +19,12 @@ const GROUP_LAYOUT = Object.freeze([
 ]);
 
 const KIND_GROUPS = Object.freeze([
-  Object.freeze({ id: "folder", label: "FOLDERS", kinds: new Set(["folder"]) }),
-  Object.freeze({ id: "code", label: "CODE", kinds: new Set(["code"]) }),
-  Object.freeze({ id: "document", label: "DOCUMENTS", kinds: new Set(["document", "pdf", "presentation", "spreadsheet"]) }),
-  Object.freeze({ id: "media", label: "MEDIA", kinds: new Set(["audio", "image", "video"]) }),
-  Object.freeze({ id: "archive", label: "ARCHIVE", kinds: new Set(["archive"]) }),
-  Object.freeze({ id: "other", label: "OTHER", kinds: new Set() }),
+  Object.freeze({ id: "folder", labelKey: "graph.workspace.group.folder", kinds: new Set(["folder"]) }),
+  Object.freeze({ id: "code", labelKey: "graph.workspace.group.code", kinds: new Set(["code"]) }),
+  Object.freeze({ id: "document", labelKey: "graph.workspace.group.document", kinds: new Set(["document", "pdf", "presentation", "spreadsheet"]) }),
+  Object.freeze({ id: "media", labelKey: "graph.workspace.group.media", kinds: new Set(["audio", "image", "video"]) }),
+  Object.freeze({ id: "archive", labelKey: "graph.workspace.group.archive", kinds: new Set(["archive"]) }),
+  Object.freeze({ id: "other", labelKey: "graph.workspace.group.other", kinds: new Set() }),
 ]);
 
 function text(value, fallback = "") {
@@ -217,7 +217,8 @@ export function createKnowledgeGraphModel(rawSource, options = {}) {
     id: sourceId,
     kind: "source",
     label: source.sourceName,
-    meta: `${source.totalEntryCount} ITEMS`,
+    metaKey: "graph.workspace.source.items",
+    metaValues: Object.freeze({ count: source.totalEntryCount }),
     count: source.totalEntryCount,
     path: source.currentPath,
     name: source.sourceName,
@@ -248,10 +249,15 @@ export function createKnowledgeGraphModel(rawSource, options = {}) {
       id: groupId,
       kind: "group",
       groupKind: definition.id,
-      label: definition.label,
-      meta: query && matches.length !== entries.length
-        ? `${matches.length}/${entries.length} MATCH`
-        : `${entries.length} ITEM${entries.length === 1 ? "" : "S"}`,
+      labelKey: definition.labelKey,
+      metaKey: query && matches.length !== entries.length
+        ? "graph.workspace.group.matches"
+        : entries.length === 1
+          ? "graph.workspace.group.items.one"
+          : "graph.workspace.group.items.other",
+      metaValues: Object.freeze(query && matches.length !== entries.length
+        ? { visible: matches.length, total: entries.length }
+        : { count: entries.length }),
       count: entries.length,
       actionable: false,
       expanded: !collapsed,
@@ -310,6 +316,43 @@ export function getKnowledgeGraphNodeContextItem(node) {
   });
 }
 
+export function getKnowledgeGraphNodeConnections(graph, nodeId) {
+  if (!graph || !nodeId || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
+    return Object.freeze([]);
+  }
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  if (!nodeById.has(nodeId)) return Object.freeze([]);
+
+  const connections = [];
+  for (const edge of graph.edges) {
+    const outgoing = edge.from === nodeId;
+    const incoming = edge.to === nodeId;
+    if (!outgoing && !incoming) continue;
+    const adjacentNode = nodeById.get(outgoing ? edge.to : edge.from);
+    if (!adjacentNode) continue;
+    connections.push(Object.freeze({
+      id: edge.id,
+      kind: text(edge.kind, "relates"),
+      direction: outgoing ? "outgoing" : "incoming",
+      node: adjacentNode,
+    }));
+  }
+  return Object.freeze(connections);
+}
+
+export function getKnowledgeGraphNavigationIndex(currentIndex, key, itemCount) {
+  const count = Number.isFinite(itemCount) ? Math.max(0, Math.floor(itemCount)) : 0;
+  if (count === 0) return -1;
+  const current = Number.isFinite(currentIndex)
+    ? Math.min(count - 1, Math.max(0, Math.floor(currentIndex)))
+    : 0;
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  if (key === "ArrowRight" || key === "ArrowDown") return Math.min(count - 1, current + 1);
+  if (key === "ArrowLeft" || key === "ArrowUp") return Math.max(0, current - 1);
+  return -1;
+}
+
 export function clampKnowledgeGraphZoom(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 1;
@@ -362,33 +405,13 @@ export function getKnowledgeGraphPresentation(rawState) {
     return {
       ...state,
       status: "disconnected",
-      title: "SOURCE DISCONNECTED",
-      detail: "Connect a verified local source to activate relations.",
-      meta: "ENTITY / RELATION / SOURCE",
-      announcement: "Local knowledge graph structure preview. No verified knowledge source is connected.",
       actions: DISCONNECTED_GRAPH_ACTIONS,
-    };
-  }
-
-  if (state.simulation) {
-    return {
-      ...state,
-      status: "connected",
-      title: "PREVIEW GRAPH ACTIVE",
-      detail: `${state.sourceCount} SOURCE${state.sourceCount === 1 ? "" : "S"} / ${state.relationCount} RELATIONS`,
-      meta: "SIMULATED EXPLORER FIXTURE",
-      announcement: "Local knowledge graph connected to a simulated Explorer preview source.",
-      actions: [],
     };
   }
 
   return {
     ...state,
     status: "connected",
-    title: "LOCAL INDEX ACTIVE",
-    detail: `${state.sourceCount} SOURCE${state.sourceCount === 1 ? "" : "S"} / ${state.relationCount} RELATIONS`,
-    meta: "VERIFIED LOCAL GRAPH",
-    announcement: `Local knowledge graph connected to ${state.sourceCount} verified source${state.sourceCount === 1 ? "" : "s"}.`,
     actions: [],
   };
 }

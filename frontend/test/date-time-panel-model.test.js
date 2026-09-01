@@ -24,6 +24,19 @@ test("calendar months always expose a Monday-first six-week grid", () => {
   assert.equal(calendar.cells.find((cell) => cell.today)?.key, "2026-07-20");
 });
 
+test("calendar month labels follow the selected interface language", () => {
+  const chinese = createCalendarMonth({
+    year: 2026,
+    month: 6,
+    todayKey: "2026-07-20",
+    locale: "zh-CN",
+  });
+
+  assert.match(chinese.monthLabel, /2026/u);
+  assert.match(chinese.monthLabel, /7/u);
+  assert.doesNotMatch(chinese.monthLabel, /JULY/u);
+});
+
 test("month shifts and keyboard date movement preserve valid local dates", () => {
   assert.deepEqual(shiftCalendarMonth(2026, 0, -1), {
     year: 2025,

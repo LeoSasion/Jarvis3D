@@ -36,8 +36,7 @@
     .boot-sequence > footer > span i,
     .window-appearance-choice,
     .runtime-switch > span::after,
-    .command-result-arrow,
-    .system-toast
+    .command-result-arrow
   ) {
     transition: none !important;
   }
@@ -56,8 +55,13 @@
     .terminal-workbench,
     .system-inspector-loading i,
     .shell-panel-layer,
+    .shell-panel-layer > div,
     .shell-panel,
     .overlay-layer,
+    .command-palette,
+    .desktop-context-menu,
+    .desktop-context-submenu,
+    .explorer-context-menu,
     .terminal-tab i.is-connecting,
     .agent-linked-context,
     .agent-linked-result,
@@ -102,8 +106,7 @@
   .boot-sequence > footer > span i,
   .window-appearance-choice,
   .runtime-switch > span::after,
-  .command-result-arrow,
-  .system-toast
+  .command-result-arrow
 ) {
   transition: none !important;
 }
@@ -122,8 +125,13 @@
   .terminal-workbench,
   .system-inspector-loading i,
   .shell-panel-layer,
+  .shell-panel-layer > div,
   .shell-panel,
   .overlay-layer,
+  .command-palette,
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu,
   .terminal-tab i.is-connecting,
   .agent-linked-context,
   .agent-linked-result,

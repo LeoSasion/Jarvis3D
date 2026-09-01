@@ -49,6 +49,24 @@ test("Explorer sorting is directory-first, stable, and direction-aware", () => {
   );
 });
 
+test("Explorer label ordering follows the selected UI language", () => {
+  const entries = ["中", "阿", "A"].map((name) => ({
+    name,
+    typeLabel: "File",
+    isDirectory: false,
+  }));
+  const preferences = { sortKey: "name", sortDirection: "ascending" };
+
+  assert.deepEqual(
+    sortExplorerEntries(entries, preferences, "en-US").map(({ name }) => name),
+    ["A", "中", "阿"],
+  );
+  assert.deepEqual(
+    sortExplorerEntries(entries, preferences, "zh-CN").map(({ name }) => name),
+    ["阿", "中", "A"],
+  );
+});
+
 test("Explorer keyboard navigation adapts list and grid columns", () => {
   assert.equal(getExplorerGridColumnCount(640, "grid"), 5);
   assert.equal(getExplorerGridColumnCount(640, "list"), 1);

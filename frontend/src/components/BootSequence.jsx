@@ -1,5 +1,6 @@
 import { CheckmarkRegular, DismissRegular, WarningRegular } from "@fluentui/react-icons";
 import { useEffect, useMemo, useState } from "react";
+import { useLanguage } from "../i18n/language-system.js";
 import { platform } from "../platform/index.js";
 import { CoreNodeGlyph, JarvisMark } from "./VectorMarks.jsx";
 
@@ -10,32 +11,32 @@ const checkDefinitions = Object.freeze([
   Object.freeze({
     id: "runtime",
     index: "01",
-    label: "NATIVE RUNTIME",
-    detail: "WebView2 · recovery · current user",
+    labelKey: "boot.check.runtime.label",
+    detailKey: "boot.check.runtime.detail",
     run: () => platform.lifecycle.getRuntimeInfo(),
     validate: (result) => Boolean(result?.recoveryReady),
   }),
   Object.freeze({
     id: "telemetry",
     index: "02",
-    label: "SYSTEM TELEMETRY",
-    detail: "CPU · memory · network · power",
+    labelKey: "boot.check.telemetry.label",
+    detailKey: "boot.check.telemetry.detail",
     run: () => platform.system.getSnapshot(),
     validate: (result) => Boolean(result?.cpu ?? result?.Cpu),
   }),
   Object.freeze({
     id: "windows",
     index: "03",
-    label: "WINDOW CHANNEL",
-    detail: "Taskbar · foreground · recovery polling",
+    labelKey: "boot.check.windowChannel.label",
+    detailKey: "boot.check.windowChannel.detail",
     run: () => platform.taskbar.getSnapshot(),
     validate: (result) => Array.isArray(result?.windows ?? result?.Windows),
   }),
   Object.freeze({
     id: "terminal",
     index: "04",
-    label: "CONPTY TERMINAL",
-    detail: "PowerShell · CMD · WSL profiles",
+    labelKey: "boot.check.conpty.label",
+    detailKey: "boot.check.conpty.detail",
     run: () => platform.terminal.listProfiles(),
     validate: (result) => !platform.isNative || Boolean(result?.conPtyAvailable),
   }),
@@ -52,6 +53,7 @@ function getSharedChecks() {
 }
 
 export function BootSequence({ onComplete }) {
+  const { t } = useLanguage();
   const [states, setStates] = useState(() => Object.fromEntries(
     checkDefinitions.map((definition) => [definition.id, "pending"]),
   ));
@@ -93,7 +95,12 @@ export function BootSequence({ onComplete }) {
   const degraded = Object.values(states).filter((state) => state === "degraded").length;
 
   return (
-    <section className="boot-sequence" role="status" aria-live="polite" aria-label="JARVIS startup checks">
+    <section
+      className="boot-sequence"
+      role="status"
+      aria-live="polite"
+      aria-label={t("boot.aria.startupChecks")}
+    >
       <div className="boot-scan-field" aria-hidden="true"><i /><i /><i /></div>
       <div className="boot-core">
         <CoreNodeGlyph active={completed < checkDefinitions.length} />
@@ -101,7 +108,7 @@ export function BootSequence({ onComplete }) {
       </div>
       <header>
         <JarvisMark />
-        <span><small>POST-LOGIN SYSTEM INITIALIZATION</small><strong>JARVIS LOCAL VISUAL FRAME</strong></span>
+        <span><small>{t("boot.startingWorkspace")}</small><strong>JARVIS DESKTOP</strong></span>
         <code>{String(completed).padStart(2, "0")} / {String(checkDefinitions.length).padStart(2, "0")}</code>
       </header>
 
@@ -111,10 +118,13 @@ export function BootSequence({ onComplete }) {
           return (
             <div key={check.id} className={`is-${state}`}>
               <code>{check.index}</code>
-              <span><strong>{check.label}</strong><small>{check.detail}</small></span>
+              <span>
+                <strong>{t(check.labelKey)}</strong>
+                <small>{t(check.detailKey)}</small>
+              </span>
               <i aria-hidden="true" />
               <b>{state === "ready" ? <CheckmarkRegular /> : state === "degraded" ? <WarningRegular /> : null}</b>
-              <em>{state.toUpperCase()}</em>
+              <em>{t(`boot.state.${state}`)}</em>
             </div>
           );
         })}
@@ -124,8 +134,15 @@ export function BootSequence({ onComplete }) {
         <span>
           <i style={{ "--boot-progress": completed / checkDefinitions.length }} />
         </span>
-        <strong>{completed < checkDefinitions.length ? "ESTABLISHING LOCAL CHANNELS" : degraded ? `${degraded} CHANNELS DEGRADED · SAFE FALLBACK ACTIVE` : "ALL LOCAL CHANNELS READY"}</strong>
-        <button type="button" onClick={onComplete} disabled={!canSkip}><DismissRegular />SKIP</button>
+        <strong>{completed < checkDefinitions.length
+          ? t("boot.progress.establishing")
+          : degraded
+            ? t("boot.progress.degraded", { count: degraded })
+            : t("boot.progress.ready")}</strong>
+        <button type="button" onClick={onComplete} disabled={!canSkip}>
+          <DismissRegular />
+          {t("boot.action.skip")}
+        </button>
       </footer>
     </section>
   );

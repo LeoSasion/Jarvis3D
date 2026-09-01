@@ -27,7 +27,8 @@ function normalizeFeedAttentionItem(item, index) {
     source: "feed",
     id: stableText(item?.id) || `feed-${index}`,
     severity,
-    title: stableText(item?.title) || "SYSTEM EVENT",
+    title: stableText(item?.title) || null,
+    titleKey: stableText(item?.title) ? null : "linkedSystem.priority.systemEvent",
     detail: stableText(item?.detail),
     timestamp: stableText(item?.timestamp),
     item,
@@ -37,19 +38,22 @@ function normalizeFeedAttentionItem(item, index) {
 
 function agentAttentionDetail(agentState) {
   const error = stableText(agentState?.error?.message ?? agentState?.error);
-  if (error) return error;
+  if (error) return { detail: error };
 
   const healthDetail = stableText(agentState?.health?.detail);
-  if (healthDetail) return healthDetail;
+  if (healthDetail) return { detail: healthDetail };
 
   const healthStatus = stableText(agentState?.health?.status).toLowerCase();
   if (AGENT_ATTENTION_HEALTH_STATUSES.has(healthStatus)) {
-    return `Agent provider health is ${healthStatus}.`;
+    return {
+      detailKey: "linkedSystem.priority.agentHealthStatus",
+      detailValues: { status: healthStatus },
+    };
   }
   if (agentState?.health?.healthy === false) {
-    return "Agent provider health check failed.";
+    return { detailKey: "linkedSystem.priority.agentHealthCheckFailed" };
   }
-  return "Agent provider reported an error.";
+  return { detailKey: "linkedSystem.priority.agentReportedError" };
 }
 
 export function isLinkedAgentAttention(agentState = {}) {
@@ -88,8 +92,9 @@ function connectionAttention(agentState) {
     source: "agent",
     id: "agent-status",
     severity: "error",
-    title: "AGENT CONNECTION NEEDS ATTENTION",
-    detail: agentAttentionDetail(agentState),
+    title: null,
+    titleKey: "linkedSystem.priority.agentAttention",
+    ...agentAttentionDetail(agentState),
     timestamp: stableText(agentState?.updatedAt ?? agentState?.timestamp),
     item: null,
   };
@@ -104,7 +109,8 @@ function feedConnectionAttention(feed) {
     source: "telemetry",
     id: "system-feed",
     severity: "error",
-    title: "SYSTEM FEED UNAVAILABLE",
+    title: null,
+    titleKey: "linkedSystem.priority.feedUnavailable",
     detail,
     timestamp: "",
     item: null,
@@ -141,8 +147,13 @@ export function getLinkedSystemRailPresentation({ feed = {}, agentState = {} } =
     attentionKeys: attention.map((entry) => entry.key),
     attentionSignature: attention.map((entry) => entry.key).sort().join("\n"),
     priorityItem: priority?.item ?? null,
-    priorityTitle: priority?.title ?? (feed.loading ? "STATUS SYNCHRONIZING" : "SYSTEM NOMINAL"),
-    priorityDetail: priority?.detail ?? "",
+    priorityTitle: priority?.title ?? null,
+    priorityTitleKey: priority?.titleKey ?? (feed.loading
+      ? "linkedSystem.priority.syncing"
+      : "linkedSystem.priority.nominal"),
+    priorityDetail: priority?.detail ?? null,
+    priorityDetailKey: priority?.detailKey ?? null,
+    priorityDetailValues: priority?.detailValues ?? null,
   };
 }
 

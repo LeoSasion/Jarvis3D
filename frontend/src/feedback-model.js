@@ -35,7 +35,7 @@ function inferLegacySeverity(message) {
 
 export function createShellFeedback(input, options = {}) {
   const source = typeof input === "string" ? { title: input } : (input ?? {});
-  const title = normalizeText(source.title ?? source.message, "JARVIS status updated", 160);
+  const title = normalizeText(source.title ?? source.message, "JARVIS", 160);
   const requestedSeverity = source.severity ?? inferLegacySeverity(title);
   const severity = VALID_SEVERITIES.has(requestedSeverity) ? requestedSeverity : "info";
   const requestedSource = normalizeText(source.source, "shell", 32).toLocaleLowerCase();
@@ -55,10 +55,13 @@ export function createShellFeedback(input, options = {}) {
     timeoutMs: persistent ? null : Math.max(1_200, Math.min(8_000, Number(source.timeoutMs) || 2_600)),
     actions: Array.isArray(source.actions)
       ? source.actions
-        .filter((action) => typeof action?.onInvoke === "function")
+        .filter((action) => (
+          typeof action?.onInvoke === "function" &&
+          String(action.label ?? "").trim().length > 0
+        ))
         .slice(0, 2)
         .map((action) => ({
-          label: normalizeText(action.label, "RETRY", 32),
+          label: normalizeText(action.label, "", 32),
           onInvoke: action.onInvoke,
         }))
       : [],

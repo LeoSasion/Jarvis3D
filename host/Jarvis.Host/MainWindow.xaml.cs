@@ -15,6 +15,7 @@ namespace Jarvis.Host;
 
 public partial class MainWindow : Window
 {
+    private const string HelpCenterSmokeSelector = "[data-smoke-id=\"help-center\"]";
     private static readonly int TaskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
     private const int GwlExStyle = -20;
     private const int SwShowNoActivate = 4;
@@ -354,15 +355,21 @@ public partial class MainWindow : Window
             var shellReady = await ExecuteRendererSmokeBooleanAsync(
                 "Boolean(document.querySelector('.jarvis-shell'))");
 
+            // Require a resolved graphics runtime. A stable disconnected neural surface is valid
+            // when no Vault is available, but the transient Suspense fallback is not.
+            var graphSurfaceResolved = await WaitForRendererSmokeBooleanAsync(
+                RendererSmokeGraphSurfacePolicy.BrowserExpression,
+                maximumAttempts: 200);
+
             await ExecuteRendererSmokeActionAsync(
                 "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', bubbles: true }))");
             var helpOpened = await WaitForRendererSmokeBooleanAsync(
-                "Boolean(document.querySelector('[role=\"dialog\"][aria-label=\"JARVIS help and shortcuts\"]'))");
+                $"Boolean(document.querySelector('{HelpCenterSmokeSelector}'))");
 
             await ExecuteRendererSmokeActionAsync(
                 "(document.activeElement || document).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
             var helpClosed = await WaitForRendererSmokeBooleanAsync(
-                "!document.querySelector('[role=\"dialog\"][aria-label=\"JARVIS help and shortcuts\"]')");
+                $"!document.querySelector('{HelpCenterSmokeSelector}')");
 
             await ExecuteRendererSmokeActionAsync(
                 "window.dispatchEvent(new CustomEvent('jarvis:open-shell-panel', { detail: 'explorer' }))");
@@ -392,6 +399,7 @@ public partial class MainWindow : Window
                 agentOpened,
                 linkedWorkspaceReady,
                 noticeAvoidsCriticalControls,
+                graphSurfaceResolved,
                 reducedMotionStylesApplied);
             if (!result.Succeeded)
             {

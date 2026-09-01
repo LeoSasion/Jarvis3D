@@ -24,6 +24,7 @@ $frontendDist = Join-Path $frontendRoot 'dist'
 $projectPath = Join-Path $repositoryRoot 'host\Jarvis.Host\Jarvis.Host.csproj'
 $artifactsRoot = Join-Path $repositoryRoot 'artifacts'
 $frontendBuildRoot = Join-Path $artifactsRoot 'build\frontend'
+$frontendLicenseBuildRoot = Join-Path $artifactsRoot 'build\frontend-runtime-licenses'
 $piRuntimeBuildRoot = Join-Path $artifactsRoot 'build\pi-runtime'
 $releaseRoot = Join-Path $artifactsRoot 'release'
 $installerOutput = Join-Path $artifactsRoot 'installer'
@@ -35,6 +36,7 @@ $installerPath = Join-Path $installerOutput "JARVIS-Setup-$Version-win-x64.exe"
 $updateManifestPath = Join-Path $releaseRoot 'JARVIS-update-manifest.json'
 $piManifestPath = Join-Path $repositoryRoot 'third_party\pi\runtime.json'
 $piStagerPath = Join-Path $repositoryRoot 'scripts\stage-pi-runtime.ps1'
+$frontendLicenseStagerPath = Join-Path $repositoryRoot 'scripts\stage-frontend-runtime-licenses.mjs'
 $numericVersion = ($Version -split '[-+]')[0]
 $builtAtUtc = [DateTimeOffset]::UtcNow.ToString('O')
 
@@ -95,6 +97,9 @@ if (-not (Test-Path -LiteralPath $piManifestPath -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $piStagerPath -PathType Leaf)) {
     throw "The fail-closed Pi runtime stager was not found: $piStagerPath"
 }
+if (-not (Test-Path -LiteralPath $frontendLicenseStagerPath -PathType Leaf)) {
+    throw "The frontend runtime license stager was not found: $frontendLicenseStagerPath"
+}
 
 $piManifest = Get-Content -LiteralPath $piManifestPath -Raw | ConvertFrom-Json
 if (-not ([string]$piManifest.runtime).Equals($Runtime, [System.StringComparison]::Ordinal)) {
@@ -108,6 +113,7 @@ $piStageArguments = @{
     ManifestPath = $piManifestPath
     Runtime = $Runtime
     Destination = $piRuntimeBuildRoot
+    CacheDirectory = ''
 }
 if ($OfflinePiRuntime) {
     $piStageArguments['Offline'] = $true
@@ -129,17 +135,28 @@ if (-not (Test-Path -LiteralPath $stagedPiExecutable -PathType Leaf) -or
 }
 
 $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
+$node = (Get-Command node.exe -ErrorAction Stop).Source
 $dotnet = (Get-Command dotnet.exe -ErrorAction Stop).Source
 
 Write-Host "[2/8] Building clean frontend assets..."
 $nodeInstallArguments = @('ci', '--prefer-offline', '--no-audit')
+New-Item -ItemType Directory -Path $artifactsRoot -Force | Out-Null
+$frontendLicenseBuildRoot = Reset-ChildDirectory `
+    -Path $frontendLicenseBuildRoot `
+    -Parent $artifactsRoot
 if ($SkipNodeInstall) {
     Write-Warning 'Locked npm install was skipped by request; existing node_modules will be used.'
     $frontendDist = Reset-ChildDirectory -Path $frontendDist -Parent $frontendRoot
     Invoke-Checked -FilePath $npm -Arguments @('run', 'build') -WorkingDirectory $frontendRoot
+    Invoke-Checked `
+        -FilePath $node `
+        -Arguments @(
+            $frontendLicenseStagerPath,
+            '--frontend-root', $frontendRoot,
+            '--destination', $frontendLicenseBuildRoot) `
+        -WorkingDirectory $repositoryRoot
 }
 else {
-    New-Item -ItemType Directory -Path $artifactsRoot -Force | Out-Null
     $frontendBuildRoot = Reset-ChildDirectory -Path $frontendBuildRoot -Parent $artifactsRoot
     foreach ($buildInput in @(
         '.npmrc',
@@ -159,6 +176,13 @@ else {
 
     Invoke-Checked -FilePath $npm -Arguments $nodeInstallArguments -WorkingDirectory $frontendBuildRoot
     Invoke-Checked -FilePath $npm -Arguments @('run', 'build') -WorkingDirectory $frontendBuildRoot
+    Invoke-Checked `
+        -FilePath $node `
+        -Arguments @(
+            $frontendLicenseStagerPath,
+            '--frontend-root', $frontendBuildRoot,
+            '--destination', $frontendLicenseBuildRoot) `
+        -WorkingDirectory $repositoryRoot
 
     $stagedFrontendDist = Join-Path $frontendBuildRoot 'dist'
     if (-not (Test-Path -LiteralPath (Join-Path $stagedFrontendDist 'index.html'))) {
@@ -174,6 +198,10 @@ else {
 }
 if (-not (Test-Path -LiteralPath (Join-Path $frontendDist 'index.html'))) {
     throw 'Frontend build completed without dist\index.html.'
+}
+$frontendLicenseReceipt = Join-Path $frontendLicenseBuildRoot 'FRONTEND-RUNTIME-LICENSES.json'
+if (-not (Test-Path -LiteralPath $frontendLicenseReceipt -PathType Leaf)) {
+    throw 'Frontend build completed without a verified runtime-license receipt.'
 }
 
 Write-Host "[3/8] Publishing self-contained Windows host..."
@@ -217,6 +245,21 @@ New-Item -ItemType Directory -Path $packagedPiRuntime -Force | Out-Null
 Copy-Item -Path (Join-Path $piRuntimeBuildRoot '*') -Destination $packagedPiRuntime -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'LICENSE') -Destination $publishDirectory -Force
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'THIRD_PARTY_NOTICES.md') -Destination $publishDirectory -Force
+$packagedFrontendLicenses = Join-Path $publishDirectory 'ThirdPartyLicenses\frontend'
+New-Item -ItemType Directory -Path $packagedFrontendLicenses -Force | Out-Null
+Copy-Item `
+    -Path (Join-Path $frontendLicenseBuildRoot '*') `
+    -Destination $packagedFrontendLicenses `
+    -Recurse `
+    -Force
+Invoke-Checked `
+    -FilePath $node `
+    -Arguments @(
+        $frontendLicenseStagerPath,
+        'verify',
+        '--frontend-root', $frontendRoot,
+        '--directory', $packagedFrontendLicenses) `
+    -WorkingDirectory $repositoryRoot
 
 Write-Host "[4/8] Writing version and recovery notes..."
 $versionPayload = [ordered]@{
@@ -381,6 +424,9 @@ $updateManifest | ConvertTo-Json -Depth 8 |
 
 if (Test-Path -LiteralPath $piRuntimeBuildRoot) {
     Remove-Item -LiteralPath (Assert-ChildPath -Path $piRuntimeBuildRoot -Parent $artifactsRoot) -Recurse -Force
+}
+if (Test-Path -LiteralPath $frontendLicenseBuildRoot) {
+    Remove-Item -LiteralPath (Assert-ChildPath -Path $frontendLicenseBuildRoot -Parent $artifactsRoot) -Recurse -Force
 }
 
 [pscustomobject]@{

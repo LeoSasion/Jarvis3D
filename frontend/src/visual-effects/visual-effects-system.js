@@ -8,18 +8,18 @@ let initialized = false;
 export const visualEffectDefinitions = Object.freeze([
   Object.freeze({
     id: "scanlines",
-    label: "SCANLINES",
-    detail: "Static raster texture · shared layer",
+    labelKey: "visualEffects.effect.scanlines.label",
+    detailKey: "visualEffects.effect.scanlines.detail",
   }),
   Object.freeze({
     id: "grain",
-    label: "FILM GRAIN",
-    detail: "Low-opacity motion · cadence limited",
+    labelKey: "visualEffects.effect.grain.label",
+    detailKey: "visualEffects.effect.grain.detail",
   }),
   Object.freeze({
     id: "vignette",
-    label: "VIGNETTE",
-    detail: "Static edge falloff · shared layer",
+    labelKey: "visualEffects.effect.vignette.label",
+    detailKey: "visualEffects.effect.vignette.detail",
   }),
 ]);
 
@@ -69,18 +69,18 @@ const presetConfigurations = Object.freeze({
 export const visualEffectsPresets = Object.freeze([
   Object.freeze({
     id: "off",
-    label: "OFF",
-    detail: "No overlay or effect layers",
+    labelKey: "visualEffects.preset.off.label",
+    detailKey: "visualEffects.preset.off.detail",
   }),
   Object.freeze({
     id: "low",
-    label: "LOW",
-    detail: "Static texture and edge control",
+    labelKey: "visualEffects.preset.low.label",
+    detailKey: "visualEffects.preset.low.detail",
   }),
   Object.freeze({
     id: "balanced",
-    label: "BALANCED",
-    detail: "Adds cadence-limited film grain",
+    labelKey: "visualEffects.preset.balanced.label",
+    detailKey: "visualEffects.preset.balanced.detail",
   }),
 ]);
 

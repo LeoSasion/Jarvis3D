@@ -55,7 +55,8 @@ unavailable during the run.
 
 ### P1 — Safe lifecycle reported success after forcing an abnormal Host exit
 
-- Location: `scripts/verify-native-lifecycle.ps1`, lines 59–87.
+- Location: `Request-JarvisGracefulClose` in
+  `scripts/verify-native-lifecycle.ps1`.
 - Evidence: the script waited five seconds for `CloseMainWindow()`, force-stopped
   the Host, then returned `READY` because Explorer and the taskbar were visible.
   The production startup ledger still contained the terminated PID and active

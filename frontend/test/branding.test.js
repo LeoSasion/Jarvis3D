@@ -17,6 +17,6 @@ test("production UI uses the canonical JARVIS brand", async () => {
   }
 
   assert.match(sources[0], /<title>JARVIS<\/title>/u);
-  assert.match(sources[2], /JARVIS LOCAL VISUAL FRAME/u);
+  assert.match(sources[2], /JARVIS DESKTOP/u);
   assert.match(sources[4], /productName:\s*"JARVIS"/u);
 });

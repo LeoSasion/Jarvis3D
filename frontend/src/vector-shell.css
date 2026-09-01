@@ -1,41 +1,50 @@
 /*
- * JARVIS SIGNAL SHELL — BLACK / WHITE / ORANGE
- * The mature Windows interaction layer remains intact while every surface
- * resolves to one flat, deterministic, high-contrast visual system.
+ * JARVIS shell compatibility tokens.
+ * Theme packs own all colors; this layer only maps legacy component roles.
  */
 
 :root {
-  --void: #000000;
-  --surface-0: #020202;
-  --surface-1: #050505;
-  --surface-2: #080808;
-  --surface-canvas: #010101;
-  --ink-1: #f5f1e9;
-  --ink-2: #c0bbb3;
-  --ink-3: #837d75;
-  --structure-weak: rgba(245, 241, 233, 0.15);
-  --structure: rgba(245, 241, 233, 0.28);
-  --structure-strong: rgba(245, 241, 233, 0.54);
-  --signal: var(--energy-cyan);
-  --signal-hot: #ff6a00;
+  --void: var(--shell-bg);
+  --surface-0: var(--shell-bg);
+  --surface-1: var(--shell-surface);
+  --surface-2: var(--shell-card);
+  --surface-3: var(--shell-hover);
+  --surface-canvas: var(--shell-bg);
+  --ink-1: var(--shell-text-strong);
+  --ink-2: var(--shell-text);
+  --ink-3: var(--shell-muted);
+  --structure-weak: var(--shell-border-subtle);
+  --structure: var(--shell-border);
+  --structure-strong: var(--shell-border-strong);
+  --theme-action: var(--shell-accent);
+  --theme-action-emphasis: var(--shell-accent-hover);
+  --signal: var(--theme-action);
+  --signal-hot: var(--theme-action);
+  --signal-pale: var(--theme-action-emphasis);
   --signal-dim: color-mix(in srgb, var(--signal) 54%, transparent);
-  --signal-fill: color-mix(in srgb, var(--signal) 11%, transparent);
-  --signal-fill-strong: color-mix(in srgb, var(--signal) 18%, transparent);
-  --status-warning: #ff9b50;
-  --status-danger: #ff5a3c;
-  --glow-status: 0 0 6px color-mix(in srgb, var(--signal) 58%, transparent);
-  --glow-active: 0 0 14px color-mix(in srgb, var(--signal) 44%, transparent);
+  --signal-fill: color-mix(in srgb, var(--signal) 10%, transparent);
+  --signal-fill-strong: color-mix(in srgb, var(--signal) 16%, transparent);
+  --status-warning: var(--shell-warning);
+  --status-danger: var(--shell-danger);
+  --glow-status: 0 0 6px color-mix(in srgb, var(--signal) 30%, transparent);
+  --glow-active: 0 0 14px color-mix(in srgb, var(--signal) 22%, transparent);
   --stroke: 0.5px;
   --rail-outline: 0.5px;
   --accent-stroke: 1px;
   --radius: 1px;
-  --font-display: "Bahnschrift SemiCondensed", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-message: 10px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-fast: 100ms;
+  --motion-normal: 180ms;
+  --font-display: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", sans-serif;
   --font-data: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
-  --font-body: "Segoe UI Variable Text", "Segoe UI", sans-serif;
-  --type-meta: 11px;
+  --font-body: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --type-meta: 12px;
   --hit-target-min: 24px;
-  --type-label: 11px;
-  --type-body: 13px;
+  --type-label: 12px;
+  --type-body: 14px;
   --type-title: 30px;
   --space-1: 4px;
   --space-2: 8px;
@@ -60,7 +69,7 @@
 
 body {
   background: var(--void);
-  font-family: var(--font-data);
+  font-family: var(--font-body);
   color: var(--ink-2);
 }
 
@@ -210,7 +219,7 @@ textarea:focus-visible {
 .topbar__command-bus.is-unavailable::after,
 .topbar__command-bus.is-error::after {
   background: var(--status-danger);
-  box-shadow: 0 0 10px rgba(255, 116, 100, 0.38);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--shell-danger) 38%, transparent);
 }
 
 .topbar__system {
@@ -249,47 +258,20 @@ textarea:focus-visible {
   text-shadow: none;
 }
 
-.brand-edition {
-  color: var(--ink-2);
-  font: var(--type-meta)/1 var(--font-data);
-  letter-spacing: 0.08em;
-}
-
-.mic-cluster > svg,
-.system-cluster > svg,
-.system-cluster .battery-copy svg {
+.search-cluster > svg {
   width: 18px;
   height: 18px;
 }
 
-.mic-cluster {
+.search-cluster {
   min-width: 154px;
   color: var(--ink-2);
 }
 
-.mic-cluster:hover,
-.mic-cluster:focus-visible {
+.search-cluster:hover,
+.search-cluster:focus-visible {
   color: var(--ink-1);
   background: var(--signal-fill);
-}
-
-.secure-cluster {
-  display: grid;
-  align-content: center;
-  gap: 5px;
-  min-width: 154px;
-}
-
-.secure-cluster > span {
-  color: var(--signal-hot);
-  font-size: 10px;
-  text-shadow: var(--glow-status);
-}
-
-.secure-cluster > strong {
-  color: var(--ink-1);
-  font-size: 10px;
-  font-weight: 400;
 }
 
 .stop-cluster {
@@ -309,23 +291,6 @@ textarea:focus-visible {
   box-shadow: none;
 }
 
-.date-cluster {
-  color: var(--ink-2);
-  font-family: var(--font-data);
-  font-size: 9px;
-}
-
-.system-cluster {
-  padding-right: 0;
-  color: var(--ink-2);
-}
-
-.system-cluster time {
-  color: var(--ink-1);
-  font: 600 18px/1 var(--font-display);
-  letter-spacing: 0.06em;
-}
-
 /* Desktop vector field */
 
 .desktop-workspace {
@@ -339,8 +304,8 @@ textarea:focus-visible {
 
 .desktop-shortcuts {
   padding: 20px 16px;
-  border-right: var(--stroke) solid var(--structure-weak);
-  background: color-mix(in srgb, var(--surface-0) 78%, transparent);
+  border-right: 0;
+  background: var(--shell-transient-backdrop);
 }
 
 .desktop-shortcut {
@@ -567,19 +532,6 @@ textarea:focus-visible {
   font: 10px/1 var(--font-data);
 }
 
-.jarvis-shell.has-open-window .core-stage,
-.jarvis-shell.has-open-window .desktop-shortcuts,
-.jarvis-shell.has-open-window .telemetry-rail {
-  opacity: 0.34;
-  filter: saturate(0.72) brightness(0.78);
-}
-
-.core-stage,
-.desktop-shortcuts,
-.telemetry-rail {
-  transition: opacity 180ms ease, filter 180ms ease;
-}
-
 /* Continuous telemetry rail */
 
 .telemetry-rail {
@@ -627,41 +579,13 @@ textarea:focus-visible {
 }
 
 .hud-panel__body,
-.core-status-panel .hud-panel__body,
 .resources-panel .hud-panel__body {
   height: calc(100% - 30px);
 }
 
-.core-status {
-  grid-template-columns: 82px minmax(0, 1fr);
-  padding: var(--space-3) var(--space-2);
-}
-
-.core-status > .vector-mark {
-  width: 72px;
-  height: 72px;
-  justify-self: start;
-  color: var(--signal-hot);
-  filter: drop-shadow(var(--glow-status));
-}
-
-.core-status__copy > strong {
-  color: var(--ink-1);
-  font-family: var(--font-display);
-  font-size: 18px;
-  letter-spacing: 0.08em;
-}
-
-.core-status__copy > span,
-.core-status__copy > small {
-  font-family: var(--font-data);
-  font-size: var(--type-meta);
-}
-
 .resource-row,
 .process-grid,
-.notification-row,
-.health-status {
+.notification-row {
   border-color: var(--structure-weak);
   background: color-mix(in srgb, var(--surface-canvas) 62%, transparent);
 }
@@ -703,14 +627,8 @@ textarea:focus-visible {
 }
 
 .notification-row > svg,
-.health-status > svg,
 .explorer-entry-name svg {
   filter: none;
-}
-
-.health-status strong {
-  color: var(--signal-hot);
-  text-shadow: var(--glow-status);
 }
 
 /* Flat system taskbar */
@@ -768,7 +686,6 @@ textarea:focus-visible {
 }
 
 .taskbar-start,
-.taskbar-search,
 .taskbar-apps,
 .system-tray {
   border-color: var(--structure);
@@ -777,13 +694,8 @@ textarea:focus-visible {
 }
 
 .taskbar-start,
-.taskbar-search,
 .system-tray {
   background: var(--surface-0);
-}
-
-.taskbar-search {
-  color: var(--ink-1);
 }
 
 .taskbar-apps {
@@ -962,7 +874,7 @@ textarea:focus-visible {
   border-color: var(--structure-strong);
   clip-path: none;
   background: var(--surface-canvas);
-  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.72);
+  box-shadow: 0 18px 54px color-mix(in srgb, var(--shell-effect-shadow) 72%, transparent);
 }
 
 .jarvis-explorer::after {
@@ -1413,7 +1325,7 @@ textarea:focus-visible {
 .workspace-window.is-active .system-inspector,
 .workspace-window.is-active .agent-workbench {
   border-color: var(--structure-strong);
-  box-shadow: 0 20px 62px rgba(0, 0, 0, 0.74);
+  box-shadow: 0 20px 62px color-mix(in srgb, var(--shell-effect-shadow) 74%, transparent);
 }
 
 .workspace-window:not(.is-active) {
@@ -1429,7 +1341,7 @@ textarea:focus-visible {
   border-color: var(--structure);
   clip-path: none;
   background: var(--surface-canvas);
-  box-shadow: 0 18px 54px rgb(0 0 0 / 72%);
+  box-shadow: 0 18px 54px color-mix(in srgb, var(--shell-effect-shadow) 72%, transparent);
 }
 
 .boot-sequence::before,
@@ -1578,7 +1490,6 @@ textarea:focus-visible {
 .shell-panel-header > .vector-mark,
 .command-header .vector-mark,
 .window-switcher-brand > .vector-mark,
-.system-toast > .vector-mark,
 .desktop-only-notice > .vector-mark {
   width: 28px;
   height: 28px;
@@ -1625,11 +1536,6 @@ textarea:focus-visible {
     padding-inline: 10px;
   }
 
-  .brand-edition,
-  .secure-cluster > span,
-  .date-cluster {
-    display: none;
-  }
 }
 
 @media (max-width: 1080px) {
@@ -1637,9 +1543,7 @@ textarea:focus-visible {
     grid-template-columns: minmax(250px, 1fr) minmax(300px, 1fr) auto;
   }
 
-  .secure-cluster,
-  .mic-cluster span,
-  .system-cluster .battery-copy {
+  .search-cluster span {
     display: none;
   }
 
@@ -1651,13 +1555,14 @@ textarea:focus-visible {
 /* V4 product states — selected black / white / orange references */
 
 :root {
-  --signal-hot: #ff6a00;
-  --signal-pale: #ffb13f;
-  --signal-dim: rgb(255 106 0 / 28%);
-  --signal-fill: rgb(255 106 0 / 4%);
-  --signal-fill-strong: rgb(255 106 0 / 7%);
-  --glow-status: 0 0 4px rgb(255 106 0 / 38%);
-  --glow-active: 0 0 6px rgb(255 106 0 / 28%);
+  --signal: var(--theme-action);
+  --signal-hot: var(--theme-action);
+  --signal-pale: var(--theme-action-emphasis);
+  --signal-dim: color-mix(in srgb, var(--theme-action) 28%, transparent);
+  --signal-fill: color-mix(in srgb, var(--theme-action) 4%, transparent);
+  --signal-fill-strong: color-mix(in srgb, var(--theme-action) 7%, transparent);
+  --glow-status: 0 0 4px color-mix(in srgb, var(--theme-action) 38%, transparent);
+  --glow-active: 0 0 6px color-mix(in srgb, var(--theme-action) 28%, transparent);
   --taskbar-height: 56px;
   --taskbar-bottom: 0px;
   --taskbar-slot-width: clamp(48px, calc(10vw - 70px), 92px);
@@ -1668,7 +1573,7 @@ textarea:focus-visible {
   --taskbar-glow-soft: none;
   --taskbar-glow-line: none;
   --taskbar-glow-active: var(--glow-status);
-  --success: #ff8a2a;
+  --success: var(--shell-success);
 }
 
 html,
@@ -1736,23 +1641,11 @@ body,
   text-shadow: none;
 }
 
-.brand-edition,
-.date-cluster,
-.system-cluster {
-  color: var(--ink-3);
-}
-
-.mic-cluster:hover,
-.mic-cluster:focus-visible,
-.stop-cluster:hover:not(:disabled),
-.system-cluster button:hover {
+.search-cluster:hover,
+.search-cluster:focus-visible,
+.stop-cluster:hover:not(:disabled) {
   color: var(--ink-1);
   background: var(--signal-fill);
-}
-
-.secure-cluster > span {
-  color: var(--signal-hot);
-  text-shadow: none;
 }
 
 .stop-token,
@@ -1767,15 +1660,14 @@ body,
   background: var(--void);
 }
 
-.desktop-shortcuts,
 .core-stage,
 .telemetry-rail {
   background: var(--void);
 }
 
 .desktop-shortcuts {
-  border-right-color: var(--structure);
-  background: transparent;
+  border-right: 0;
+  background: var(--shell-transient-backdrop);
 }
 
 .shortcut-icon {
@@ -1815,10 +1707,6 @@ body,
 
 .knowledge-graph-field__signal-halo {
   opacity: 0.05;
-}
-
-.core-status > .vector-mark {
-  filter: none;
 }
 
 .telemetry-rail {
@@ -1880,7 +1768,6 @@ body,
 }
 
 .taskbar-start,
-.taskbar-search,
 .taskbar-apps,
 .system-tray {
   border-color: var(--structure);
@@ -2780,8 +2667,7 @@ body,
 .explorer-context-menu,
 .explorer-command-dialog,
 .explorer-conflict-dialog,
-.explorer-transfer-panel,
-.system-toast {
+.explorer-transfer-panel {
   border-color: var(--structure-strong);
   border-radius: 0;
   background-color: var(--void);
@@ -2888,9 +2774,7 @@ body,
 .boot-scan-field,
 .boot-core-ring,
 .date-time-orbit,
-.session-control-orbit,
-.window-switcher-field,
-.window-switcher-corners {
+.session-control-orbit {
   display: none;
 }
 
@@ -3001,8 +2885,7 @@ body,
   color: var(--signal-hot);
 }
 
-.notification-row > svg,
-.health-status > svg {
+.notification-row > svg {
   color: var(--ink-2);
 }
 
@@ -3394,7 +3277,7 @@ body,
   }
 
   .workspace-window.is-linked-drawer.is-agent {
-    box-shadow: -18px 0 44px rgb(0 0 0 / 82%);
+    box-shadow: -18px 0 44px color-mix(in srgb, var(--shell-effect-shadow) 82%, transparent);
   }
 }
 
@@ -3454,9 +3337,12 @@ body,
 /* Final surface convergence. The legacy stylesheet still owns geometry and
    interaction, while every visible paint surface resolves here. */
 .shell-panel-layer,
-.overlay-layer,
+.overlay-layer {
+  background: var(--shell-transient-backdrop) !important;
+}
+
 .explorer-dialog-layer {
-  background: rgb(0 0 0 / 72%) !important;
+  background: var(--shell-modal-scrim) !important;
 }
 
 .shell-panel:not(.runtime-settings-panel) :where([class]) {
@@ -3678,7 +3564,6 @@ body,
 .window-switcher-footer,
 .window-switcher-card,
 .window-switcher-icon,
-.window-switcher-progress,
 .window-switcher-instructions kbd {
   border-color: var(--structure) !important;
   color: var(--ink-2) !important;
@@ -3688,8 +3573,7 @@ body,
   clip-path: none;
 }
 
-.window-switcher-card::before,
-.window-switcher-progress span {
+.window-switcher-card::before {
   background: var(--structure-strong) !important;
   box-shadow: none !important;
 }
@@ -3701,40 +3585,31 @@ body,
   box-shadow: var(--accent-stroke) 0 0 var(--signal-hot) inset !important;
 }
 
-.window-switcher-card.is-selected::before,
-.window-switcher-progress span.is-current {
+.window-switcher-card.is-selected::before {
   background: var(--signal-hot) !important;
 }
 
-.window-switcher-card :where(strong, img),
-.window-switcher-selected strong,
-.window-switcher-counter strong {
+.window-switcher-card :where(strong, img) {
   color: var(--ink-1) !important;
   filter: none !important;
   text-shadow: none !important;
 }
 
 .window-switcher-card :where(small, i),
-.window-switcher-selected span,
-.window-switcher-counter :where(span, small),
 .window-switcher-instructions {
   color: var(--ink-3) !important;
   text-shadow: none !important;
 }
 
 .window-switcher-brand small,
-.window-switcher-card-index,
 .window-switcher-copy small,
-.window-switcher-selected span,
-.window-switcher-counter :where(span, small),
 .window-switcher-instructions,
 .window-switcher-instructions kbd {
   font-size: 10px !important;
   line-height: 1.25 !important;
 }
 
-.window-switcher-copy strong,
-.window-switcher-selected strong {
+.window-switcher-copy strong {
   font-size: 11px !important;
   line-height: 1.25 !important;
 }
@@ -3897,8 +3772,8 @@ body,
    route nodes. */
 
 :root {
-  --structure-seam: rgb(245 241 233 / 14%);
-  --structure-ledger: rgb(245 241 233 / 8%);
+  --structure-seam: color-mix(in srgb, var(--shell-text-strong) 14%, transparent);
+  --structure-ledger: color-mix(in srgb, var(--shell-text-strong) 8%, transparent);
 }
 
 .jarvis-shell.is-layout-explorer-agent-linked .workspace-window.is-docked {
@@ -3957,7 +3832,7 @@ body,
 .jarvis-shell.is-layout-explorer-agent-linked .explorer-entry:hover,
 .jarvis-shell.is-layout-explorer-agent-linked .explorer-entry:focus-visible {
   color: var(--ink-1) !important;
-  background: rgb(245 241 233 / 3%) !important;
+  background: color-mix(in srgb, var(--shell-effect-contrast) 3%, transparent) !important;
   box-shadow: var(--accent-stroke) 0 0 var(--ink-2) inset !important;
 }
 
@@ -4189,7 +4064,7 @@ body,
   gap: 12px;
   padding: 13px 14px 13px 10px;
   border: 1px solid var(--signal-dim);
-  background: rgb(255 93 0 / 2%);
+  background: color-mix(in srgb, var(--shell-accent) 2%, transparent);
   animation: linked-payload-enter 180ms ease-out both;
 }
 
@@ -4198,7 +4073,7 @@ body,
   gap: 12px;
   padding: 13px 14px 13px 10px;
   border: 1px solid var(--signal-hot);
-  background: rgb(255 93 0 / 3%);
+  background: color-mix(in srgb, var(--shell-accent) 3%, transparent);
   animation: linked-result-enter 220ms ease-out both;
 }
 
@@ -4372,7 +4247,7 @@ body,
 
 .linked-route-packet {
   fill: var(--signal-hot);
-  filter: drop-shadow(0 0 3px rgb(255 93 0 / 76%));
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--shell-accent) 76%, transparent));
 }
 
 .linked-route-field.is-complete > .linked-route-active {
@@ -4608,11 +4483,11 @@ body,
 }
 
 .shell-panel:not(.runtime-settings-panel) .shell-notification-item.is-warning > span:first-child {
-  color: #ff806d !important;
+  color: var(--shell-warning) !important;
 }
 
 .shell-panel:not(.runtime-settings-panel) .shell-notification-item.is-error > span:first-child {
-  color: #ff6f68 !important;
+  color: var(--shell-danger) !important;
 }
 
 .command-palette :where(
@@ -4684,7 +4559,7 @@ body,
   color: var(--ink-2) !important;
   background: var(--surface-0) !important;
   background-image: none !important;
-  box-shadow: 8px 12px 24px rgb(0 0 0 / 72%) !important;
+  box-shadow: 8px 12px 24px color-mix(in srgb, var(--shell-effect-shadow) 72%, transparent) !important;
   clip-path: none !important;
   scrollbar-color: var(--structure-strong) var(--void) !important;
 }
@@ -4938,7 +4813,7 @@ body,
   border-top: var(--stroke) solid var(--structure-strong);
   border-bottom: var(--stroke) solid var(--structure-strong);
   background: var(--void);
-  box-shadow: 10px 14px 32px rgb(0 0 0 / 42%);
+  box-shadow: 10px 14px 32px color-mix(in srgb, var(--shell-effect-shadow) 42%, transparent);
 }
 
 .core-stage__launchpad > header {
@@ -5119,7 +4994,7 @@ body,
   border-right: 2px solid var(--signal-hot);
   color: var(--ink-2);
   background: var(--void);
-  box-shadow: -10px 12px 28px rgb(0 0 0 / 58%);
+  box-shadow: -10px 12px 28px color-mix(in srgb, var(--shell-effect-shadow) 58%, transparent);
   text-align: left;
   transform: translateY(-50%);
 }
@@ -5129,7 +5004,7 @@ body,
   left: var(--workspace-left-inset);
   border-right: var(--stroke) solid var(--structure-strong);
   border-left: 2px solid var(--signal-hot);
-  box-shadow: 10px 12px 28px rgb(0 0 0 / 58%);
+  box-shadow: 10px 12px 28px color-mix(in srgb, var(--shell-effect-shadow) 58%, transparent);
 }
 
 .linked-workspace-handle > span {
@@ -5188,7 +5063,7 @@ body,
   grid-template-rows: 58px 44px minmax(0, 1fr) 50px;
   border: var(--stroke) solid var(--structure-strong);
   background: var(--void);
-  box-shadow: 0 18px 48px rgb(0 0 0 / 72%);
+  box-shadow: 0 18px 48px color-mix(in srgb, var(--shell-effect-shadow) 72%, transparent);
 }
 
 .help-center-search {
@@ -5415,11 +5290,6 @@ body,
   transform: translateX(50%);
 }
 
-.system-cluster button {
-  min-width: 32px;
-  min-height: 32px;
-}
-
 .taskbar-show-desktop,
 .jarvis-taskbar-surface .taskbar-show-desktop {
   width: 24px;
@@ -5464,9 +5334,7 @@ body,
 }
 
 /* Operational copy never drops below the 11px craft floor. */
-.date-cluster,
-.secure-cluster > :where(span, strong),
-.mic-cluster kbd,
+.search-cluster kbd,
 .knowledge-graph-field__focus text,
 .knowledge-graph-field__focus text.is-muted,
 .knowledge-graph-field__labels,
@@ -5575,24 +5443,13 @@ body,
   text-shadow: none;
 }
 
-.mic-cluster kbd {
+.search-cluster kbd {
   margin-left: 10px;
   padding-left: 10px;
   border-left: var(--stroke) solid var(--structure);
   color: var(--ink-3);
   font: 9px/1 var(--font-data);
   letter-spacing: 0.08em;
-}
-
-.topbar__command-bus:not(.is-running):not(.is-starting) .secure-cluster > span {
-  color: var(--ink-3);
-}
-
-.topbar__command-bus.is-running .secure-cluster > span,
-.topbar__command-bus.is-starting .secure-cluster > span,
-.topbar__command-bus.is-running .secure-cluster > strong,
-.topbar__command-bus.is-starting .secure-cluster > strong {
-  color: var(--signal-hot);
 }
 
 .telemetry-rail {
@@ -5676,7 +5533,6 @@ body,
 }
 
 .telemetry-rail .hud-panel__body,
-.telemetry-rail .core-status-panel .hud-panel__body,
 .telemetry-rail .resources-panel .hud-panel__body,
 .telemetry-rail .notifications-panel .hud-panel__body,
 .telemetry-rail .activity-panel .hud-panel__body {
@@ -5922,7 +5778,7 @@ body,
   border-left: 2px solid var(--ink-2);
   color: var(--ink-2);
   background: var(--void);
-  box-shadow: 0 12px 36px rgb(0 0 0 / 48%);
+  box-shadow: 0 12px 36px color-mix(in srgb, var(--shell-effect-shadow) 48%, transparent);
 }
 
 .system-notice.is-placement-inline {
@@ -6004,7 +5860,7 @@ body,
 }
 
 @media (max-width: 1380px) {
-  .mic-cluster kbd {
+  .search-cluster kbd {
     display: none;
   }
 }
@@ -6032,5 +5888,1683 @@ body,
   .taskbar-apps > button.is-running:not(.is-active)::before,
   .taskbar-apps > button.is-active::after {
     background: Highlight !important;
+  }
+}
+
+/* OpenClaw-calibrated tool shell
+   Conversation, desktop chrome, and transient commands use one restrained
+   dark tool grammar. The graph canvas and graph-specific controls remain under
+   their existing scene and profile contracts. */
+
+html {
+  color-scheme: dark;
+  scrollbar-color: var(--structure-strong) transparent;
+}
+
+::selection {
+  color: var(--ink-1);
+  background: color-mix(in srgb, var(--signal) 34%, transparent);
+}
+
+/* Quiet desktop chrome */
+
+.topbar.hud-chassis {
+  grid-template-columns: minmax(300px, 1fr) auto auto;
+  padding-inline: 12px;
+  border: 0;
+  border-bottom: 1px solid var(--structure-weak);
+  background: color-mix(in srgb, var(--surface-0) 96%, transparent);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--shell-effect-shadow) 18%, transparent);
+}
+
+.topbar .top-cluster {
+  min-width: 0;
+  height: 32px;
+  align-self: center;
+  gap: 8px;
+  padding-inline: 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--ink-2);
+  font: 12px/1 var(--font-body);
+  letter-spacing: 0;
+  text-transform: none;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out);
+}
+
+.brand-cluster {
+  min-width: 116px;
+  padding-left: 6px !important;
+}
+
+.brand-orb {
+  width: 24px;
+  height: 24px;
+  filter: none;
+}
+
+.brand-name {
+  font: 650 15px/1 var(--font-body);
+  letter-spacing: 0.04em;
+}
+
+.search-cluster {
+  width: min(260px, 28vw);
+  justify-content: flex-start;
+  margin-left: 4px;
+  color: var(--ink-2) !important;
+  background: var(--surface-1) !important;
+}
+
+.search-cluster:hover,
+.search-cluster:focus-visible {
+  color: var(--ink-1) !important;
+  background: var(--surface-3) !important;
+}
+
+.search-cluster > svg {
+  width: 17px;
+  height: 17px;
+  color: var(--ink-3);
+}
+
+.search-cluster kbd {
+  margin-left: auto;
+  padding-left: 0;
+  border: 0;
+  color: var(--ink-3);
+  font: 10px/1 var(--font-data);
+  letter-spacing: 0.03em;
+}
+
+.topbar__command-bus {
+  min-width: 132px;
+  justify-content: flex-end;
+  border: 0;
+  background: transparent;
+}
+
+.topbar__command-bus::after {
+  display: none !important;
+}
+
+.stop-cluster {
+  color: var(--status-danger) !important;
+}
+
+.desktop-workspace {
+  background: var(--void);
+}
+
+.desktop-shortcuts {
+  border-right: 0;
+  background: var(--shell-transient-backdrop);
+}
+
+.desktop-shortcut {
+  border-radius: var(--radius-control);
+  color: var(--ink-2);
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out);
+}
+
+.desktop-shortcut:hover,
+.desktop-shortcut.is-selected {
+  border-color: transparent;
+  background: var(--surface-3);
+}
+
+.desktop-shortcut.is-selected {
+  box-shadow: 2px 0 0 var(--signal) inset;
+}
+
+.shortcut-label {
+  color: var(--ink-2);
+  font-family: var(--font-body);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-shadow: 0 1px 2px color-mix(in srgb, var(--shell-effect-shadow) 72%, transparent);
+}
+
+.telemetry-rail {
+  gap: 10px;
+  padding: 12px;
+  border-left: 1px solid var(--structure-weak);
+  background: color-mix(in srgb, var(--surface-0) 94%, transparent);
+}
+
+.telemetry-rail .hud-panel {
+  padding-bottom: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--structure-weak);
+  background: transparent;
+}
+
+.telemetry-rail .hud-panel::after {
+  display: none;
+}
+
+.telemetry-rail .hud-panel__header,
+.telemetry-rail .hud-panel__toggle {
+  color: var(--ink-2);
+  font-family: var(--font-body);
+  letter-spacing: 0.035em;
+}
+
+.telemetry-priority {
+  border-radius: var(--radius-control);
+}
+
+.telemetry-priority strong {
+  font: 600 12px/1.25 var(--font-body);
+  letter-spacing: 0;
+}
+
+.telemetry-priority small,
+.telemetry-priority em {
+  font: 11px/1.35 var(--font-body);
+}
+
+.taskbar,
+.jarvis-taskbar-surface .taskbar {
+  border: 0;
+  border-top: 1px solid var(--structure-weak);
+  background: color-mix(in srgb, var(--surface-0) 97%, transparent);
+  box-shadow: 0 -8px 24px color-mix(in srgb, var(--shell-effect-shadow) 22%, transparent);
+}
+
+.taskbar::before,
+.taskbar::after,
+.taskbar-edge-track {
+  display: none !important;
+}
+
+.taskbar :where(button, .jarvis-agent-launcher) {
+  border-radius: var(--radius-control);
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out);
+}
+
+.taskbar :where(button:hover, button:focus-visible, button.is-active) {
+  background: var(--surface-3);
+}
+
+.jarvis-agent-launcher {
+  border-inline: 1px solid var(--structure-weak) !important;
+  background: var(--surface-1) !important;
+}
+
+.jarvis-agent-launcher__copy strong {
+  color: var(--ink-1);
+  font: 600 12px/1.15 var(--font-body);
+  letter-spacing: 0;
+}
+
+.jarvis-agent-launcher__copy small {
+  color: var(--ink-3);
+  font: 10px/1.2 var(--font-body);
+  letter-spacing: 0;
+}
+
+/* Conversation-first Agent Harness */
+
+.workspace-window.is-agent {
+  container-name: agent-window;
+  container-type: inline-size;
+}
+
+.agent-workbench {
+  --agent-thread-width: 48rem;
+  grid-template-rows: 50px minmax(0, 1fr) auto !important;
+  border: 1px solid var(--structure) !important;
+  border-radius: var(--radius-panel);
+  background: var(--void);
+  box-shadow: 0 20px 54px color-mix(in srgb, var(--shell-effect-shadow) 46%, transparent);
+}
+
+.workspace-window:is(.is-maximized, .is-docked) .agent-workbench,
+.workspace-window.is-layout-explorer-agent-linked .agent-workbench {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.agent-titlebar {
+  grid-template-columns: 38px minmax(0, 1fr) auto repeat(4, 38px) !important;
+  min-height: 50px;
+  padding-left: 8px;
+  border-bottom: 1px solid var(--structure-weak) !important;
+  background: var(--surface-1) !important;
+}
+
+.agent-titlebar__mark {
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--signal);
+  background: var(--signal-fill);
+}
+
+.agent-titlebar__mark svg {
+  width: 17px;
+  height: 17px;
+}
+
+.agent-titlebar__identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px 0 8px;
+}
+
+.agent-titlebar__identity strong {
+  flex: 0 0 auto;
+  color: var(--ink-1);
+  font: 650 14px/1 var(--font-body);
+  letter-spacing: 0;
+}
+
+.agent-titlebar__identity small {
+  min-width: 0;
+  color: var(--ink-3);
+  font: 11px/1.2 var(--font-data);
+  letter-spacing: 0;
+}
+
+.agent-runtime-state {
+  gap: 7px;
+  padding-inline: 10px;
+  color: var(--ink-2);
+  font: 11px/1 var(--font-body);
+  letter-spacing: 0;
+}
+
+.agent-runtime-state i,
+.agent-runtime-state.is-ready i,
+.agent-runtime-state.is-running i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.agent-titlebar > button {
+  width: 34px;
+  height: 34px;
+  align-self: center;
+  margin-inline: 2px;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--ink-3);
+  background: transparent;
+}
+
+.agent-titlebar > button:hover:not(:disabled),
+.agent-titlebar > button:focus-visible:not(:disabled) {
+  color: var(--ink-1);
+  background: var(--surface-3);
+}
+
+.agent-titlebar > button:focus-visible:not(:disabled) {
+  outline: 1px solid var(--signal) !important;
+  outline-offset: -1px !important;
+}
+
+.agent-transcript {
+  min-height: 0;
+  padding: clamp(20px, 3vh, 28px) 18px 8px;
+  background: var(--void) !important;
+  scrollbar-color: var(--structure-strong) transparent !important;
+}
+
+.agent-message {
+  position: relative;
+  width: min(100%, var(--agent-thread-width));
+  max-width: var(--agent-thread-width);
+  display: grid;
+  gap: 6px;
+  margin: 0 auto 14px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+}
+
+.agent-message::before,
+.agent-message.is-user::before {
+  display: none;
+}
+
+.agent-message.is-user {
+  width: fit-content;
+  max-width: min(68%, var(--agent-thread-width));
+  margin-right: max(0px, calc((100% - var(--agent-thread-width)) / 2));
+  margin-left: auto;
+  padding: 10px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-message);
+  background: var(--signal-fill);
+}
+
+.agent-message.is-system {
+  width: min(100%, 36rem);
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.agent-message > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-3);
+  font: 11px/1.25 var(--font-body);
+  letter-spacing: 0;
+}
+
+.agent-message > header span {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.agent-message > header time {
+  color: var(--ink-3);
+  opacity: 0.72;
+}
+
+.agent-message > header code {
+  margin-left: auto;
+  color: var(--ink-3);
+  font: 10px/1 var(--font-data);
+  letter-spacing: 0;
+}
+
+.agent-message.is-streaming > header code {
+  color: var(--signal-pale);
+}
+
+.agent-message p {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--ink-2);
+  font: 14px/1.58 var(--font-body);
+  letter-spacing: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-message.is-assistant p {
+  color: var(--ink-1);
+}
+
+.agent-message.is-user p {
+  color: var(--ink-1);
+}
+
+.agent-message-reuse {
+  justify-self: start;
+  min-height: 30px;
+  margin-top: 4px;
+  padding-inline: 10px;
+  border: 1px solid var(--structure);
+  border-radius: var(--radius-control);
+  color: var(--ink-2);
+  background: transparent;
+  font: 12px/1 var(--font-body);
+}
+
+.agent-empty-state {
+  width: min(100%, var(--agent-thread-width));
+  height: 100%;
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) !important;
+  place-content: center start;
+  margin-inline: auto;
+  padding: 32px 4px;
+}
+
+.agent-empty-state__copy {
+  max-width: 42rem;
+  display: grid;
+  gap: 10px;
+}
+
+.agent-empty-state small {
+  color: var(--signal-pale);
+  font: 12px/1.2 var(--font-body);
+  letter-spacing: 0;
+}
+
+.agent-empty-state strong {
+  color: var(--ink-1);
+  font: 650 22px/1.25 var(--font-body);
+  letter-spacing: -0.015em;
+}
+
+.agent-empty-state p {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--ink-2);
+  font: 14px/1.55 var(--font-body);
+}
+
+.agent-alert-region.has-alert,
+.agent-link-cue,
+.agent-linked-context {
+  width: min(100%, var(--agent-thread-width));
+  margin: 0 auto 14px;
+  border: 1px solid var(--structure) !important;
+  border-radius: var(--radius-panel);
+  color: var(--ink-2);
+  background: var(--surface-1) !important;
+  box-shadow: none !important;
+}
+
+.agent-alert-region.has-alert {
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 12px 14px;
+  border-color: color-mix(in srgb, var(--status-danger) 52%, var(--structure)) !important;
+  font: 12px/1.4 var(--font-body);
+}
+
+.agent-alert-region.has-alert small {
+  grid-column: 1 / -1;
+  max-width: none;
+  color: var(--ink-3);
+  font: 11px/1.4 var(--font-body);
+}
+
+.agent-link-cue,
+.agent-linked-context {
+  padding: 12px 14px;
+}
+
+.agent-link-cue :where(small, strong, p),
+.agent-linked-context :where(small, strong, code) {
+  letter-spacing: 0;
+}
+
+.agent-link-cue button,
+.agent-linked-context button {
+  min-height: 32px;
+  padding-inline: 10px;
+  border: 1px solid var(--structure);
+  border-radius: var(--radius-control);
+  color: var(--ink-2);
+  background: transparent;
+  font: 12px/1 var(--font-body);
+}
+
+.agent-composer {
+  width: min(calc(100% - 36px), var(--agent-thread-width));
+  min-height: 118px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px;
+  grid-template-rows: 28px minmax(48px, auto) 38px;
+  gap: 0;
+  margin: 0 auto 16px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--structure) !important;
+  border-radius: var(--radius-panel);
+  background: var(--surface-2) !important;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--shell-effect-shadow) 30%, transparent);
+}
+
+.agent-composer:focus-within {
+  border-color: color-mix(in srgb, var(--ink-3) 70%, var(--structure)) !important;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--ink-1) 8%, transparent),
+    0 4px 16px color-mix(in srgb, var(--shell-effect-shadow) 30%, transparent);
+}
+
+.agent-composer label {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  padding: 8px 12px 0;
+  color: var(--ink-3);
+  font: 11px/1 var(--font-body);
+  letter-spacing: 0;
+}
+
+.agent-composer textarea {
+  grid-column: 1;
+  grid-row: 2;
+  width: 100%;
+  min-height: 48px;
+  max-height: 140px;
+  resize: none;
+  padding: 8px 12px 10px;
+  border: 0 !important;
+  border-radius: 0;
+  outline: 0;
+  color: var(--ink-1) !important;
+  caret-color: var(--signal);
+  background: transparent !important;
+  box-shadow: none !important;
+  font: 14px/1.45 var(--font-body);
+}
+
+.agent-composer textarea::placeholder {
+  color: var(--ink-3);
+}
+
+.agent-composer > button {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
+  justify-self: center;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0 !important;
+  border-radius: var(--radius-control);
+  color: var(--ink-3) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.agent-composer > button span {
+  display: none;
+}
+
+.agent-composer > button svg {
+  width: 19px;
+  height: 19px;
+}
+
+.agent-composer > button.is-send:not(:disabled) {
+  color: var(--shell-accent-foreground) !important;
+  background: var(--signal) !important;
+}
+
+.agent-composer > button.is-send:not(:disabled):hover,
+.agent-composer > button.is-send:not(:disabled):focus-visible {
+  background: var(--signal-pale) !important;
+}
+
+.agent-composer > button.is-stop:not(:disabled) {
+  color: var(--status-danger) !important;
+  background: color-mix(in srgb, var(--status-danger) 10%, transparent) !important;
+}
+
+.agent-footer {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px;
+  border-top: 1px solid var(--structure-weak) !important;
+  color: var(--ink-3);
+  background: color-mix(in srgb, var(--surface-1) 76%, transparent) !important;
+  font: 11px/1 var(--font-body);
+  letter-spacing: 0;
+}
+
+.agent-footer small,
+.agent-footer code {
+  color: var(--ink-3) !important;
+  font: inherit;
+  letter-spacing: 0;
+}
+
+/* Transient panels and quick search */
+
+.overlay-layer,
+.shell-panel-layer {
+  background: var(--shell-transient-backdrop) !important;
+  animation: none !important;
+}
+
+.explorer-dialog-layer {
+  background: var(--shell-modal-scrim) !important;
+  animation: overlay-in var(--motion-normal) var(--ease-out);
+}
+
+.shell-panel,
+.command-palette,
+.window-switcher-chassis {
+  border: 1px solid var(--structure) !important;
+  border-radius: var(--radius-message) !important;
+  color: var(--ink-2) !important;
+  background: var(--surface-1) !important;
+  background-image: none !important;
+  box-shadow: var(--shell-shadow-float) !important;
+  clip-path: none !important;
+}
+
+.shell-panel::after,
+.command-palette::after,
+.window-switcher-chassis::before,
+.window-switcher-chassis::after {
+  display: none !important;
+}
+
+.shell-panel-header {
+  min-height: 52px;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 34px !important;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px 0 16px !important;
+  border-bottom: 1px solid var(--structure-weak) !important;
+  border-radius: var(--radius-message) var(--radius-message) 0 0 !important;
+  background: var(--surface-1) !important;
+}
+
+.shell-panel-header > span {
+  display: flex !important;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.shell-panel-header strong {
+  color: var(--ink-1) !important;
+  font: 650 15px/1.2 var(--font-body) !important;
+  letter-spacing: 0 !important;
+}
+
+.shell-panel-header small {
+  color: var(--ink-3) !important;
+  font: 11px/1.2 var(--font-body) !important;
+  letter-spacing: 0 !important;
+}
+
+.shell-panel-header > button {
+  width: 32px !important;
+  height: 32px !important;
+  border: 0 !important;
+  border-radius: var(--radius-control) !important;
+  color: var(--ink-3) !important;
+  background: transparent !important;
+}
+
+.shell-panel-header > button:hover,
+.shell-panel-header > button:focus-visible {
+  color: var(--ink-1) !important;
+  background: var(--surface-3) !important;
+}
+
+.shell-panel :where(button, input, select, textarea) {
+  border-radius: var(--radius-control) !important;
+  font-family: var(--font-body) !important;
+  letter-spacing: 0 !important;
+}
+
+.shell-panel :where(input, select, textarea) {
+  border-color: var(--structure) !important;
+  color: var(--ink-1) !important;
+  background: var(--surface-2) !important;
+}
+
+.shell-panel :where(button:hover:not(:disabled), button:focus-visible:not(:disabled)) {
+  border-color: transparent !important;
+  color: var(--ink-1) !important;
+  background: var(--surface-3) !important;
+}
+
+.start-search {
+  margin: 12px 16px 8px;
+  border: 1px solid var(--structure) !important;
+  border-radius: var(--radius-panel) !important;
+  background: var(--surface-2) !important;
+}
+
+.start-search input {
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.command-palette {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(680px, calc(100vh - 32px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.command-palette form {
+  height: 58px;
+  margin: 12px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 36px 36px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 14px;
+  border: 1px solid var(--structure) !important;
+  border-radius: var(--radius-panel);
+  background: var(--surface-2) !important;
+  box-shadow: none;
+}
+
+.command-palette form:focus-within {
+  border-color: var(--structure-strong) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink-1) 8%, transparent);
+}
+
+.command-palette form > svg {
+  width: 19px;
+  height: 19px;
+  color: var(--ink-3);
+}
+
+.command-palette input {
+  min-width: 0;
+  border: 0 !important;
+  color: var(--ink-1);
+  background: transparent !important;
+  font: 16px/1.3 var(--font-body);
+}
+
+.command-palette input:focus,
+.command-palette input:focus-visible,
+.agent-composer textarea:focus,
+.agent-composer textarea:focus-visible {
+  outline: none !important;
+}
+
+.command-palette input::placeholder {
+  color: var(--ink-3);
+}
+
+.command-palette form > button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0 !important;
+  border-radius: var(--radius-control);
+  color: var(--ink-3) !important;
+  background: transparent !important;
+}
+
+.command-palette form > button:hover:not(:disabled),
+.command-palette form > button:focus-visible:not(:disabled) {
+  color: var(--ink-1) !important;
+  background: var(--surface-3) !important;
+}
+
+.command-palette .run-command:not(:disabled) {
+  color: var(--shell-accent-foreground) !important;
+  background: var(--signal) !important;
+}
+
+.command-results-surface {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.command-query-history {
+  min-height: 34px;
+  margin: 0 12px 6px;
+  gap: 6px;
+  color: var(--ink-3);
+  font: 11px/1 var(--font-body);
+  letter-spacing: 0;
+}
+
+.command-query-history button {
+  height: 28px;
+  border: 0 !important;
+  border-radius: var(--radius-control);
+  color: var(--ink-2) !important;
+  background: var(--surface-2) !important;
+  font: 11px/1 var(--font-body);
+}
+
+.command-results {
+  max-height: min(500px, calc(100vh - 190px));
+  margin: 0 12px;
+  padding: 4px;
+  overflow-y: auto;
+  border: 0 !important;
+  scrollbar-color: var(--structure-strong) transparent !important;
+}
+
+.command-results > button {
+  min-height: 56px;
+  grid-template-columns: 36px minmax(0, 1fr) auto 20px;
+  gap: 10px;
+  margin-bottom: 2px;
+  padding: 8px 10px;
+  border: 0 !important;
+  border-radius: var(--radius-panel);
+  color: var(--ink-2) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.command-results > button:hover,
+.command-results > button.is-active,
+.command-results > button[aria-selected="true"] {
+  color: var(--ink-1) !important;
+  background: var(--surface-3) !important;
+  box-shadow: none !important;
+}
+
+.command-results > button:is(:hover, .is-active, [aria-selected="true"])
+  .command-result-copy strong {
+  color: var(--ink-1) !important;
+}
+
+.command-results > button:is(:hover, .is-active, [aria-selected="true"])
+  :where(.command-result-copy small, .command-result-category) {
+  color: var(--ink-2) !important;
+}
+
+.command-results > button:is(:hover, .is-active, [aria-selected="true"])
+  .command-result-icon {
+  color: var(--signal-pale) !important;
+}
+
+.command-result-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-control);
+  color: var(--ink-2);
+  background: var(--surface-2);
+}
+
+.command-result-icon :where(svg, img) {
+  width: 20px;
+  height: 20px;
+}
+
+.command-result-copy strong {
+  color: var(--ink-1) !important;
+  font: 600 14px/1.2 var(--font-body);
+}
+
+.command-result-copy small {
+  color: var(--ink-3) !important;
+  font: 11px/1.25 var(--font-body);
+}
+
+.command-result-copy mark {
+  color: var(--signal-pale);
+  background: transparent;
+  text-shadow: none;
+}
+
+.command-result-category {
+  color: var(--ink-3) !important;
+  font: 10px/1 var(--font-data);
+  letter-spacing: 0.03em;
+}
+
+.command-shortcut-bar {
+  min-height: 48px;
+  height: auto !important;
+  display: grid !important;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px !important;
+  padding: 7px 12px !important;
+  border-top: 1px solid var(--structure-weak);
+  color: var(--ink-3) !important;
+  background: color-mix(in srgb, var(--surface-0) 68%, transparent);
+  font: 11px/1 var(--font-body) !important;
+  letter-spacing: 0 !important;
+}
+
+.command-search-tools {
+  min-height: 0;
+  margin: 0;
+  gap: 4px;
+  color: var(--ink-3);
+}
+
+.command-search-tools button {
+  height: 30px;
+  padding-inline: 8px;
+  border: 0 !important;
+  border-radius: var(--radius-control);
+  color: var(--ink-3) !important;
+  background: transparent !important;
+  font: 11px/1 var(--font-body);
+  letter-spacing: 0;
+}
+
+.command-search-tools button.is-active,
+.command-search-tools button[aria-pressed="true"] {
+  color: var(--ink-1) !important;
+  background: var(--signal-fill) !important;
+}
+
+.command-search-tools button kbd {
+  border: 0;
+  color: inherit;
+  font: 10px/1 var(--font-data);
+}
+
+.command-shortcut-hint {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-3) !important;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-shortcut-bar > small {
+  color: var(--ink-3) !important;
+  white-space: nowrap;
+}
+
+/* Unified compact command menus */
+
+:where(
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+) {
+  padding: 4px !important;
+  border: 1px solid var(--structure) !important;
+  border-radius: var(--radius-panel) !important;
+  color: var(--ink-2) !important;
+  background: var(--surface-2) !important;
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--shell-effect-shadow) 48%, transparent) !important;
+  animation: command-menu-in var(--motion-normal) var(--ease-out);
+}
+
+.desktop-menu-root,
+.explorer-context-menu__items {
+  padding: 0 !important;
+}
+
+:where(
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+) :where(button, .desktop-menu-item) {
+  min-height: 32px !important;
+  border: 0 !important;
+  border-radius: var(--radius-control) !important;
+  color: var(--ink-2) !important;
+  background: transparent !important;
+  font: 13px/1.2 var(--font-body) !important;
+  letter-spacing: 0 !important;
+}
+
+:where(
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+) :where(button:hover:not(:disabled), button:focus-visible:not(:disabled)) {
+  border-color: transparent !important;
+  color: var(--ink-1) !important;
+  background: var(--surface-3) !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+) button:focus-visible:not(:disabled) {
+  outline: 1px solid var(--signal) !important;
+  outline-offset: -1px !important;
+}
+
+:where(.desktop-menu-separator, .explorer-context-menu__separator) {
+  height: 1px !important;
+  margin: 4px 8px !important;
+  background: var(--structure-weak) !important;
+}
+
+.desktop-menu-item__icon,
+.explorer-context-menu__items button > svg {
+  color: var(--ink-3) !important;
+}
+
+.desktop-menu-item__icon.is-checked {
+  color: var(--signal) !important;
+}
+
+.explorer-context-menu__items button kbd {
+  color: var(--ink-3) !important;
+  font: 10px/1 var(--font-data) !important;
+}
+
+@keyframes command-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Direct, non-theatrical Alt+Tab */
+
+.jarvis-window-switcher {
+  background: var(--shell-transient-backdrop) !important;
+}
+
+.window-switcher-chassis {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: min(860px, calc(100vw - 40px));
+  height: auto;
+  max-height: calc(100dvh - 40px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: 0;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+}
+
+.window-switcher-header,
+.window-switcher-footer {
+  min-height: 52px;
+  padding: 0 16px;
+  border-color: var(--structure-weak) !important;
+  background: var(--surface-1) !important;
+}
+
+.window-switcher-footer {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 16px !important;
+}
+
+.window-switcher-brand span {
+  color: var(--ink-1) !important;
+  font: 650 14px/1.2 var(--font-body) !important;
+  letter-spacing: 0 !important;
+}
+
+.window-switcher-brand small,
+.window-switcher-instructions span {
+  color: var(--ink-3) !important;
+  font: 11px/1.2 var(--font-body) !important;
+  letter-spacing: 0 !important;
+}
+
+.window-switcher-rail {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+  grid-auto-rows: minmax(128px, 148px);
+  align-content: start;
+  gap: 8px !important;
+  max-height: min(520px, calc(100dvh - 144px));
+  padding: 12px !important;
+  overflow-y: auto !important;
+  perspective: none !important;
+}
+
+.window-switcher-card {
+  min-width: 0 !important;
+  min-height: 128px !important;
+  display: grid !important;
+  grid-template-rows: 42px minmax(0, 1fr) !important;
+  grid-template-columns: 1fr !important;
+  justify-items: start;
+  gap: 10px !important;
+  padding: 14px !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--radius-panel) !important;
+  color: var(--ink-2) !important;
+  background: var(--surface-2) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.window-switcher-card:hover {
+  background: var(--surface-3) !important;
+}
+
+.window-switcher-card.is-selected {
+  border-color: color-mix(in srgb, var(--signal) 62%, var(--structure)) !important;
+  background: var(--signal-fill) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--signal) 16%, transparent) inset !important;
+  transform: none !important;
+}
+
+.window-switcher-icon {
+  width: 40px !important;
+  height: 40px !important;
+  border: 1px solid var(--structure) !important;
+  border-radius: var(--radius-panel) !important;
+  color: var(--ink-2) !important;
+  background: var(--surface-1) !important;
+  transform: none !important;
+}
+
+.window-switcher-icon > * {
+  transform: none !important;
+}
+
+.window-switcher-copy {
+  align-self: stretch;
+  display: grid;
+  align-content: end;
+  gap: 6px;
+}
+
+.window-switcher-copy strong {
+  color: var(--ink-1) !important;
+  font: 600 13px/1.25 var(--font-body) !important;
+  letter-spacing: 0 !important;
+}
+
+.window-switcher-copy small {
+  color: var(--ink-3) !important;
+  font: 11px/1.25 var(--font-body) !important;
+  letter-spacing: 0 !important;
+}
+
+.window-switcher-instructions :where(kbd, span) {
+  letter-spacing: 0 !important;
+}
+
+/* Start and quick settings follow the same quiet tool-panel grammar. */
+
+.start-panel {
+  width: min(640px, calc(100vw - 32px));
+}
+
+.start-search {
+  min-height: 44px;
+  gap: 10px;
+  margin: 12px 16px 8px;
+  padding: 0 7px 0 13px;
+  border-color: var(--structure) !important;
+  border-radius: var(--radius-panel) !important;
+  background: var(--surface-2) !important;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+
+.start-search:focus-within {
+  border-color: var(--structure-strong) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink-1) 8%, transparent);
+}
+
+.start-search > svg {
+  color: var(--ink-3) !important;
+}
+
+.start-search input,
+.start-search input:focus,
+.start-search input:focus-visible {
+  outline: none !important;
+  color: var(--ink-1) !important;
+  font: 14px/1.3 var(--font-body) !important;
+}
+
+.start-search input::placeholder {
+  color: var(--ink-3) !important;
+}
+
+.start-search > button {
+  height: 30px;
+  padding-inline: 10px;
+  border: 0 !important;
+  border-left: 1px solid var(--structure-weak) !important;
+  border-radius: 0 !important;
+  color: var(--ink-2) !important;
+  font: 12px/1 var(--font-body) !important;
+}
+
+.start-view-switch {
+  min-height: 38px;
+  gap: 4px;
+  margin: 0 16px 5px;
+  border-bottom-color: var(--structure-weak) !important;
+}
+
+.start-view-switch > button {
+  height: 34px;
+  gap: 6px;
+  padding-inline: 10px;
+  color: var(--ink-3) !important;
+  font: 600 12px/1 var(--font-body) !important;
+}
+
+.start-view-switch > button:hover,
+.start-view-switch > button.is-active {
+  color: var(--ink-1) !important;
+  background: transparent !important;
+}
+
+.start-view-switch > button.is-active::after {
+  height: 2px;
+  background: var(--signal) !important;
+  box-shadow: none !important;
+}
+
+.start-view-switch > button small,
+.start-view-switch > span {
+  color: var(--ink-3) !important;
+  font: 10px/1 var(--font-data) !important;
+  letter-spacing: 0 !important;
+}
+
+.start-view-switch > .start-catalog-refresh {
+  border: 0 !important;
+  border-radius: var(--radius-control) !important;
+}
+
+.start-section-heading {
+  min-height: 30px;
+  margin: 2px 18px 0;
+  color: var(--ink-2) !important;
+  font: 600 12px/1.2 var(--font-body) !important;
+  letter-spacing: 0 !important;
+}
+
+.start-section-heading small,
+.start-heading-actions button {
+  color: var(--ink-3) !important;
+  font: 10px/1.2 var(--font-data) !important;
+  letter-spacing: 0 !important;
+}
+
+.start-heading-actions button {
+  border: 0 !important;
+  border-radius: var(--radius-control) !important;
+  padding: 4px 6px;
+}
+
+.start-app-grid,
+.start-recent-list,
+.start-running-list {
+  gap: 6px;
+  padding: 2px 16px 12px;
+}
+
+.start-pinned-tile {
+  height: 68px;
+  border: 1px solid transparent !important;
+  border-radius: var(--radius-panel);
+  background: transparent !important;
+}
+
+.start-pinned-tile:hover,
+.start-pinned-tile:focus-within {
+  border-color: var(--structure) !important;
+  background: var(--surface-2) !important;
+}
+
+.start-pinned-launch {
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 9px;
+  padding: 8px 24px 8px 9px;
+}
+
+.start-pinned-launch > span,
+.quick-setting-grid > button > span {
+  color: var(--signal-pale) !important;
+  filter: none !important;
+}
+
+.start-pinned-launch strong,
+.start-application-copy strong,
+.start-running-list strong {
+  color: var(--ink-1) !important;
+  font: 550 12px/1.25 var(--font-body) !important;
+}
+
+.start-pinned-remove {
+  color: var(--ink-3) !important;
+}
+
+.start-application-row,
+.start-running-list > button {
+  border: 1px solid transparent !important;
+  border-radius: var(--radius-panel) !important;
+  background: var(--surface-2) !important;
+}
+
+.start-application-row:hover,
+.start-application-row:focus-within,
+.start-running-list > button:hover,
+.start-running-list > button:focus-visible {
+  border-color: var(--structure) !important;
+  background: var(--surface-3) !important;
+}
+
+.start-application-row.is-pinned {
+  border-color: var(--structure-weak) !important;
+}
+
+.start-application-main:focus-visible {
+  outline: 1px solid var(--signal) !important;
+  outline-offset: -2px !important;
+}
+
+:where(
+  .start-pinned-launch,
+  .start-running-list > button,
+  .start-footer > button,
+  .start-view-switch > button,
+  .quick-setting-grid > button
+):focus-visible {
+  outline: 1px solid var(--signal) !important;
+  outline-offset: -2px !important;
+}
+
+.start-application-pin {
+  border-left-color: var(--structure-weak) !important;
+  color: var(--ink-3) !important;
+}
+
+.start-application-pin:hover,
+.start-application-pin:focus-visible,
+.start-application-row.is-pinned .start-application-pin {
+  color: var(--signal-pale) !important;
+  background: var(--surface-3) !important;
+}
+
+.start-application-icon,
+.start-running-list > button > svg {
+  color: var(--ink-2) !important;
+  filter: none !important;
+}
+
+.start-application-copy small,
+.start-running-list small,
+.shell-empty-state {
+  color: var(--ink-3) !important;
+  font: 10px/1.25 var(--font-data) !important;
+  letter-spacing: 0 !important;
+}
+
+.start-footer {
+  min-height: 54px;
+  gap: 4px;
+  padding: 8px 10px 8px 16px;
+  border-top-color: var(--structure-weak) !important;
+  background: color-mix(in srgb, var(--surface-0) 72%, transparent) !important;
+}
+
+.start-footer > span strong {
+  color: var(--ink-2) !important;
+  font: 600 11px/1.2 var(--font-body) !important;
+}
+
+.start-footer > span small {
+  color: var(--ink-3) !important;
+  font: 10px/1.2 var(--font-data) !important;
+}
+
+.start-footer > button {
+  height: 34px;
+  border: 0 !important;
+  color: var(--ink-3) !important;
+  background: transparent !important;
+  font: 11px/1 var(--font-body) !important;
+}
+
+.start-footer > button:hover,
+.start-footer > button.is-exit:hover {
+  color: var(--ink-1) !important;
+  background: var(--surface-3) !important;
+}
+
+.quick-status-strip {
+  gap: 6px;
+  margin: 12px;
+  border: 0 !important;
+}
+
+.quick-status-strip > span {
+  height: 68px;
+  border: 1px solid transparent !important;
+  border-radius: var(--radius-panel);
+  background: var(--surface-2);
+}
+
+.quick-status-strip svg {
+  color: var(--ink-2) !important;
+}
+
+.quick-status-strip .is-offline :where(svg, strong) {
+  color: var(--status-danger) !important;
+}
+
+.quick-status-strip strong,
+.quick-volume-card > span:nth-child(2) strong,
+.quick-setting-grid strong {
+  color: var(--ink-1) !important;
+  font: 600 11px/1.2 var(--font-body) !important;
+}
+
+.quick-status-strip small,
+.quick-volume-card > span:nth-child(2) small,
+.quick-setting-grid small,
+.quick-settings-footer {
+  color: var(--ink-3) !important;
+  font: 10px/1.2 var(--font-data) !important;
+  letter-spacing: 0 !important;
+}
+
+.quick-volume-card,
+.quick-setting-grid > button {
+  border: 1px solid transparent !important;
+  border-radius: var(--radius-panel) !important;
+  background: var(--surface-2) !important;
+}
+
+.quick-setting-grid > button:hover,
+.quick-setting-grid > button:focus-visible {
+  border-color: var(--structure) !important;
+  background: var(--surface-3) !important;
+}
+
+.quick-settings-footer {
+  border-top-color: var(--structure-weak) !important;
+}
+
+.quick-settings-footer strong {
+  color: var(--ink-2) !important;
+  font-size: 10px !important;
+}
+
+@container agent-window (max-width: 740px) {
+  .agent-titlebar {
+    grid-template-columns: 34px minmax(0, 1fr) auto repeat(4, 34px) !important;
+    padding-left: 5px;
+  }
+
+  .agent-titlebar__identity {
+    gap: 8px;
+    padding-inline: 6px;
+  }
+
+  .agent-titlebar__identity small {
+    max-width: 210px;
+  }
+
+  .agent-runtime-state {
+    padding-inline: 6px;
+  }
+
+  .agent-transcript {
+    padding-inline: 12px;
+  }
+
+  .agent-message.is-user {
+    max-width: 82%;
+  }
+
+  .agent-composer {
+    width: calc(100% - 24px);
+    margin-bottom: 12px;
+  }
+
+  .agent-footer code {
+    display: none;
+  }
+}
+
+@media (min-width: 1700px) and (min-height: 900px) {
+  .agent-workbench {
+    --agent-thread-width: 54rem;
+  }
+
+  .agent-message p,
+  .agent-composer textarea,
+  .agent-empty-state p {
+    font-size: 15px;
+  }
+
+  .agent-message > header,
+  .agent-composer label,
+  .agent-footer {
+    font-size: 12px;
+  }
+
+  .agent-composer {
+    min-height: 126px;
+    grid-template-rows: 30px minmax(52px, auto) 40px;
+  }
+}
+
+@media (min-width: 2300px) and (min-height: 1200px) {
+  .agent-workbench {
+    --agent-thread-width: 64rem;
+  }
+
+  .agent-transcript {
+    padding-top: 32px;
+  }
+
+  .agent-message p,
+  .agent-composer textarea,
+  .agent-empty-state p {
+    font-size: 16px;
+  }
+
+  .agent-message > header,
+  .agent-composer label,
+  .agent-footer,
+  .agent-titlebar__identity small,
+  .agent-runtime-state {
+    font-size: 13px;
+  }
+
+  .agent-titlebar__identity strong {
+    font-size: 15px;
+  }
+
+  .agent-composer {
+    min-height: 138px;
+    grid-template-rows: 32px minmax(58px, auto) 42px;
+    margin-bottom: 20px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .topbar.hud-chassis {
+    grid-template-columns: minmax(250px, 1fr) auto auto;
+    padding-inline: 6px;
+  }
+
+  .search-cluster {
+    width: min(220px, 28vw);
+  }
+
+  .command-shortcut-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 820px) {
+  .brand-name,
+  .search-cluster > span,
+  .command-result-category,
+  .command-shortcut-bar > small {
+    display: none;
+  }
+
+  .search-cluster {
+    width: 40px;
+    padding: 0 !important;
+    justify-content: center;
+  }
+
+  .command-palette {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+  }
+
+  .command-shortcut-bar {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (forced-colors: active) {
+  .agent-composer,
+  .agent-message.is-user,
+  .shell-panel,
+  .command-palette,
+  .window-switcher-chassis,
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu {
+    border-color: CanvasText !important;
+  }
+
+  .agent-composer > button.is-send:not(:disabled),
+  .command-palette .run-command:not(:disabled),
+  .window-switcher-card.is-selected {
+    color: HighlightText !important;
+    background: Highlight !important;
+  }
+
+  .agent-composer:focus-within,
+  .command-palette form:focus-within {
+    outline: 2px solid Highlight !important;
+    outline-offset: -2px !important;
+  }
+
+  :where(
+    .agent-titlebar > button,
+    .shell-panel-header > button,
+    .command-palette form > button
+  ):focus-visible:not(:disabled) {
+    outline: 2px solid Highlight !important;
+    outline-offset: -2px !important;
+  }
+
+  :where(
+    .desktop-context-menu,
+    .desktop-context-submenu,
+    .explorer-context-menu,
+    .taskbar-flyout-mock.is-context
+  ) button:focus-visible:not(:disabled) {
+    outline: 2px solid Highlight !important;
+    outline-offset: -2px !important;
+  }
+
+  :where(
+    .start-pinned-launch,
+    .start-application-main,
+    .start-running-list > button,
+    .start-footer > button,
+    .start-view-switch > button,
+    .quick-setting-grid > button
+  ):focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: -2px !important;
   }
 }

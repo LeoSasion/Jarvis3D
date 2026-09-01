@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useLanguage } from "../i18n/language-system.js";
 import {
   WORKSPACE_WINDOW_DEFINITIONS,
   constrainWindowBounds,
@@ -9,6 +10,7 @@ import {
   isDockedWindow,
   isLinkedWindowSuppressed,
 } from "../workspace-layout-mode.js";
+import { getLocalizedWorkspaceWindowTitle } from "../workspace-window-labels.js";
 
 const RESIZE_DIRECTIONS = Object.freeze([
   "n",
@@ -21,15 +23,15 @@ const RESIZE_DIRECTIONS = Object.freeze([
   "nw",
 ]);
 
-const DIRECTION_LABELS = Object.freeze({
-  n: "Resize from top",
-  ne: "Resize from top right",
-  e: "Resize from right",
-  se: "Resize from bottom right",
-  s: "Resize from bottom",
-  sw: "Resize from bottom left",
-  w: "Resize from left",
-  nw: "Resize from top left",
+const DIRECTION_KEYS = Object.freeze({
+  n: "top",
+  ne: "topRight",
+  e: "right",
+  se: "bottomRight",
+  s: "bottom",
+  sw: "bottomLeft",
+  w: "left",
+  nw: "topLeft",
 });
 
 function getMaximizedBounds(viewport) {
@@ -74,9 +76,11 @@ export function ManagedWorkspaceWindow({
   onToggleMaximize,
   children,
 }) {
+  const { t } = useLanguage();
   const frameRef = useRef(null);
   const gestureRef = useRef(null);
   const definition = WORKSPACE_WINDOW_DEFINITIONS[id];
+  const windowTitle = getLocalizedWorkspaceWindowTitle(id, t, definition.label);
   const docked = isDockedWindow(id, layoutMode);
   const linkedVariant = getLinkedWorkspaceVariant(viewport);
   const layoutSuppressed = layoutMode === "explorer-agent-linked"
@@ -252,7 +256,9 @@ export function ManagedWorkspaceWindow({
           className={`workspace-resize-handle is-${direction}`}
           role="separator"
           tabIndex={0}
-          aria-label={`${DIRECTION_LABELS[direction]} ${definition.label}`}
+          aria-label={t(`workspaceWindow.resize.${DIRECTION_KEYS[direction]}`, {
+            window: windowTitle,
+          })}
           aria-orientation={direction === "n" || direction === "s" ? "horizontal" : "vertical"}
           data-window-resize={direction}
           onKeyDown={(event) => resizeWithKeyboard(event, direction)}

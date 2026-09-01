@@ -10,10 +10,11 @@ function read(object, camelKey, pascalKey) {
 }
 
 function normalizeFailure(failure) {
+  const message = read(failure, "message", "Message");
   return {
     source: String(read(failure, "source", "Source") ?? ""),
     code: String(read(failure, "code", "Code") ?? "TRANSFER_FAILED"),
-    message: String(read(failure, "message", "Message") ?? "Windows could not complete the transfer."),
+    message: message === null || message === undefined ? null : String(message),
   };
 }
 
@@ -77,30 +78,4 @@ export function canReplaceAllConflicts(preflight) {
   return preflight.conflicts.every((conflict) => (
     conflict.source.toLocaleLowerCase() !== conflict.target.toLocaleLowerCase()
   ));
-}
-
-export function getTransferSummary(transfer) {
-  if (!transfer) return "";
-  if (transfer.status === "completed") {
-    const skipped = transfer.skippedItems > 0 ? ` · ${transfer.skippedItems} skipped` : "";
-    return `${transfer.completedItems} completed${skipped}`;
-  }
-  if (transfer.status === "completed-with-errors") {
-    return `${transfer.completedItems} completed · ${transfer.failedItems} failed · ${transfer.skippedItems} skipped`;
-  }
-  if (transfer.status === "cancelled") {
-    return "Transfer cancelled · partial output cleaned";
-  }
-  if (transfer.status === "failed") {
-    return transfer.error || transfer.result.failures[0]?.message || "Transfer failed";
-  }
-  if (transfer.status === "scanning") {
-    return `Scanning ${transfer.totalItems} item${transfer.totalItems === 1 ? "" : "s"}`;
-  }
-  if (transfer.status === "cancelling") {
-    return "Cancelling safely";
-  }
-  return transfer.currentItem
-    ? `${transfer.mode === "move" ? "Moving" : "Copying"} ${transfer.currentItem}`
-    : "Preparing transfer";
 }

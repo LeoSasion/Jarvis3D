@@ -1,0 +1,169 @@
+.graph-source-settings {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 0.5px solid var(--structure-weak);
+  background: #030303;
+}
+
+.graph-source-settings > header,
+.graph-source-settings__actions,
+.graph-source-settings__status {
+  display: flex;
+  align-items: center;
+}
+
+.graph-source-settings > header {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.graph-source-settings > header > span,
+.graph-source-settings__status > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.graph-source-settings > header strong,
+.graph-source-settings > header small,
+.graph-source-settings__metrics small,
+.graph-source-settings__status small,
+.graph-source-settings__privacy {
+  letter-spacing: 0.12em;
+}
+
+.graph-source-settings > header strong {
+  color: var(--ink-1);
+  font: 600 12px/1.2 var(--font-data);
+}
+
+.graph-source-settings > header small,
+.graph-source-settings__status small,
+.graph-source-settings__privacy {
+  color: var(--ink-3);
+  font: 500 10px/1.45 var(--font-data);
+}
+
+.graph-source-settings > header code {
+  color: var(--ink-2);
+  font: 600 10px/1 var(--font-data);
+  white-space: nowrap;
+}
+
+.graph-source-settings.is-warning > header code,
+.graph-source-settings.is-error > header code,
+.graph-source-settings.is-warning .graph-source-settings__status > svg,
+.graph-source-settings.is-error .graph-source-settings__status > svg {
+  color: var(--signal);
+}
+
+.graph-source-settings__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-block: 0.5px solid var(--structure-weak);
+}
+
+.graph-source-settings__metrics > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 11px 8px;
+  border-right: 0.5px solid var(--structure-weak);
+}
+
+.graph-source-settings__metrics > span:last-child {
+  border-right: 0;
+}
+
+.graph-source-settings__metrics strong {
+  overflow: hidden;
+  color: var(--ink-1);
+  font: 500 18px/1 var(--font-display);
+  text-overflow: ellipsis;
+}
+
+.graph-source-settings__metrics small {
+  overflow: hidden;
+  color: var(--ink-3);
+  font: 500 9px/1.2 var(--font-data);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-source-settings__status {
+  gap: 10px;
+  margin: 0;
+  color: var(--ink-2);
+  font: 400 12px/1.45 var(--font-body);
+}
+
+.graph-source-settings__status > i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  background: var(--ink-2);
+}
+
+.graph-source-settings__status > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.graph-source-settings__actions {
+  gap: 8px;
+}
+
+.graph-source-settings__actions button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-inline: 14px;
+  border: 0.5px solid var(--structure);
+  background: transparent;
+  color: var(--ink-1);
+  font: 600 10px/1 var(--font-data);
+  letter-spacing: 0.12em;
+}
+
+.graph-source-settings__actions button:hover,
+.graph-source-settings__actions button:focus-visible {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+.graph-source-settings__actions button:disabled {
+  border-color: var(--structure-weak);
+  color: var(--ink-3);
+}
+
+.graph-source-settings__actions svg {
+  width: 16px;
+  height: 16px;
+}
+
+.graph-source-settings__privacy {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .graph-source-settings__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .graph-source-settings__metrics > span:nth-child(2) {
+    border-right: 0;
+  }
+
+  .graph-source-settings__metrics > span:nth-child(-n + 2) {
+    border-bottom: 0.5px solid var(--structure-weak);
+  }
+
+  .graph-source-settings__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}

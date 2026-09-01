@@ -57,6 +57,23 @@ test("deduplicates installed applications already represented by a pinned capabi
   assert.equal(applications.find((application) => application.label === "Alpha").kind, "pinned");
 });
 
+test("Start application labels sort with the selected UI language", () => {
+  const applications = ["中", "阿", "A"].map((label) => ({
+    id: label,
+    label,
+    target: `${label}.exe`,
+  }));
+
+  assert.deepEqual(
+    buildStartMenuApplications(applications, [], "en-US").map(({ label }) => label),
+    ["A", "中", "阿"],
+  );
+  assert.deepEqual(
+    buildStartMenuApplications(applications, [], "zh-CN").map(({ label }) => label),
+    ["阿", "中", "A"],
+  );
+});
+
 test("virtualizes a large grouped application catalog to a bounded render window", () => {
   const largeCatalog = Array.from({ length: 10_000 }, (_, index) => ({
     applicationId: `app-${index}`,

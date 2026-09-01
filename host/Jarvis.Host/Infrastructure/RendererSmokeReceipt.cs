@@ -12,6 +12,7 @@ internal sealed record RendererSmokeResult(
     bool AgentOpened,
     bool LinkedWorkspaceReady,
     bool NoticeAvoidsCriticalControls,
+    bool GraphSurfaceResolved,
     bool ReducedMotionStylesApplied)
 {
     public bool Succeeded =>
@@ -22,7 +23,39 @@ internal sealed record RendererSmokeResult(
         AgentOpened &&
         LinkedWorkspaceReady &&
         NoticeAvoidsCriticalControls &&
+        GraphSurfaceResolved &&
         ReducedMotionStylesApplied;
+}
+
+internal static class RendererSmokeGraphSurfacePolicy
+{
+    internal const string BrowserExpression =
+        """
+        (() => {
+          const stage = document.querySelector('.core-stage');
+          const media = stage?.querySelector('.core-stage__media');
+          const runtimeReady = Boolean(media?.querySelector('[data-runtime-state="ready"]'));
+          const graphSourceReady = Boolean(media?.querySelector('.core-stage__readout.is-graph-source'));
+          const stableDisconnectedReady = Boolean(
+            media?.classList.contains('is-neural-fallback') &&
+            media.querySelector('.core-stage__readout:not(.is-graph-source)')
+          );
+          const stableRuntimeFallback = Boolean(
+            media?.matches('[data-runtime-fallback="resolved"]') ||
+            media?.querySelector('[data-runtime-fallback="resolved"]')
+          );
+          return stableRuntimeFallback ||
+            (runtimeReady && (graphSourceReady || stableDisconnectedReady));
+        })()
+        """;
+
+    internal static bool IsResolved(
+        bool runtimeReady,
+        bool graphSourceReady,
+        bool stableDisconnectedReady,
+        bool stableRuntimeFallback) =>
+        stableRuntimeFallback ||
+        (runtimeReady && (graphSourceReady || stableDisconnectedReady));
 }
 
 internal static class RendererSmokeReceipt
@@ -51,6 +84,7 @@ internal static class RendererSmokeReceipt
             Mode: "renderer-smoke",
             options.Nonce,
             DataRoot: options.DataRoot,
+            Culture: options.CultureName,
             MainWindowCreated: mainWindowCreated,
             TaskbarTouched: false,
             result,
@@ -85,6 +119,7 @@ internal static class RendererSmokeReceipt
         string Mode,
         string Nonce,
         string DataRoot,
+        string Culture,
         bool MainWindowCreated,
         bool TaskbarTouched,
         RendererSmokeResult? Result,

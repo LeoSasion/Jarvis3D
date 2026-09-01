@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using Microsoft.Web.WebView2.Core;
 
@@ -31,8 +32,13 @@ internal static class WebViewEnvironmentProvider
             "JARVIS",
             "WebView2");
         Directory.CreateDirectory(userDataDirectory);
+        var options = new CoreWebView2EnvironmentOptions
+        {
+            Language = CultureInfo.CurrentUICulture.Name,
+        };
         return CoreWebView2Environment.CreateAsync(
             browserExecutableFolder: null,
-            userDataFolder: userDataDirectory);
+            userDataFolder: userDataDirectory,
+            options: options);
     }
 }

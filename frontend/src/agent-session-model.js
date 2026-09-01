@@ -35,6 +35,8 @@ export const AGENT_CAPABILITIES = Object.freeze({
   newSession: "new-session",
 });
 
+export const AGENT_HISTORY_UNAVAILABLE = "AGENT_HISTORY_UNAVAILABLE";
+
 const LEGACY_AGENT_CAPABILITIES = Object.freeze(
   Object.values(AGENT_CAPABILITIES),
 );
@@ -94,7 +96,13 @@ function providerIdentifier(value) {
 
 function errorText(value) {
   if (value === undefined || value === null || value === "") return null;
-  return String(value?.message ?? value?.Message ?? value);
+  if (typeof value === "object") {
+    const message = value?.message ?? value?.Message;
+    return message === undefined || message === null || message === ""
+      ? null
+      : String(message);
+  }
+  return String(value);
 }
 
 function normalizeAgentError(value) {
@@ -536,7 +544,7 @@ function reduceAgentSessionAction(current, action) {
     case "history-error":
       return {
         ...current,
-        historyError: errorText(action.error) ?? "Conversation history is temporarily unavailable.",
+        historyError: errorText(action.error) ?? AGENT_HISTORY_UNAVAILABLE,
       };
     case "error":
       return {
@@ -547,7 +555,7 @@ function reduceAgentSessionAction(current, action) {
           activeRunId: null,
           error: normalizeAgentError(action.error) ?? {
             code: "AGENT_ERROR",
-            message: "Agent request failed.",
+            message: null,
             retryable: false,
           },
         }),

@@ -48,6 +48,10 @@
   #error SourceDir is missing third-party notices.
 #endif
 
+#ifnexist SourceDir + "\ThirdPartyLicenses\frontend\FRONTEND-RUNTIME-LICENSES.json"
+  #error SourceDir is missing the reviewed frontend runtime license receipt.
+#endif
+
 #ifnexist SourceDir + "\SHA256SUMS.txt"
   #error SourceDir is missing the complete release checksum manifest.
 #endif
@@ -89,6 +93,7 @@ Name: "autostart"; Description: "Start JARVIS when I sign in to Windows"; GroupD
 [InstallDelete]
 Type: filesandordirs; Name: "{app}\frontend"
 Type: filesandordirs; Name: "{app}\AgentRuntime"
+Type: filesandordirs; Name: "{app}\ThirdPartyLicenses"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

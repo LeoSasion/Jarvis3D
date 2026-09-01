@@ -12,8 +12,10 @@ the native Explorer taskbar and desktop.
 - [Windows 11 test closure](win11-test-closure.md) is the dated, machine-specific
   record for the available Windows 11 hardware gates completed on 2026-07-30.
   It is historical evidence, not a claim of current-release certification.
-- Automated release checks live with the source: frontend tests and production
-  build, Host tests and build, and `scripts/verify-renderer-smoke.ps1`.
+- Automated CI checks live with the source: frontend tests and production build,
+  Host tests and build, frontend license closure, and synthetic Pi staging
+  safety checks. Run `scripts/verify-renderer-smoke.ps1` in both `en-US` and
+  `zh-CN` from an interactive Windows desktop as a pre-release gate.
 
 ## Coverage still required for a release claim
 

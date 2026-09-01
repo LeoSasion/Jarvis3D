@@ -7,6 +7,8 @@ import {
 import { useMemo, useState } from "react";
 import { mergeSystemFeedEvents } from "../feedback-model.js";
 import { useSystemFeed, useSystemSnapshot } from "../hooks/usePlatformData.js";
+import { useLanguage } from "../i18n/language-system.js";
+import { formatTime } from "../i18n/locale-format.js";
 import {
   getCompactTelemetrySummary,
   getTelemetryPriorityPresentation,
@@ -25,13 +27,16 @@ function SegmentBar({ active = 10 }) {
   );
 }
 
-function ResourceRow({ resource, onInspect }) {
+function ResourceRow({ resource, onInspect, t }) {
   return (
     <button
       type="button"
       className="resource-row"
       onClick={() => onInspect(resource.label)}
-      aria-label={`Inspect ${resource.label}: ${resource.value}`}
+      aria-label={t("telemetry.resource.inspect", {
+        label: resource.label,
+        value: resource.value,
+      })}
     >
       <span className="resource-copy">
         <span className="resource-heading">
@@ -49,13 +54,43 @@ function ResourceRow({ resource, onInspect }) {
   );
 }
 
-function formatFeedTime(timestamp) {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function formatFeedTime(timestamp, language) {
+  return formatTime(timestamp, language);
+}
+
+function getLocalizedPriorityCopy({ events, feedError, feedLoading, priorityState, t }) {
+  if (feedError) {
+    return {
+      title: t("telemetry.priority.disconnected.title"),
+      detail: t("telemetry.priority.disconnected.detail"),
+      meta: priorityState.meta,
+    };
+  }
+  if (feedLoading) {
+    return {
+      title: t("telemetry.priority.connecting.title"),
+      detail: t("telemetry.priority.connecting.detail"),
+      meta: events.length > 0
+        ? t("telemetry.priority.connecting.cached", { count: events.length })
+        : t("telemetry.priority.connecting.waiting"),
+    };
+  }
+  if (priorityState.kind === "warning") {
+    return {
+      title: t("telemetry.priority.attention.title"),
+      detail: priorityState.detail,
+      meta: priorityState.meta,
+    };
+  }
+  return {
+    title: t("telemetry.priority.nominal.title"),
+    detail: events[0]?.title ?? t("telemetry.priority.nominal.detail"),
+    meta: events[0]?.detail || t("telemetry.priority.nominal.events", { count: events.length }),
+  };
 }
 
 export function TelemetryRail({ compact = false, localEvents = [], onInspect, onNotification }) {
+  const { language, t } = useLanguage();
   const { processes, resources } = useSystemSnapshot();
   const feed = useSystemFeed();
   const events = useMemo(
@@ -65,6 +100,7 @@ export function TelemetryRail({ compact = false, localEvents = [], onInspect, on
   const [resourcesExpanded, setResourcesExpanded] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(false);
   const visibleResources = resourcesExpanded ? resources : resources.slice(0, 2);
   const visibleEvents = events.slice(0, 5);
   const unreadCount = Math.min(99, events.filter((item) => item.unread).length);
@@ -73,6 +109,13 @@ export function TelemetryRail({ compact = false, localEvents = [], onInspect, on
     feedError: feed.error,
     feedLoading: feed.loading,
   });
+  const priorityCopy = getLocalizedPriorityCopy({
+    events,
+    feedError: feed.error,
+    feedLoading: feed.loading,
+    priorityState,
+    t,
+  });
   const railMode = getTelemetryRailMode({ compact, priorityKind: priorityState.kind });
   const compactSummary = getCompactTelemetrySummary(resources);
   const PriorityIcon = priorityState.kind === "warning"
@@ -80,61 +123,110 @@ export function TelemetryRail({ compact = false, localEvents = [], onInspect, on
     : priorityState.kind === "connecting"
       ? InfoRegular
       : CheckmarkCircleRegular;
+  const toggleRail = () => setRailCollapsed((current) => !current);
+
+  if (railCollapsed) {
+    return (
+      <aside
+        className={`telemetry-rail is-${railMode} is-rail-collapsed`}
+        aria-label={t("telemetry.accessibility.label")}
+      >
+        <button
+          type="button"
+          className="telemetry-rail__visibility is-restore"
+          aria-label={t("telemetry.action.show")}
+          aria-expanded="false"
+          title={t("telemetry.action.show")}
+          onClick={toggleRail}
+        >
+          <ChevronRightRegular aria-hidden="true" />
+          <span>{t("telemetry.action.showSystem")}</span>
+        </button>
+      </aside>
+    );
+  }
 
   return (
-    <aside className={`telemetry-rail is-${railMode}`} aria-label="System telemetry">
+    <aside className={`telemetry-rail is-${railMode}`} aria-label={t("telemetry.accessibility.label")}>
+      <header className="telemetry-rail__chrome">
+        <span className="telemetry-rail__chrome-label">
+          <i aria-hidden="true" />
+          <strong>{t("telemetry.title")}</strong>
+        </span>
+        <button
+          type="button"
+          className="telemetry-rail__visibility"
+          aria-label={t("telemetry.action.hide")}
+          aria-expanded="true"
+          onClick={toggleRail}
+        >
+          <span>{t("telemetry.action.hideShort")}</span>
+          <ChevronRightRegular aria-hidden="true" />
+        </button>
+      </header>
       {railMode === "compact-nominal" ? (
         <button
           type="button"
           className="telemetry-compact-summary"
-          onClick={() => onInspect("System Health")}
-          aria-label={compactSummary.label}
+          onClick={() => onInspect(t("telemetry.target.systemHealth"))}
+          aria-label={t("telemetry.compact.summary", {
+            cpu: compactSummary.cpu,
+            memory: compactSummary.memory,
+          })}
         >
           <CheckmarkCircleRegular aria-hidden="true" />
-          <span><strong>SYSTEM NOMINAL</strong><small>CPU {compactSummary.cpu} · MEMORY {compactSummary.memory}</small></span>
+          <span>
+            <strong>{t("telemetry.priority.nominal.title")}</strong>
+            <small>{t("telemetry.compact.metrics", {
+              cpu: compactSummary.cpu,
+              memory: compactSummary.memory,
+            })}</small>
+          </span>
           <ChevronRightRegular aria-hidden="true" />
         </button>
       ) : <>
-        <HudPanel title="SYSTEM PRIORITY" className={`priority-panel ${priorityState.className}`}>
-        <button type="button" className="telemetry-priority" onClick={() => onInspect("System Health")}>
+        <HudPanel title={t("telemetry.section.priority")} className={`priority-panel ${priorityState.className}`}>
+        <button type="button" className="telemetry-priority" onClick={() => onInspect(t("telemetry.target.systemHealth"))}>
           <PriorityIcon />
           <span>
-            <strong>{priorityState.title}</strong>
-            <small>{priorityState.detail}</small>
-            <em>{priorityState.meta}</em>
+            <strong>{priorityCopy.title}</strong>
+            <small>{priorityCopy.detail}</small>
+            <em>{priorityCopy.meta}</em>
           </span>
           <ChevronRightRegular className="telemetry-row-affordance" aria-hidden="true" />
         </button>
         </HudPanel>
 
         <HudPanel
-        title="SYSTEM RESOURCES"
+        title={t("telemetry.section.resources")}
         className="resources-panel"
         action={resources.length > 2 ? (
           <button type="button" className="telemetry-inline-action" onClick={() => setResourcesExpanded((current) => !current)}>
-            {resourcesExpanded ? "SHOW LESS" : `${resources.length - 2} MORE`}
+            {resourcesExpanded
+              ? t("telemetry.resources.showLess")
+              : t("telemetry.resources.showMore", { count: resources.length - 2 })}
           </button>
         ) : null}
       >
         <div className="resource-list">
           {visibleResources.map((resource) => (
-            <ResourceRow key={resource.id} resource={resource} onInspect={onInspect} />
+            <ResourceRow key={resource.id} resource={resource} onInspect={onInspect} t={t} />
           ))}
         </div>
         </HudPanel>
       </>}
 
       <HudPanel
-        title="SYSTEM ACTIVITY"
+        title={t("telemetry.section.activity")}
         className="activity-panel"
         collapsible
         open={activityOpen}
         onToggle={() => setActivityOpen((current) => !current)}
         action={<span className="telemetry-count">{processes.length}</span>}
       >
-        <div className="process-title">ACTIVE PROCESSES</div>
+        <div className="process-title">{t("telemetry.activity.title")}</div>
         <div className="process-grid process-grid--header" aria-hidden="true">
-          <span>NAME</span><span>CPU</span><span>MEM</span><span>NET</span>
+          <span>{t("telemetry.activity.column.name")}</span><span>CPU</span><span>MEM</span><span>NET</span>
         </div>
         <div className="process-list">
           {processes.map((process) => (
@@ -143,7 +235,12 @@ export function TelemetryRail({ compact = false, localEvents = [], onInspect, on
               type="button"
               className="process-grid"
               onClick={() => onInspect(process.name)}
-              aria-label={`Inspect ${process.name}: CPU ${process.cpu}, memory ${process.memory}, network ${process.network}`}
+              aria-label={t("telemetry.process.inspect", {
+                name: process.name,
+                cpu: process.cpu,
+                memory: process.memory,
+                network: process.network,
+              })}
             >
               <span className="process-name"><i aria-hidden="true" />{process.name}</span>
               <span>{process.cpu}</span><span>{process.memory}</span><span>{process.network}</span>
@@ -153,7 +250,7 @@ export function TelemetryRail({ compact = false, localEvents = [], onInspect, on
       </HudPanel>
 
       <HudPanel
-        title="SYSTEM FEED"
+        title={t("telemetry.section.feed")}
         action={<span className="notification-count">{unreadCount}</span>}
         className="notifications-panel"
         collapsible
@@ -161,7 +258,7 @@ export function TelemetryRail({ compact = false, localEvents = [], onInspect, on
         onToggle={() => setFeedOpen((current) => !current)}
       >
         <div className="notification-list">
-          {visibleEvents.length === 0 ? <p className="system-feed-empty">No session events</p> : null}
+          {visibleEvents.length === 0 ? <p className="system-feed-empty">{t("telemetry.feed.empty")}</p> : null}
           {visibleEvents.map((notification) => {
             const Icon = notification.severity === "ok"
               ? CheckmarkCircleRegular
@@ -175,14 +272,14 @@ export function TelemetryRail({ compact = false, localEvents = [], onInspect, on
                   <strong>{notification.title}</strong>
                   <small>{notification.detail}</small>
                 </span>
-                <time dateTime={notification.timestamp ?? undefined}>{formatFeedTime(notification.timestamp)}</time>
+                <time dateTime={notification.timestamp ?? undefined}>{formatFeedTime(notification.timestamp, language)}</time>
                 <ChevronRightRegular className="telemetry-row-affordance" aria-hidden="true" />
               </button>
             );
           })}
         </div>
       </HudPanel>
-      {feed.loading ? <p className="telemetry-loading" role="status">CONNECTING TO EVENT FEED</p> : null}
+      {feed.loading ? <p className="telemetry-loading" role="status">{t("telemetry.feed.connecting")}</p> : null}
     </aside>
   );
 }

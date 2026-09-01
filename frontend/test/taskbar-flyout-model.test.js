@@ -55,7 +55,6 @@ test("taskbar overflow summary separates visible, running, and pinned counts", (
     visible: 1,
     running: 2,
     pinned: 2,
-    label: "1/3 APPS · 2 RUNNING · 2 PINNED",
   });
 });
 
@@ -85,7 +84,7 @@ test("native overflow preserves grouped taskbar order across host and renderer i
   assert.equal(payload.items[0].windowId, "native:1");
   assert.equal(payload.items[0].label, "External");
   assert.equal(payload.items[1].label, "Pinned Tool");
-  assert.equal(payload.items[1].meta, "PINNED APPLICATION");
+  assert.equal(Object.hasOwn(payload.items[1], "meta"), false);
   assert.equal(payload.items[2].windowId, "internal:agent");
 });
 
@@ -100,5 +99,5 @@ test("native internal groups preserve the selected renderer window identifier", 
   });
 
   assert.deepEqual(items.map((item) => item.windowId), ["internal:1", "internal:2"]);
-  assert.match(items[1].meta, /MINIMIZED/u);
+  assert.equal(items.every((item) => !Object.hasOwn(item, "meta")), true);
 });

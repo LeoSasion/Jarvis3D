@@ -9,6 +9,8 @@ import {
 } from "@fluentui/react-icons";
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useSystemSnapshot } from "../hooks/usePlatformData.js";
+import { useLanguage } from "../i18n/language-system.js";
+import { formatDateTime, formatTime } from "../i18n/locale-format.js";
 import { platform } from "../platform/index.js";
 import { SparklineCanvas } from "./SparklineCanvas.jsx";
 
@@ -31,19 +33,15 @@ function formatBytes(value) {
   return `${Math.round(bytes / 1000)} KB`;
 }
 
-function formatStartedAt(value) {
-  if (!value) return "PROTECTED";
+function formatStartedAt(value, language, t) {
+  if (!value) return t("systemInspector.process.protected");
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "UNKNOWN";
-  return date.toLocaleString(undefined, {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).toUpperCase();
+  if (Number.isNaN(date.getTime())) return t("systemInspector.state.unknown");
+  return formatDateTime(date, language).toLocaleUpperCase(language);
 }
 
-function OverviewView({ system, details }) {
+function OverviewView({ system, details, t }) {
+  const uptimeHours = Math.floor(system.status.uptimeSeconds / 3600);
   return (
     <div className="inspector-overview">
       <div className="inspector-resource-grid">
@@ -57,25 +55,27 @@ function OverviewView({ system, details }) {
       </div>
 
       <section className="inspector-summary-card">
-        <header><DesktopRegular /><span><small>ACTIVE HOST</small><strong>{details?.computer?.machineName ?? system.status.machineName}</strong></span></header>
+        <header><DesktopRegular /><span><small>{t("systemInspector.overview.activeHost")}</small><strong>{details?.computer?.machineName ?? system.status.machineName}</strong></span></header>
         <dl>
-          <div><dt>OPERATING SYSTEM</dt><dd>{details?.computer?.operatingSystem ?? system.status.osDescription}</dd></div>
-          <div><dt>PROCESSOR</dt><dd>{details?.computer?.processorName ?? "Reading hardware identity…"}</dd></div>
-          <div><dt>LOGICAL PROCESSORS</dt><dd>{details?.computer?.logicalProcessors ?? "—"}</dd></div>
-          <div><dt>SESSION UPTIME</dt><dd>{Math.floor(system.status.uptimeSeconds / 3600)} HOURS</dd></div>
+          <div><dt>{t("systemInspector.field.operatingSystem")}</dt><dd>{details?.computer?.operatingSystem ?? system.status.osDescription}</dd></div>
+          <div><dt>{t("systemInspector.field.processor")}</dt><dd>{details?.computer?.processorName ?? t("systemInspector.overview.readingHardware")}</dd></div>
+          <div><dt>{t("systemInspector.field.logicalProcessors")}</dt><dd>{details?.computer?.logicalProcessors ?? "—"}</dd></div>
+          <div><dt>{t("systemInspector.field.sessionUptime")}</dt><dd>{t(uptimeHours === 1
+            ? "systemInspector.uptime.hours.one"
+            : "systemInspector.uptime.hours.other", { count: uptimeHours })}</dd></div>
         </dl>
       </section>
 
       <section className={`inspector-sensor-state${details?.sensors?.available ? " is-ready" : ""}`}>
         <PulseRegular />
-        <span><strong>HARDWARE SENSOR CHANNEL</strong><small>{details?.sensors?.detail ?? "Waiting for system detail snapshot…"}</small></span>
-        <code>{details?.sensors?.available ? "READY" : "ISOLATED"}</code>
+        <span><strong>{t("systemInspector.sensor.title")}</strong><small>{details?.sensors?.detail ?? t("systemInspector.sensor.waiting")}</small></span>
+        <code>{details?.sensors?.available ? t("systemInspector.state.ready") : t("systemInspector.state.isolated")}</code>
       </section>
     </div>
   );
 }
 
-function ProcessesView({ details, system, target }) {
+function ProcessesView({ details, language, system, t, target }) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase());
   const liveByPid = useMemo(() => new Map(system.processes.map((process) => [process.pid, process])), [system.processes]);
@@ -87,11 +87,16 @@ function ProcessesView({ details, system, target }) {
     <div className="inspector-processes">
       <label className="inspector-process-search">
         <SearchRegular />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter process name or PID" />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t("systemInspector.process.filterPlaceholder")}
+          aria-label={t("systemInspector.process.filterAria")}
+        />
         <span>{processes.length} / {details?.processes?.length ?? 0}</span>
       </label>
       <div className="inspector-process-grid inspector-process-head" aria-hidden="true">
-        <span>PROCESS</span><span>PID</span><span>CPU</span><span>WORKING SET</span><span>PRIVATE</span><span>THREADS</span><span>STATE</span><span>STARTED</span>
+        <span>{t("systemInspector.process.column.process")}</span><span>PID</span><span>CPU</span><span>{t("systemInspector.process.column.workingSet")}</span><span>{t("systemInspector.process.column.private")}</span><span>{t("systemInspector.process.column.threads")}</span><span>{t("systemInspector.process.column.state")}</span><span>{t("systemInspector.process.column.started")}</span>
       </div>
       <div className="inspector-process-list">
         {processes.map((process) => {
@@ -105,8 +110,12 @@ function ProcessesView({ details, system, target }) {
               <span>{formatBytes(process.workingSetBytes)}</span>
               <span>{formatBytes(process.privateMemoryBytes)}</span>
               <span>{process.threadCount}</span>
-              <span>{process.responding == null ? "SERVICE" : process.responding ? "READY" : "HUNG"}</span>
-              <time>{formatStartedAt(process.startedAt)}</time>
+              <span>{process.responding == null
+                ? t("systemInspector.process.service")
+                : process.responding
+                  ? t("systemInspector.state.ready")
+                  : t("systemInspector.process.hung")}</span>
+              <time>{formatStartedAt(process.startedAt, language, t)}</time>
             </div>
           );
         })}
@@ -115,12 +124,12 @@ function ProcessesView({ details, system, target }) {
   );
 }
 
-function HardwareView({ details }) {
+function HardwareView({ details, t }) {
   const computer = details?.computer;
   return (
     <div className="inspector-hardware">
       <section className="hardware-identity-card">
-        <header><DesktopRegular /><span><small>PLATFORM IDENTITY</small><strong>{computer?.manufacturer ?? "—"} · {computer?.model ?? "—"}</strong></span></header>
+        <header><DesktopRegular /><span><small>{t("systemInspector.hardware.platformIdentity")}</small><strong>{computer?.manufacturer ?? "—"} · {computer?.model ?? "—"}</strong></span></header>
         <dl>
           <div><dt>CPU</dt><dd>{computer?.processorName ?? "—"}</dd></div>
           <div><dt>BIOS</dt><dd>{computer?.biosVendor ?? "—"} · {computer?.biosVersion ?? "—"}</dd></div>
@@ -129,17 +138,17 @@ function HardwareView({ details }) {
       </section>
 
       <section className="hardware-section">
-        <header><WindowAppsRegular /><span>DISPLAY ADAPTERS</span><small>{details?.graphicsAdapters?.length ?? 0}</small></header>
+        <header><WindowAppsRegular /><span>{t("systemInspector.hardware.displayAdapters")}</span><small>{details?.graphicsAdapters?.length ?? 0}</small></header>
         <div className="hardware-adapter-list">
           {(details?.graphicsAdapters ?? []).map((adapter) => (
-            <div key={`${adapter.name}:${adapter.driverVersion}`}><i /><span><strong>{adapter.name}</strong><small>DRIVER {adapter.driverVersion ?? "UNKNOWN"}</small></span></div>
+            <div key={`${adapter.name}:${adapter.driverVersion}`}><i /><span><strong>{adapter.name}</strong><small>DRIVER {adapter.driverVersion ?? t("systemInspector.state.unknown")}</small></span></div>
           ))}
-          {details?.graphicsAdapters?.length ? null : <p>No display-adapter identity was exposed by Windows.</p>}
+          {details?.graphicsAdapters?.length ? null : <p>{t("systemInspector.hardware.noDisplayAdapter")}</p>}
         </div>
       </section>
 
       <section className="hardware-section">
-        <header><HardDriveRegular /><span>STORAGE CHANNELS</span><small>{details?.drives?.length ?? 0}</small></header>
+        <header><HardDriveRegular /><span>{t("systemInspector.hardware.storageChannels")}</span><small>{details?.drives?.length ?? 0}</small></header>
         <div className="hardware-drive-list">
           {(details?.drives ?? []).map((drive) => {
             const total = Number(drive.totalBytes) || 0;
@@ -149,7 +158,11 @@ function HardwareView({ details }) {
               <article key={drive.name}>
                 <header><strong>{drive.label}</strong><code>{drive.name}</code></header>
                 <div><i style={{ width: `${usedPercent}%` }} /></div>
-                <small>{formatBytes(total - free)} USED · {formatBytes(free)} FREE · {drive.fileSystem}</small>
+                <small>{t("systemInspector.hardware.storageUsage", {
+                  used: formatBytes(total - free),
+                  free: formatBytes(free),
+                  fileSystem: drive.fileSystem,
+                })}</small>
               </article>
             );
           })}
@@ -169,6 +182,7 @@ export function SystemInspector({
   onToggleMaximize,
   onToast,
 }) {
+  const { language, t } = useLanguage();
   const system = useSystemSnapshot();
   const [view, setView] = useState("overview");
   const [details, setDetails] = useState(null);
@@ -186,9 +200,9 @@ export function SystemInspector({
       })
       .catch((error) => {
         setStatus("error");
-        onToast(`System details unavailable: ${error.message}`);
+        onToast(t("systemInspector.error.detailsUnavailable", { message: error.message }));
       });
-  }, [onToast, target]);
+  }, [onToast, t, target]);
 
   useEffect(() => {
     if (open) refresh();
@@ -207,44 +221,50 @@ export function SystemInspector({
 
   return (
     <div className="system-inspector-layer">
-      <section className="system-inspector" role="dialog" aria-modal="false" aria-label="System inspector">
+      <section className="system-inspector" role="dialog" aria-modal="false" aria-label={t("systemInspector.accessibility.window")}>
         <header
           className="system-inspector-titlebar"
           data-window-drag-handle
           aria-keyshortcuts="Alt+F4 Alt+F9 Alt+F10"
         >
           <span><PulseRegular /></span>
-          <span><small>ON-DEMAND NATIVE SNAPSHOT</small><strong>SYSTEM INSPECTOR</strong></span>
-          <code>{status === "loading" ? "SCANNING" : status === "error" ? "DEGRADED" : "SNAPSHOT READY"}</code>
-          <button type="button" data-no-window-drag onClick={refresh} disabled={status === "loading"} aria-label="Refresh system details"><ArrowClockwiseRegular /></button>
-          <button type="button" data-no-window-drag onClick={onMinimize} aria-label="Minimize system inspector">—</button>
+          <span><small>{t("systemInspector.header.eyebrow")}</small><strong>{t("systemInspector.header.title")}</strong></span>
+          <code>{status === "loading"
+            ? t("systemInspector.status.scanning")
+            : status === "error"
+              ? t("systemInspector.status.degraded")
+              : t("systemInspector.status.ready")}</code>
+          <button type="button" data-no-window-drag onClick={refresh} disabled={status === "loading"} aria-label={t("systemInspector.action.refresh")}><ArrowClockwiseRegular /></button>
+          <button type="button" data-no-window-drag onClick={onMinimize} aria-label={t("systemInspector.action.minimize")}>—</button>
           <button
             type="button"
             data-no-window-drag
             onClick={onToggleMaximize}
-            aria-label={maximized ? "Restore system inspector" : "Maximize system inspector"}
+            aria-label={t(maximized
+              ? "systemInspector.action.restore"
+              : "systemInspector.action.maximize")}
           >
             {maximized ? "❐" : "□"}
           </button>
-          <button type="button" data-no-window-drag onClick={onClose} aria-label="Close system inspector"><DismissRegular /></button>
+          <button type="button" data-no-window-drag onClick={onClose} aria-label={t("systemInspector.action.close")}><DismissRegular /></button>
         </header>
 
-        <nav className="system-inspector-tabs" aria-label="System detail views">
+        <nav className="system-inspector-tabs" aria-label={t("systemInspector.tabs.aria")}>
           {[
-            ["overview", "OVERVIEW"],
-            ["processes", "PROCESSES"],
-            ["hardware", "HARDWARE"],
-          ].map(([id, label]) => (
-            <button key={id} type="button" className={view === id ? "is-active" : ""} onClick={() => setView(id)}>{label}</button>
+            ["overview", "systemInspector.tabs.overview"],
+            ["processes", "systemInspector.tabs.processes"],
+            ["hardware", "systemInspector.tabs.hardware"],
+          ].map(([id, labelKey]) => (
+            <button key={id} type="button" className={view === id ? "is-active" : ""} onClick={() => setView(id)}>{t(labelKey)}</button>
           ))}
-          <span>{details?.capturedAt ? new Date(details.capturedAt).toLocaleTimeString() : "—"}</span>
+          <span>{details?.capturedAt ? formatTime(details.capturedAt, language) : "—"}</span>
         </nav>
 
         <div className={`system-inspector-content is-${view}`} aria-busy={status === "loading"}>
-          {view === "overview" ? <OverviewView system={system} details={details} /> : null}
-          {view === "processes" ? <ProcessesView details={details} system={system} target={target} /> : null}
-          {view === "hardware" ? <HardwareView details={details} /> : null}
-          {status === "loading" && !details ? <div className="system-inspector-loading"><i /><span>READING WINDOWS SYSTEM STATE</span></div> : null}
+          {view === "overview" ? <OverviewView system={system} details={details} t={t} /> : null}
+          {view === "processes" ? <ProcessesView details={details} language={language} system={system} t={t} target={target} /> : null}
+          {view === "hardware" ? <HardwareView details={details} t={t} /> : null}
+          {status === "loading" && !details ? <div className="system-inspector-loading"><i /><span>{t("systemInspector.loading")}</span></div> : null}
         </div>
       </section>
     </div>

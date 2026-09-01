@@ -18,7 +18,8 @@ test("nominal linked system rail starts collapsed without inventing attention", 
 
   assert.equal(presentation.level, "nominal");
   assert.equal(presentation.attentionCount, 0);
-  assert.equal(presentation.priorityTitle, "SYSTEM NOMINAL");
+  assert.equal(presentation.priorityTitle, null);
+  assert.equal(presentation.priorityTitleKey, "linkedSystem.priority.nominal");
   assert.equal(createLinkedSystemRailState(presentation).expanded, false);
 });
 
@@ -112,7 +113,8 @@ test("agent health failures stay attention even when runtime status says ready",
     const presentation = getLinkedSystemRailPresentation({ agentState });
     assert.equal(presentation.level, "error");
     assert.equal(presentation.attentionCount, 1);
-    assert.equal(presentation.priorityTitle, "AGENT CONNECTION NEEDS ATTENTION");
+    assert.equal(presentation.priorityTitle, null);
+    assert.equal(presentation.priorityTitleKey, "linkedSystem.priority.agentAttention");
   }
 });
 

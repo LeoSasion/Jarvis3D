@@ -3,11 +3,14 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 import "./vector-shell.css";
 import "./operator-workspace.css";
+import "./shell-aesthetic.css";
 import "./motion.css";
 import { installUiAudioBridge } from "./audio-system.js";
+import { initializeLanguageSystem, translate } from "./i18n/language-system.js";
 import { initializeInterfacePreferences } from "./interface-preferences.js";
 import { initializeVisualTheme } from "./theme-system.js";
 
+initializeLanguageSystem();
 initializeVisualTheme();
 initializeInterfacePreferences();
 installUiAudioBridge();
@@ -19,7 +22,9 @@ const loadSurface = surface === "taskbar"
   ? import("./TaskbarSurface.jsx").then((module) => module.TaskbarSurface)
   : surface === "switcher"
     ? import("./WindowSwitcherSurface.jsx").then((module) => module.WindowSwitcherSurface)
-    : import("./App.jsx").then((module) => module.App);
+    : surface === "orb"
+      ? import("./NeuralOrbSurface.jsx").then((module) => module.NeuralOrbSurface)
+      : import("./App.jsx").then((module) => module.App);
 
 loadSurface.then((Surface) => {
   createRoot(document.getElementById("root")).render(
@@ -39,5 +44,7 @@ loadSurface.then((Surface) => {
       });
   }
 }).catch((error) => {
-  document.getElementById("root").textContent = `JARVIS surface failed to load: ${error.message}`;
+  document.getElementById("root").textContent = translate("app.surfaceLoadFailed", {
+    message: error.message,
+  });
 });

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   advanceWindowSwitcherState,
   getVisibleWindowSwitcherEntries,
+  getWindowSwitcherSelectionScrollTop,
   getWindowInitials,
   normalizeWindowSwitcherState,
   WINDOW_SWITCHER_VISIBLE_LIMIT,
@@ -31,6 +32,20 @@ test("normalizes host casing and wraps selected indexes", () => {
   assert.equal(state.reverse, true);
 });
 
+test("preserves stable internal window identity without localizing model titles", () => {
+  const state = normalizeWindowSwitcherState({
+    Windows: [{
+      WindowId: "jarvis:inspector",
+      InternalWindowId: "inspector",
+      Title: "System Inspector",
+      ProcessName: "jarvis-inspector",
+    }],
+  });
+
+  assert.equal(state.windows[0].internalWindowId, "inspector");
+  assert.equal(state.windows[0].title, "System Inspector");
+});
+
 test("advances in both directions with wrapping", () => {
   const initial = normalizeWindowSwitcherState({
     windows: createWindows(3),
@@ -51,6 +66,38 @@ test("visible entries keep the selected window centered in a bounded rail", () =
   assert.equal(entries.length, WINDOW_SWITCHER_VISIBLE_LIMIT);
   assert.equal(entries.filter((entry) => entry.selected).length, 1);
   assert.equal(entries[Math.floor(entries.length / 2)].index, 10);
+});
+
+test("selected cards scroll into view inside compact native HUD heights", () => {
+  const shared = {
+    scrollHeight: 540,
+    scrollTop: 0,
+    selectedTop: 284,
+    selectedHeight: 128,
+  };
+
+  assert.equal(getWindowSwitcherSelectionScrollTop({
+    ...shared,
+    viewportHeight: 156,
+  }), 256);
+  assert.equal(getWindowSwitcherSelectionScrollTop({
+    ...shared,
+    viewportHeight: 246,
+  }), 166);
+  assert.equal(getWindowSwitcherSelectionScrollTop({
+    viewportHeight: 156,
+    scrollHeight: 540,
+    scrollTop: 256,
+    selectedTop: 284,
+    selectedHeight: 128,
+  }), 256);
+  assert.equal(getWindowSwitcherSelectionScrollTop({
+    viewportHeight: 156,
+    scrollHeight: 540,
+    scrollTop: 256,
+    selectedTop: 64,
+    selectedHeight: 128,
+  }), 64);
 });
 
 test("initials remain useful for one-word and multi-word process names", () => {
