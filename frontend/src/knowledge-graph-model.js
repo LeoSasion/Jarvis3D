@@ -1,7 +1,7 @@
 const MAX_GRAPH_COUNT = 100_000;
 export const MAX_KNOWLEDGE_GRAPH_ENTRIES = 42;
-export const KNOWLEDGE_GRAPH_MIN_ZOOM = 0.72;
-export const KNOWLEDGE_GRAPH_MAX_ZOOM = 2.2;
+export const KNOWLEDGE_GRAPH_MIN_ZOOM = 0.1;
+export const KNOWLEDGE_GRAPH_MAX_ZOOM = 8;
 
 export const DISCONNECTED_GRAPH_ACTIONS = Object.freeze([
   Object.freeze({ id: "search-local" }),

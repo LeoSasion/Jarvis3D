@@ -29,6 +29,10 @@ export const graphFxSettingRanges = Object.freeze({
   "node.pulse.amount": Object.freeze({ min: 0, max: 2, step: 0.01 }),
   "node.pulse.rate": Object.freeze({ min: 0.25, max: 2.5, step: 0.05 }),
   "edge.master.opacity": Object.freeze({ min: 0, max: 1, step: 0.01 }),
+  "edge.filament.taper": Object.freeze({ min: 0, max: 1, step: 0.01 }),
+  "edge.filament.rootWidth": Object.freeze({ min: 1, max: 6, step: 0.05 }),
+  "edge.filament.roundness": Object.freeze({ min: 0, max: 1, step: 0.01 }),
+  "edge.filament.translucency": Object.freeze({ min: 0, max: 1, step: 0.01 }),
   "edge.core.widthScale": Object.freeze({ min: 0.5, max: 2, step: 0.01 }),
   "edge.core.opacity": Object.freeze({ min: 0, max: 1, step: 0.01 }),
   "edge.core.emissionIntensity": Object.freeze({ min: 0, max: 3, step: 0.05 }),
@@ -47,6 +51,12 @@ export const graphFxSettingRanges = Object.freeze({
   "motion.idleRotationSpeed": Object.freeze({ min: 0, max: 2.5, step: 0.05 }),
   "motion.breathingAmount": Object.freeze({ min: 0, max: 2.5, step: 0.05 }),
   "motion.breathingRate": Object.freeze({ min: 0.25, max: 2.5, step: 0.05 }),
+  "orb.network.density": Object.freeze({ min: 0.75, max: 4, step: 0.05 }),
+  "orb.network.shellRatio": Object.freeze({ min: 0.1, max: 1, step: 0.01 }),
+  "orb.network.depthContrast": Object.freeze({ min: 0, max: 1, step: 0.01 }),
+  "orb.network.sizeScale": Object.freeze({ min: 0.65, max: 1.2, step: 0.01 }),
+  "orb.network.branchSpread": Object.freeze({ min: 0.5, max: 1.4, step: 0.01 }),
+  "orb.network.weave": Object.freeze({ min: 0, max: 2, step: 0.01 }),
   "orb.innerNetwork.scale": Object.freeze({ min: 0.4, max: 1, step: 0.01 }),
   "orb.innerNetwork.opacity": Object.freeze({ min: 0, max: 1, step: 0.01 }),
   "orb.innerNetwork.rotationSpeed": Object.freeze({ min: -2, max: 2, step: 0.05 }),
@@ -72,6 +82,7 @@ const RAW_DEFAULT_PROFILES = {
     },
     edge: {
       master: { opacity: 1 },
+      filament: { taper: 0, rootWidth: 4.2, roundness: 0, translucency: 0 },
       core: {
         enabled: true,
         widthScale: 0.86,
@@ -112,6 +123,7 @@ const RAW_DEFAULT_PROFILES = {
     },
     edge: {
       master: { opacity: 1 },
+      filament: { taper: 0, rootWidth: 4.2, roundness: 0, translucency: 0 },
       core: {
         enabled: true,
         widthScale: 1,
@@ -138,6 +150,7 @@ const RAW_DEFAULT_PROFILES = {
       emissionIntensity: 1,
     },
     orb: {
+      network: { density: 2.4, shellRatio: 1, depthContrast: 0, sizeScale: 1, branchSpread: 1, weave: 0.8 },
       innerNetwork: { enabled: true, scale: 0.73, opacity: 0.2, rotationSpeed: 1 },
       rim: { enabled: true, intensity: 1, fresnelPower: 5.2 },
       sparks: { enabled: true, sizeScale: 1, opacity: 0.24, emissionIntensity: 1 },

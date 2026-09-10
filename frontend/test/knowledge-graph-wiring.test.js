@@ -8,23 +8,12 @@ async function readSource(path) {
   return readFile(new URL(path, sourceRoot), "utf8");
 }
 
-test("Explorer metadata snapshots are retained by App and routed into the graph", async () => {
-  const [app, explorer, core] = await Promise.all([
-    readSource("App.jsx"),
-    readSource("components/FileExplorerWindow.jsx"),
-    readSource("components/CoreStage.jsx"),
-  ]);
-
-  assert.match(app, /const \[graphSource, setGraphSource\] = useState\(null\)/u);
-  assert.match(app, /graphSource=\{graphSource\}/u);
-  assert.match(app, /onGraphSourceChange=\{setGraphSource\}/u);
-  assert.match(app, /knowledge-graph-source-prompt/u);
-  assert.match(app, /connectedPath/u);
-  assert.match(explorer, /if \(!snapshot\.currentPath\) return;/u);
-  assert.match(explorer, /onGraphSourceChange\?\.\(snapshot\)/u);
-  assert.match(explorer, /provenance,/u);
-  assert.match(explorer, /simulation:\s*Boolean/u);
-  assert.match(core, /<KnowledgeGraphWorkspace/u);
+test("Explorer navigation cannot replace the relationship graph's Obsidian Vault", async () => {
+  const app = await readSource("App.jsx");
+  assert.match(app, /defaultGraphState=\{defaultKnowledgeGraph\}/u);
+  assert.doesNotMatch(app, /setGraphSource|graphSource=|onGraphSourceChange=/u);
+  assert.match(app, /onSelectionChange=\{setExplorerSelection\}/u);
+  assert.match(app, /onAddToAgentContext=\{linkExplorerSelectionToAgent\}/u);
 });
 
 test("connected graph actions use the bounded Agent metadata path", async () => {
@@ -153,7 +142,7 @@ test("the 3D editor exposes the named FX profile layers as independent switches"
   assert.match(settingsPanel, /t\("graphVisualSettings\.category\.nodeFx"\)/u);
   assert.match(settingsPanel, /t\("graphVisualSettings\.category\.relationFx"\)/u);
   assert.match(settingsPanel, /t\("graphVisualSettings\.category\.signals"\)/u);
-  assert.match(settingsPanel, /t\("graphVisualSettings\.category\.orb"\)/u);
+  assert.match(settingsPanel, /t\("graphVisualSettings\.scope\.idleOrb"\)/u);
   assert.match(settingsPanel, /t\("graphVisualSettings\.category\.postFx"\)/u);
   assert.match(settingsPanel, /path="postFx\.bloom\.radius" label=\{technicalLabel\(t, "BLOOM RADIUS"\)\}/u);
   assert.match(settingsStore, /settings\.profiles/u);
@@ -196,7 +185,10 @@ test("graph controls expose labels, composite keyboard navigation, and focus res
   assert.match(workspace, /t\("graph\.navigator\.connections\.types"/u);
   assert.match(workspace, /active=\{exploreMode\}/u);
   assert.match(workspace, /role=\{exploreMode \? "group" : undefined\}/u);
-  assert.match(workspace, /className="knowledge-workspace__zoom"[\s\S]*role="group"/u);
+  const tools = await readSource("components/GraphViewControls.jsx");
+  assert.match(tools, /role="group" aria-label=\{t\("graph\.workspace\.viewControls\.aria"\)\}/u);
+  assert.match(workspace, /<GraphViewControls/u);
+  assert.match(core, /<GraphViewControls/u);
   assert.match(core, /<GraphAccessibleNavigator/u);
   assert.match(core, /active=\{graphExploreMode\}/u);
   assert.match(core, /className="core-stage__graph-toolbar"[\s\S]*role="group"/u);

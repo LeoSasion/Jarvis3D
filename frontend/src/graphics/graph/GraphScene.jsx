@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   AdditiveBlending,
+  NormalBlending,
   Color,
   DoubleSide,
   DynamicDrawUsage,
@@ -30,12 +31,22 @@ import {
 } from "./graph-buffer-model.js";
 import { GraphCameraNavigation } from "./GraphCameraNavigation.jsx";
 import {
+  createNeuronEdgeView,
+  createNeuronStructure,
+  NEURON_EDGE_SEGMENTS,
+  writeNeuronCurve,
+} from "./graph-neuron-model.js";
+import { createSpatialNeuronEdgeView, writeSpatialNeuronCurve } from "./graph-neuron-spatial-model.js";
+import { createNeuronFilamentWeights, writeNeuronRibbonTangents } from "./graph-neuron-filament.js";
+import {
   GRAPH_LABEL_DYNAMIC_SLOTS,
   MAX_GRAPH_LABEL_ATLAS_ENTRIES,
   createGraphLabelAtlas,
   ensureGraphLabelFont,
   selectGraphLabelIndices,
 } from "./graph-label-atlas.js";
+import { GRAPH_LABEL_LAYER } from "./graph-label-rendering.js";
+import { createNeuronSphereModel, createNeuronSphereCurves } from "./graph-neuron-sphere-model.js";
 import {
   createGraphPointerQueue,
   createGraphScreenIndex,
@@ -82,27 +93,40 @@ const ENERGY_POINT_VERTEX_SHADER = `
   attribute float pointHierarchy;
   attribute float pointPhase;
   attribute float pointScale;
+  attribute float pointLayerScale;
+  uniform float pointLayering;
+  uniform float pointAbsoluteLayer;
+  uniform float pointOrbRadius;
   uniform float energyTime;
   uniform float pointSize;
+  uniform float pointPerspectiveFloor;
   uniform float pointScaleVariation;
+  uniform float pointCoreSizeScale;
+  uniform float pointHaloRadiusScale;
   uniform float pulseAmount;
   uniform float pointPulseMotion;
   uniform float pointPulseVisibility;
   uniform float pulseRate;
   varying vec3 pointEnergyColor;
   varying float pointEnergyHierarchy;
+  varying float pointDepthPresence;
   varying float pointPulseEnvelope;
   varying float pointPulse;
   varying float pointPulseWave;
 
   void main() {
     vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);
-    float perspective = clamp(520.0 / max(1.0, -viewPosition.z), 0.68, 1.9);
+    float centerDepth = (modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).z;
+    pointDepthPresence = smoothstep(-0.8, 0.65,
+      (viewPosition.z - centerDepth) / max(1.0, pointOrbRadius));
+    float perspective = clamp(520.0 / max(1.0, -viewPosition.z), pointPerspectiveFloor, 1.9);
     float scaleGain = mix(1.0, max(0.45, pointScale), pointScaleVariation);
+    scaleGain = mix(scaleGain, mix(1.0, pointLayerScale, pointScaleVariation), pointAbsoluteLayer);
     float pulseStrength = clamp(pulseAmount, 0.0, 2.0);
     float pulsePhase = energyTime * 1.18 * pulseRate + pointPhase * 0.42;
     pointEnergyColor = pointColor;
     pointEnergyHierarchy = pointHierarchy;
+    pointEnergyHierarchy = mix(pointEnergyHierarchy, clamp(pointLayerScale / 2.5, 0.1, 1.0), pointAbsoluteLayer);
     pointPulseWave = pointPulseMotion > 0.5
       ? 0.5 + 0.5 * sin(pulsePhase)
       : 0.52;
@@ -118,8 +142,10 @@ const ENERGY_POINT_VERTEX_SHADER = `
         * (0.34 + pointPulseWave * 0.16);
     gl_PointSize = pointSize
       * scaleGain
+      * mix(1.0, pointLayerScale, pointLayering)
       * pointPulse
       * pointPulseEnvelope
+      * max(1.0, max(pointCoreSizeScale, pointHaloRadiusScale))
       * perspective;
     gl_Position = projectionMatrix * viewPosition;
   }
@@ -129,8 +155,11 @@ const ENERGY_POINT_FRAGMENT_SHADER = `
   uniform vec3 energyColor;
   uniform float orbStyle;
   uniform float pointColorVariation;
+  uniform float pointDepthContrast;
   uniform float pointCoreEmissionIntensity;
   uniform float pointCoreOpacity;
+  uniform float pointCoreSizeScale;
+  uniform float pointHaloRadiusScale;
   uniform float pointCoreVisibility;
   uniform float pointHaloEmissionIntensity;
   uniform float pointHaloOpacity;
@@ -141,6 +170,7 @@ const ENERGY_POINT_FRAGMENT_SHADER = `
   uniform float whiteCore;
   varying vec3 pointEnergyColor;
   varying float pointEnergyHierarchy;
+  varying float pointDepthPresence;
   varying float pointPulseEnvelope;
   varying float pointPulse;
   varying float pointPulseWave;
@@ -148,9 +178,12 @@ const ENERGY_POINT_FRAGMENT_SHADER = `
   void main() {
     float spriteRadius = length(gl_PointCoord - vec2(0.5)) * 2.0;
     if (spriteRadius > 1.0) discard;
-    float radius = spriteRadius * pointPulseEnvelope;
-    float originalHalo = pow(max(0.0, 1.0 - radius), 2.15);
-    float originalCore = pow(max(0.0, 1.0 - radius), 8.0);
+    float radius = spriteRadius * pointPulseEnvelope
+      * max(1.0, max(pointCoreSizeScale, pointHaloRadiusScale));
+    float coreRadius = radius / pointCoreSizeScale;
+    float haloRadius = radius / pointHaloRadiusScale;
+    float originalHalo = pow(max(0.0, 1.0 - haloRadius), 2.15);
+    float originalCore = pow(max(0.0, 1.0 - coreRadius), 8.0);
     vec3 originalColor = mix(energyColor, vec3(1.0), originalCore * whiteCore)
       * (0.9 + originalCore * 1.8);
     float originalHaloAlpha = originalHalo
@@ -171,14 +204,21 @@ const ENERGY_POINT_FRAGMENT_SHADER = `
       pointCoreEmissionIntensity,
       originalCoreMix
     );
-    float orbHalo = 1.0 - smoothstep(0.12, 1.0, radius);
-    float orbCore = 1.0 - smoothstep(0.0, 0.64, radius);
-    float spark = 1.0 - smoothstep(0.0, 0.14, radius);
+    float orbHalo = exp(-haloRadius * haloRadius * 5.5)
+      * (1.0 - smoothstep(0.72, 1.0, haloRadius));
+    float orbCore = 1.0 - smoothstep(0.0, 0.64, coreRadius);
+    float spark = 1.0 - smoothstep(0.0, 0.14, coreRadius);
     float hierarchy = clamp(pointEnergyHierarchy, 0.0, 1.0);
     float hierarchyCore = smoothstep(0.62, 1.0, hierarchy);
     float orbCoreMix = (orbCore * 0.76 + spark * 0.24)
       * whiteCore * mix(0.06, 0.82, hierarchyCore)
       * pointCoreVisibility;
+    // A small incandescent center sits inside the colored core. Increasing
+    // emission heats this center without whitening the entire halo.
+    float thermalCore = pow(max(0.0, 1.0 - coreRadius / 0.42), 2.0)
+      * smoothstep(1.0, 3.0, pointCoreEmissionIntensity)
+      * mix(0.4, 0.8, hierarchy) * pointCoreVisibility * whiteCore;
+    orbCoreMix = max(orbCoreMix, thermalCore);
     vec3 orbBaseColor = mix(energyColor, pointEnergyColor, pointColorVariation);
     vec3 orbColor = mix(orbBaseColor, vec3(1.0), orbCoreMix)
       * mix(1.0, 1.26, hierarchy);
@@ -230,6 +270,7 @@ const ENERGY_POINT_FRAGMENT_SHADER = `
     gl_FragColor = vec4(
       mix(baseColor, pulseColor, pulseMix),
       min(1.0, baseAlpha + pulseAlpha)
+        * mix(1.0, mix(0.12, 1.0, pointDepthPresence), pointDepthContrast)
     );
   }
 `;
@@ -237,6 +278,9 @@ const ENERGY_POINT_FRAGMENT_SHADER = `
 const ENERGY_LINE_VERTEX_SHADER = `
   attribute vec3 edgeStart;
   attribute vec3 edgeEnd;
+  attribute vec3 edgeTangentStart;
+  attribute vec3 edgeTangentEnd;
+  attribute vec2 edgeFilamentWeights;
   attribute vec3 edgeColorStart;
   attribute vec3 edgeColorEnd;
   attribute float edgeWidth;
@@ -246,35 +290,85 @@ const ENERGY_LINE_VERTEX_SHADER = `
   uniform float lineHaloVisibility;
   uniform float lineWidthByStrength;
   uniform float lineWidthScale;
+  uniform float lineOrbRadius;
+  uniform float lineFilamentEnabled;
+  uniform float lineTaper;
+  uniform float lineRootWidth;
+  uniform float linePerspective;
   varying vec3 energyLineColor;
   varying float energyLineCoreBoundary;
   varying float energyLineDistance;
   varying float energyLineProgress;
   varying float energyLineStrength;
+  varying float energyLineDepthPresence;
+  varying float energyLineBranchPresence;
+  varying float energyLineGlint;
 
   void main() {
-    vec4 startClip = projectionMatrix * modelViewMatrix * vec4(edgeStart, 1.0);
-    vec4 endClip = projectionMatrix * modelViewMatrix * vec4(edgeEnd, 1.0);
+    vec4 startView = modelViewMatrix * vec4(edgeStart, 1.0);
+    vec4 endView = modelViewMatrix * vec4(edgeEnd, 1.0);
+    // Clip before screen-space extrusion: dividing behind-camera endpoints by
+    // a positive epsilon creates enormous streaks when dollying into the graph.
+    const float nearZ = -0.1;
+    if (startView.z > nearZ && endView.z > nearZ) {
+      gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      return;
+    }
+    if (startView.z > nearZ) {
+      startView = mix(startView, endView, (nearZ - startView.z) / (endView.z - startView.z));
+    }
+    if (endView.z > nearZ) {
+      endView = mix(endView, startView, (nearZ - endView.z) / (startView.z - endView.z));
+    }
+    vec4 startClip = projectionMatrix * startView;
+    vec4 endClip = projectionMatrix * endView;
     vec2 safeViewport = max(viewportSize, vec2(1.0));
     vec2 startNdc = startClip.xy / max(0.001, startClip.w);
     vec2 endNdc = endClip.xy / max(0.001, endClip.w);
     vec2 screenDirection = (endNdc - startNdc) * safeViewport;
-    float screenLength = max(0.001, length(screenDirection));
-    vec2 screenNormal = vec2(-screenDirection.y, screenDirection.x) / screenLength;
     float along = position.x;
     float side = position.y;
     vec4 clipPosition = mix(startClip, endClip, along);
+    // Shared endpoint tangents give adjacent ribbon segments the same join.
+    vec4 tangentClip = projectionMatrix * modelViewMatrix
+      * vec4(mix(edgeTangentStart, edgeTangentEnd, along), 0.0);
+    vec3 tangentView = (modelViewMatrix
+      * vec4(mix(edgeTangentStart, edgeTangentEnd, along), 0.0)).xyz;
+    float lightAcross = clamp(1.0 - abs(dot(tangentView / max(0.001, length(tangentView)),
+      normalize(vec3(-0.6, 0.5, 0.7)))), 0.0, 1.0);
+    energyLineGlint = 0.12 + 0.88 * pow(lightAcross, 3.0);
+    vec2 tangentDirection = (tangentClip.xy * clipPosition.w
+      - clipPosition.xy * tangentClip.w) * safeViewport;
+    if (lineFilamentEnabled > 0.0 && dot(tangentDirection, tangentDirection) > 0.000001) {
+      screenDirection = tangentDirection;
+    }
+    float screenLength = max(0.001, length(screenDirection));
+    vec2 screenNormal = vec2(-screenDirection.y, screenDirection.x) / screenLength;
+    float centerDepth = (modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).z;
+    energyLineDepthPresence = smoothstep(-0.8, 0.65,
+      (mix(startView.z, endView.z, along) - centerDepth) / max(1.0, lineOrbRadius));
     float strength = clamp(edgeEnergy, 0.0, 1.0);
     float hierarchyWidth = mix(
       1.0,
       max(1.0, edgeWidth / 0.48),
       lineWidthByStrength
     );
-    float coreWidthPixels = 0.48 * hierarchyWidth * lineWidthScale;
+    energyLineBranchPresence = mix(edgeFilamentWeights.x, edgeFilamentWeights.y, along);
+    float widthProfile = mix(1.0,
+      0.32 + (lineRootWidth - 0.32) * pow(energyLineBranchPresence, 1.18),
+      lineTaper * lineFilamentEnabled);
+    float perspectiveWidth = mix(1.0,
+      clamp(720.0 / max(0.1, -mix(startView.z, endView.z, along)), 0.55, 1.7),
+      linePerspective * lineFilamentEnabled);
+    float coreWidthPixels = max(mix(0.0, 0.2, lineFilamentEnabled), 0.48
+      * mix(hierarchyWidth, 1.0 + (hierarchyWidth - 1.0) * 0.35, lineFilamentEnabled)
+      * lineWidthScale * widthProfile * perspectiveWidth);
     float haloStrength = pow(strength, 1.35);
     float haloPixels = (2.4 + haloStrength * 6.8)
       * lineHaloRadiusScale
-      * lineHaloVisibility;
+      * lineHaloVisibility
+      * mix(1.0, clamp(sqrt(widthProfile) * 0.6, 0.24, 1.4)
+        * perspectiveWidth, lineFilamentEnabled);
     float expandedWidthPixels = coreWidthPixels + haloPixels;
     vec2 offsetNdc = screenNormal
       * side
@@ -286,7 +380,7 @@ const ENERGY_LINE_VERTEX_SHADER = `
     energyLineColor = mix(edgeColorStart, edgeColorEnd, along);
     energyLineCoreBoundary = clamp(
       coreWidthPixels / max(0.001, expandedWidthPixels),
-      0.06,
+      0.001,
       0.82
     );
     energyLineDistance = side;
@@ -307,15 +401,26 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
   uniform float lineHaloOpacity;
   uniform float lineHaloVisibility;
   uniform float lineMasterOpacity;
+  uniform float lineDepthContrast;
+  uniform float lineSegmented;
+  uniform float lineFilamentEnabled;
+  uniform float lineRoundness;
+  uniform float lineTranslucency;
+  uniform vec3 lineHotColor;
   varying vec3 energyLineColor;
   varying float energyLineCoreBoundary;
   varying float energyLineDistance;
   varying float energyLineProgress;
   varying float energyLineStrength;
+  varying float energyLineDepthPresence;
+  varying float energyLineBranchPresence;
+  varying float energyLineGlint;
 
   void main() {
     float lineDistance = abs(energyLineDistance);
-    float coreFeather = max(0.018, energyLineCoreBoundary * 0.3);
+    float coreFeather = mix(max(0.018, energyLineCoreBoundary * 0.3),
+      max(energyLineCoreBoundary * 0.12, fwidth(energyLineDistance) * 0.7),
+      lineFilamentEnabled);
     float core = 1.0 - smoothstep(
       max(0.0, energyLineCoreBoundary - coreFeather),
       min(1.0, energyLineCoreBoundary + coreFeather),
@@ -329,10 +434,10 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
     );
     float halo = pow(max(0.0, 1.0 - haloDistance), lineHaloFalloff)
       * (1.0 - core * 0.68);
-    float endpointFade = min(
+    float endpointFade = mix(min(
       smoothstep(0.0, 0.018, energyLineProgress),
       smoothstep(0.0, 0.018, 1.0 - energyLineProgress)
-    );
+    ), 1.0, lineSegmented);
     float strength = clamp(energyLineStrength, 0.0, 1.0);
     float coreGain = smoothstep(0.18, 1.0, strength);
     float coreStrengthAlpha = mix(
@@ -340,10 +445,21 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
       mix(0.1, 1.0, pow(strength, 1.45)),
       lineCoreEmissionByStrength
     );
+    float across = clamp(energyLineDistance / max(0.001, energyLineCoreBoundary), -1.0, 1.0);
+    // Average the section when it is smaller than a pixel, so fine tips do not
+    // flicker as the narrow highlight crosses individual screen pixels.
+    float resolvedSection = smoothstep(0.65, 1.8,
+      energyLineCoreBoundary / max(0.0001, fwidth(energyLineDistance)));
+    float sectionHeight = mix(0.8, sqrt(max(0.0, 1.0 - across * across)), resolvedSection);
+    float hotSpine = mix(0.22, exp(-pow((across + 0.18) / 0.28, 2.0)), resolvedSection);
+    float transmission = mix(1.0,
+      (0.3 + 0.52 * sqrt(energyLineBranchPresence)) * mix(0.55, 1.0, sectionHeight),
+      lineTranslucency * lineFilamentEnabled);
     float coreAlpha = core
       * coreStrengthAlpha
       * lineCoreOpacity
-      * lineCoreVisibility;
+      * lineCoreVisibility
+      * transmission;
     float haloStrengthAlpha = mix(
       1.0,
       mix(0.22, 1.0, pow(strength, 1.3)),
@@ -352,9 +468,11 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
     float haloAlpha = halo
       * lineHaloOpacity
       * haloStrengthAlpha
-      * lineHaloVisibility;
+      * lineHaloVisibility
+      * transmission;
     float alpha = lineMasterOpacity
       * endpointFade
+      * mix(1.0, mix(0.12, 1.0, energyLineDepthPresence), lineDepthContrast)
       * min(1.0, coreAlpha + haloAlpha);
     float haloColorGain = mix(0.98, 1.38, strength);
     float coreColorGain = 1.0 + coreGain * 0.3;
@@ -374,6 +492,14 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
       * coreColorGain
       * lineCoreEmissionIntensity
       * coreEmissionGain;
+    // A warm translucent body and narrow off-center glint suggest a round
+    // section without tube geometry, lights or an additional render pass.
+    vec3 roundedColor = mix(
+      energyLineColor * (0.42 + 0.58 * sectionHeight),
+      lineHotColor,
+      hotSpine * (0.38 + energyLineBranchPresence * 0.5) * energyLineGlint
+    ) * lineCoreEmissionIntensity * coreEmissionGain;
+    coreColor = mix(coreColor, roundedColor, lineRoundness * lineFilamentEnabled);
     float coreMix = coreAlpha / max(0.0001, coreAlpha + haloAlpha);
     gl_FragColor = vec4(
       mix(haloColor, coreColor, coreMix),
@@ -424,6 +550,7 @@ const GRAPH_ORB_RIM_FRAGMENT_SHADER = `
 const LABEL_VERTEX_SHADER = `
   attribute vec4 atlasRect;
   attribute vec3 labelTint;
+  uniform vec2 labelViewport;
   varying vec2 vAtlasUv;
   varying vec3 vLabelTint;
 
@@ -431,10 +558,14 @@ const LABEL_VERTEX_SHADER = `
     vec4 center = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
     float width = length(instanceMatrix[0].xyz);
     float height = length(instanceMatrix[1].xyz);
-    center.xy += position.xy * vec2(width, height);
     vAtlasUv = atlasRect.xy + uv * atlasRect.zw;
     vLabelTint = labelTint;
     gl_Position = projectionMatrix * center;
+    // Project only the anchor. Glyph dimensions stay in framebuffer pixels while
+    // orbiting or zooming, so neither distance nor hover resamples the text.
+    vec2 pixel = (gl_Position.xy / gl_Position.w * 0.5 + 0.5) * labelViewport
+      + (position.xy + vec2(0.5, 0.0)) * vec2(width, height);
+    gl_Position.xy = (floor(pixel + 0.5) / labelViewport * 2.0 - 1.0) * gl_Position.w;
   }
 `;
 
@@ -449,6 +580,7 @@ const LABEL_FRAGMENT_SHADER = `
     float alpha = glyph.a * labelOpacity;
     if (alpha < 0.025) discard;
     gl_FragColor = vec4(vLabelTint * glyph.rgb, alpha);
+    #include <colorspace_fragment>
   }
 `;
 
@@ -732,6 +864,8 @@ function createOrbAmbientField(count, radius, seed) {
 
 function createLayoutKey(layout) {
   return [
+    layout.depth,
+    layout.branchSpread,
     layout.repulsion,
     layout.linkDistance,
     layout.linkStrength,
@@ -741,7 +875,7 @@ function createLayoutKey(layout) {
     layout.tickBudget,
     layout.nodeScale,
     layout.hubScale,
-  ].map((value) => Number(value).toFixed(3)).join(":");
+  ].map((value) => Number(value).toFixed(3)).join(":") + `:${layout.mode ?? "force"}`;
 }
 
 function useCoarsePointer() {
@@ -760,7 +894,7 @@ function useCoarsePointer() {
 
 function createLabelMaterial(texture, opacity) {
   return new ShaderMaterial({
-    depthTest: true,
+    depthTest: false,
     depthWrite: false,
     fragmentShader: LABEL_FRAGMENT_SHADER,
     transparent: true,
@@ -768,6 +902,7 @@ function createLabelMaterial(texture, opacity) {
     uniforms: {
       labelAtlas: { value: texture },
       labelOpacity: { value: opacity },
+      labelViewport: { value: new Vector2(1, 1) },
     },
     vertexShader: LABEL_VERTEX_SHADER,
   });
@@ -785,16 +920,23 @@ function createEnergyPointMaterial(color, pointSize, pointOpacity, whiteCore = 1
       energyColor: { value: new Color(color) },
       energyTime: { value: 0 },
       orbStyle: { value: 0 },
+      pointAbsoluteLayer: { value: 0 },
       pointColorVariation: { value: 0 },
+      pointDepthContrast: { value: 0 },
+      pointOrbRadius: { value: 188 },
       pointCoreEmissionIntensity: { value: 1 },
       pointCoreOpacity: { value: 1 },
+      pointCoreSizeScale: { value: 1 },
+      pointHaloRadiusScale: { value: 1 },
       pointCoreVisibility: { value: 1 },
       pointHaloEmissionIntensity: { value: 1 },
       pointHaloOpacity: { value: 1 },
       pointHaloVisibility: { value: 1 },
       pointOpacity: { value: pointOpacity },
       pointSize: { value: pointSize },
+      pointPerspectiveFloor: { value: 0.68 },
       pointScaleVariation: { value: 0 },
+      pointLayering: { value: 0 },
       pointPulseMotion: { value: 1 },
       pointPulseVisibility: { value: 0 },
       pulseAmount: { value: 0 },
@@ -880,6 +1022,7 @@ export function GraphScene({
   selectedNodeId = null,
   onNodeHover,
   onNodeSelect,
+  onCameraViewChange,
   onLayoutState,
   presentation = "graph",
   reducedMotion = false,
@@ -895,21 +1038,43 @@ export function GraphScene({
     () => applyGraphRuntimeQuality(renderPlan, runtime?.qualityProfile, graph),
     [graph, renderPlan, runtime?.qualityProfile],
   );
-  const profile3d = scenePlan.profiles["3d"];
+  const profile3d = useMemo(() => ({
+    ...scenePlan.profiles[`${dimension}d`],
+    // Orb-only layers are never visible in 2D.
+    orb: scenePlan.profiles["3d"].orb,
+  }), [dimension, scenePlan.profiles]);
   const profile3dRef = useRef(profile3d);
   profile3dRef.current = profile3d;
   const fxRevisionKey = JSON.stringify(profile3d);
   const edgeBudget = scenePlan.edges.count;
+  const neuronMode = scenePlan.layout.mode === "neuron";
+  const neuronSphere = scenePlan.idleShape === "neuronSphere";
+  const sharedStyle = scenePlan.sharedStyle === true;
+  const spatialNeuron = neuronMode && dimension === 3;
+  const edgeSegments = neuronMode ? NEURON_EDGE_SEGMENTS : 1;
   const model = useMemo(
-    () => createGraphTopologyModel(graph, {
-      dimension,
-      labelBudget: MAX_GRAPH_LABEL_ATLAS_ENTRIES,
-    }),
-    [dimension, graph],
+    () => {
+      const topology = createGraphTopologyModel(graph, {
+        dimension, labelBudget: MAX_GRAPH_LABEL_ATLAS_ENTRIES,
+      });
+      if (neuronMode) {
+        topology.neuron = createNeuronStructure(topology.nodes, topology.layoutEdges);
+        topology.hubMask = topology.neuron.rootMask;
+        topology.sizes = Float32Array.from(topology.sizes, (size, index) => (
+          topology.hubMask[index] ? 3.6 : 0.42 + Math.sqrt(topology.degrees[index]) * 0.16
+        ));
+        topology.labelIndices = [...topology.neuron.roots, ...topology.labelIndices.filter(
+          (index) => !topology.hubMask[index],
+        )];
+      }
+      return topology;
+    },
+    [dimension, graph, neuronMode],
   );
   const renderEdges = useMemo(
-    () => createGraphEdgeView(model, edgeBudget),
-    [edgeBudget, model],
+    () => spatialNeuron ? createSpatialNeuronEdgeView(model, edgeBudget, scenePlan.layout.crossLinks)
+      : model.neuron ? createNeuronEdgeView(model, edgeBudget) : createGraphEdgeView(model, edgeBudget),
+    [edgeBudget, model, scenePlan.layout.crossLinks, spatialNeuron],
   );
   const edgeCapacity = renderEdges.length;
   const morphSeed = Number.parseInt(model.topologyKey, 36) || 0x4a415256;
@@ -918,13 +1083,22 @@ export function GraphScene({
     Math.max(edgeCapacity, Math.round(model.nodes.length * 3)),
   );
   const orbMorphModel = useMemo(
-    () => createGraphOrbMorphModel(model.nodes, edgeCapacity, {
+    () => neuronSphere ? createNeuronSphereModel(model.nodes, {
+      radius: 265 * profile3d.orb.network.sizeScale,
+      branchSpread: profile3d.orb.network.branchSpread,
+      degrees: model.degrees, density: profile3d.orb.network.density, shellRatio: profile3d.orb.network.shellRatio,
+      edgeCount: edgeCapacity,
+    }) : createGraphOrbMorphModel(model.nodes, edgeCapacity, {
       radius: 188,
       seed: morphSeed,
-      shellEdgeCount,
+      shellEdgeCount: Math.round(Math.max(4, Math.round(model.nodes.length * profile3d.orb.network.shellRatio)) * profile3d.orb.network.density),
+      shellRatio: profile3d.orb.network.shellRatio,
     }),
-    [edgeCapacity, model.nodes, morphSeed, shellEdgeCount],
+    [edgeCapacity, model.nodes, model.degrees, morphSeed, neuronSphere, profile3d.orb.network.sizeScale, profile3d.orb.network.branchSpread, profile3d.orb.network.density, profile3d.orb.network.shellRatio],
   );
+  const sphereCurves = useMemo(() => neuronSphere ? createNeuronSphereCurves(orbMorphModel, 24, profile3d.orb.network.weave) : null,
+    [neuronSphere, orbMorphModel, profile3d.orb.network.weave]);
+  const sphereLineRef = useRef(null);
   const planarMorphModel = useMemo(
     () => createGraphPlanarMorphModel(model.nodes, edgeCapacity, {
       radius: 220,
@@ -939,7 +1113,7 @@ export function GraphScene({
   const dimensionTarget = dimension === 3 ? 1 : 0;
   const extraShellEdgeCount = Math.max(
     0,
-    orbMorphModel.shellEdgePairs.length / 2 - edgeCapacity,
+    (dimension === 3 ? orbMorphModel.shellEdgePairs.length : planarMorphModel.shellEdgePairs.length) / 2 - edgeCapacity,
   );
   const focusedEdgeBudget = Math.min(
     model.layoutEdges.length,
@@ -1005,7 +1179,10 @@ export function GraphScene({
   const energyLineObjectRef = useRef(null);
   const energyLineStartAttributeRef = useRef(null);
   const energyLineEndAttributeRef = useRef(null);
+  const energyLineTangentStartAttributeRef = useRef(null);
+  const energyLineTangentEndAttributeRef = useRef(null);
   const shellEdgeObjectRef = useRef(null);
+  const baseEdgeGeometryRef = useRef(null);
   const innerShellEdgeObjectRef = useRef(null);
   const shellEdgePositionAttributeRef = useRef(null);
   const innerShellEdgePositionAttributeRef = useRef(null);
@@ -1052,6 +1229,7 @@ export function GraphScene({
   const failWorkerRef = useRef(null);
   const cancelWatchdogRef = useRef(null);
   const layoutRequestRef = useRef(null);
+  const positionedModelRef = useRef(null);
   const activeRevisionRef = useRef(revision);
   const onLayoutStateRef = useRef(onLayoutState);
   onLayoutStateRef.current = onLayoutState;
@@ -1076,28 +1254,44 @@ export function GraphScene({
   const documentVisibleRef = useRef(documentVisible);
   documentVisibleRef.current = documentVisible;
   const edgePositions = useMemo(
-    () => new Float32Array(edgeCapacity * 6),
-    [edgeCapacity],
+    () => new Float32Array(edgeCapacity * 6 * edgeSegments),
+    [edgeCapacity, edgeSegments],
   );
   const edgeColors = useMemo(
-    () => new Float32Array(edgeCapacity * 6),
-    [edgeCapacity],
+    () => new Float32Array(edgeCapacity * 6 * edgeSegments),
+    [edgeCapacity, edgeSegments],
   );
   const energyLineStarts = useMemo(
-    () => new Float32Array(edgeCapacity * 3),
-    [edgeCapacity],
+    () => new Float32Array(edgeCapacity * edgeSegments * 3),
+    [edgeCapacity, edgeSegments],
   );
   const energyLineEnds = useMemo(
-    () => new Float32Array(edgeCapacity * 3),
-    [edgeCapacity],
+    () => new Float32Array(edgeCapacity * edgeSegments * 3),
+    [edgeCapacity, edgeSegments],
+  );
+  const energyLineTangentStarts = useMemo(
+    () => new Float32Array(edgeCapacity * edgeSegments * 3),
+    [edgeCapacity, edgeSegments],
+  );
+  const energyLineTangentEnds = useMemo(
+    () => new Float32Array(edgeCapacity * edgeSegments * 3),
+    [edgeCapacity, edgeSegments],
+  );
+  const energyLineFilamentWeights = useMemo(
+    () => createNeuronFilamentWeights(model.nodes.length, model.neuron, renderEdges, edgeSegments),
+    [model.nodes.length, model.neuron, renderEdges, edgeSegments],
+  );
+  const innerShellEdgePositions = useMemo(
+    () => new Float32Array(Math.min(768, orbMorphModel.shellEdgePairs.length / 2) * 6),
+    [orbMorphModel.shellEdgePairs.length],
   );
   const extraShellEdgePositions = useMemo(
     () => new Float32Array(extraShellEdgeCount * 6),
     [extraShellEdgeCount],
   );
   const focusedEdgePositions = useMemo(
-    () => new Float32Array(focusedEdgeBudget * 6),
-    [focusedEdgeBudget],
+    () => new Float32Array(focusedEdgeBudget * 6 * edgeSegments),
+    [focusedEdgeBudget, edgeSegments],
   );
   const signalPositions = useMemo(
     () => new Float32Array(orbMorphModel.signalEdgeIndices.length * 3),
@@ -1135,18 +1329,49 @@ export function GraphScene({
   );
   const orbAmbientHierarchy = orbAmbientField.hierarchy;
   const nodeEnergyStyle = useMemo(
-    () => createNodeEnergyStyle(model, palette),
-    [model, palette],
+    () => {
+      const style = createNodeEnergyStyle(model, palette);
+      if (model.neuron) {
+        model.nodes.forEach((_, index) => {
+          style.scales[index] = model.hubMask[index]
+            ? 2.2 * scenePlan.nodes.hubScale / 1.8
+            : 0.45 + Math.min(0.45, model.degrees[index] * 0.007);
+          palette.selected.toArray(style.colors, index * 3);
+        });
+      }
+      return style;
+    },
+    [model, palette, scenePlan.nodes.hubScale],
   );
   const edgeEnergyStyle = useMemo(
-    () => createEdgeEnergyStyle(model, renderEdges, palette),
-    [model, palette, renderEdges],
+    () => {
+      const style = createEdgeEnergyStyle(model, renderEdges, palette);
+      if (edgeSegments === 1) return style;
+      // The selected relation color supplies the body; the filament shader adds local glints.
+      for (let index = 0; index < renderEdges.length; index += 1) {
+        edgeBaseColor.toArray(style.sourceColors, index * 3);
+        edgeBaseColor.toArray(style.targetColors, index * 3);
+      }
+      return Object.fromEntries(Object.entries(style).map(([key, values]) => {
+        const stride = key.endsWith("Colors") ? 3 : 1;
+        const expanded = new Float32Array(values.length * edgeSegments);
+        for (let index = 0; index < renderEdges.length; index += 1) {
+          for (let segment = 0; segment < edgeSegments; segment += 1) {
+            for (let channel = 0; channel < stride; channel += 1) {
+              expanded[(index * edgeSegments + segment) * stride + channel] = values[index * stride + channel];
+            }
+          }
+        }
+        return [key, expanded];
+      }));
+    },
+    [edgeBaseColor, edgeSegments, model, palette, renderEdges],
   );
   const relationHaloQualityScale = runtime?.qualityProfile?.id === "high"
     ? 1.12
     : runtime?.qualityProfile?.id === "low" ? 0.88 : 1;
   const energyLineMaterial = useMemo(() => new ShaderMaterial({
-    blending: AdditiveBlending,
+    blending: NormalBlending,
     depthTest: false,
     depthWrite: false,
     fragmentShader: ENERGY_LINE_FRAGMENT_SHADER,
@@ -1166,13 +1391,33 @@ export function GraphScene({
       lineHaloOpacity: { value: 0.46 },
       lineHaloVisibility: { value: 1 },
       lineMasterOpacity: { value: 0 },
+      lineDepthContrast: { value: 0 },
+      lineSegmented: { value: 0 },
+      lineFilamentEnabled: { value: 0 },
+      lineTaper: { value: 0 },
+      lineRootWidth: { value: 4.2 },
+      lineRoundness: { value: 0 },
+      lineTranslucency: { value: 0 },
+      linePerspective: { value: 0 },
+      lineHotColor: { value: new Color(scenePlan.nodes.hubColor) },
+      lineOrbRadius: { value: 188 },
       lineWidthByStrength: { value: 1 },
       lineWidthScale: { value: 1 },
       viewportSize: { value: new Vector2(1, 1) },
     },
     vertexShader: ENERGY_LINE_VERTEX_SHADER,
-  }), [scenePlan.nodes.activeColor]);
+  }), [scenePlan.nodes.activeColor, scenePlan.nodes.hubColor]);
   const energyLineUniforms = energyLineMaterial.uniforms;
+  const sphereLineMaterial = useMemo(() => {
+    const material = energyLineMaterial.clone();
+    material.uniforms = { ...energyLineMaterial.uniforms, lineMasterOpacity: { value: 0 }, lineSegmented: { value: 1 } };
+    return material;
+  }, [energyLineMaterial]);
+  const sphereLineColors = useMemo(() => {
+    const colors = new Float32Array(sphereCurves?.starts.length ?? 0);
+    for (let offset = 0; offset < colors.length; offset += 3) edgeBaseColor.toArray(colors, offset);
+    return colors;
+  }, [sphereCurves, edgeBaseColor]);
   const nodeEnergyMaterial = useMemo(
     () => createEnergyPointMaterial(
       scenePlan.nodes.activeColor,
@@ -1231,14 +1476,16 @@ export function GraphScene({
       MAX_GRAPH_LABEL_ATLAS_ENTRIES - GRAPH_LABEL_DYNAMIC_SLOTS,
     ),
   ), [model.labelIndices, scenePlan.labels.count]);
+  const labelDpr = runtime?.effectiveDpr ?? 1;
+  const labelRasterSize = Math.round(scenePlan.labels.fontSize * labelDpr);
   const labelAtlas = useMemo(() => {
     if (typeof document === "undefined") return null;
     return createGraphLabelAtlas([
       ...labelBaseIndices.map((nodeIndex) => model.nodes[nodeIndex]?.title),
       "",
       "",
-    ]);
-  }, [labelBaseIndices, model.nodes]);
+    ], null, labelRasterSize);
+  }, [labelBaseIndices, labelRasterSize, model.nodes]);
   const labelSlotCount = labelAtlas?.layout.count ?? 0;
   const labelNodeIndicesRef = useRef(new Int32Array(0));
   const labelRectAttribute = useMemo(() => new InstancedBufferAttribute(
@@ -1254,6 +1501,7 @@ export function GraphScene({
     [labelAtlas, scenePlan.labels.opacity],
   );
   const lastVisibleLabelCountRef = useRef(-1);
+  const labelAtlasDisposalRef = useRef(null);
 
   useEffect(() => {
     lastPickedNodeIdRef.current = hoveredNodeId;
@@ -1261,12 +1509,15 @@ export function GraphScene({
 
   const getNodeColor = useCallback((nodeIndex) => {
     const node = model.nodes[nodeIndex];
+    if (neuronMode) {
+      return node.id === selectedNodeId || node.id === hoveredNodeId ? palette.base : palette.selected;
+    }
     return resolveNodeColor(node, nodeIndex, {
       adjacent: adjacentNodeIds.has(node.id),
       hovered: node.id === hoveredNodeId,
       selected: node.id === selectedNodeId,
     }, model.hubMask, palette);
-  }, [adjacentNodeIds, hoveredNodeId, model.hubMask, model.nodes, palette, selectedNodeId]);
+  }, [adjacentNodeIds, hoveredNodeId, model.hubMask, model.nodes, neuronMode, palette, selectedNodeId]);
 
   const updateNodeMatrices = useCallback((positions, presentationProgress = 1) => {
     const mesh = nodeMeshRef.current;
@@ -1290,12 +1541,10 @@ export function GraphScene({
       const idlePointScale = 0.7 - dimensionProgress * 0.08;
       const energyPointScale = idlePointScale + progress * (1 - idlePointScale);
       const hierarchyScale = 1
-        + orbHierarchyWeight
-          * (hierarchy - 0.48)
+        + (hierarchy - 0.48)
           * 0.52
           * fx3d.node.size.byImportance;
-      const masterScale = 1
-        + (fx3d.node.master.scale - 1) * orbHierarchyWeight;
+      const masterScale = fx3d.node.master.scale;
       const size = model.sizes[index]
         * scenePlan.nodes.scale
         * hubMultiplier
@@ -1303,7 +1552,8 @@ export function GraphScene({
         * energyPointScale
         * hierarchyScale
         * masterScale;
-      NODE_MATRIX.makeScale(size, size, dimension === 3 ? size : 1);
+      const coreSize = size * fx3d.node.core.sizeScale;
+      NODE_MATRIX.makeScale(coreSize, coreSize, dimension === 3 ? coreSize : 1);
       NODE_MATRIX.setPosition(
         positions[offset],
         positions[offset + 1],
@@ -1313,7 +1563,7 @@ export function GraphScene({
       if (haloMesh) {
         const baseHaloScale = dimension === 3 ? 1.52 : 1.74;
         const haloScale = baseHaloScale
-          * (1 + (fx3d.node.halo.radiusScale - 1) * orbHierarchyWeight);
+          * fx3d.node.halo.radiusScale;
         NODE_MATRIX.makeScale(
           size * haloScale,
           size * haloScale,
@@ -1352,13 +1602,39 @@ export function GraphScene({
     const shellEdgePairs = dimensionProgress >= 0.5
       ? orbMorphModel.shellEdgePairs
       : planarMorphModel.shellEdgePairs;
+    const visibleCount = dimension === 3 && progress < 0.001
+      ? Math.min(renderEdges.length, shellEdgePairs.length / 2)
+      : renderEdges.length;
+    baseEdgeGeometryRef.current?.setDrawRange(0, visibleCount * 2 * edgeSegments);
+    if (energyLineObjectRef.current) energyLineObjectRef.current.geometry.instanceCount = visibleCount * edgeSegments;
     renderEdges.forEach((edge, index) => {
       const sourceOffset = edge.sourceIndex * 3;
       const targetOffset = edge.targetIndex * 3;
-      const edgeOffset = index * 6;
+      const edgeOffset = index * 6 * edgeSegments;
+      if (model.neuron && (dimension === 2 || progress >= 0.999)) {
+        if (dimension === 3) {
+          writeSpatialNeuronCurve(edgePositions, edgeOffset, positions, edge, model.neuron, edgeSegments, scenePlan.layout.weave);
+        } else {
+          writeNeuronCurve(edgePositions, edgeOffset, positions, edge, model.neuron, edgeSegments, progress);
+        }
+        const isCross = model.neuron.cluster[edge.sourceIndex] !== model.neuron.cluster[edge.targetIndex];
+        const isHub = model.hubMask[edge.sourceIndex] || model.hubMask[edge.targetIndex];
+        const energy = isCross ? 2.8 : isHub ? 3.5 : 2.2;
+        const color = EDGE_ORB_SOURCE_COLOR.copy(edgeBaseColor).lerp(palette.base, 0.045).multiplyScalar(energy);
+        for (let segment = 0; segment < edgeSegments; segment += 1) {
+          color.toArray(edgeColors, edgeOffset + segment * 6);
+          color.toArray(edgeColors, edgeOffset + segment * 6 + 3);
+          const energyOffset = (index * edgeSegments + segment) * 3;
+          for (let axis = 0; axis < 3; axis += 1) {
+            energyLineStarts[energyOffset + axis] = edgePositions[edgeOffset + segment * 6 + axis];
+            energyLineEnds[energyOffset + axis] = edgePositions[edgeOffset + segment * 6 + 3 + axis];
+          }
+        }
+        return;
+      }
       if (useIdleShell) {
         const shellSource = shellEdgePairs[index * 2] ?? edge.sourceIndex;
-        const shellTarget = shellEdgePairs[index * 2 + 1] ?? edge.targetIndex;
+        const shellTarget = shellEdgePairs[index * 2 + 1] ?? (dimension === 3 ? shellSource : edge.targetIndex);
         const shellSourceOffset = shellSource * 3;
         const shellTargetOffset = shellTarget * 3;
         for (let axis = 0; axis < 3; axis += 1) {
@@ -1377,7 +1653,7 @@ export function GraphScene({
         edgePositions[edgeOffset + 4] = positions[targetOffset + 1];
         edgePositions[edgeOffset + 5] = dimension === 3 ? positions[targetOffset + 2] : -0.5;
       }
-      const energyOffset = index * 3;
+      const energyOffset = index * edgeSegments * 3;
       for (let axis = 0; axis < 3; axis += 1) {
         energyLineStarts[energyOffset + axis] = edgePositions[edgeOffset + axis];
         energyLineEnds[energyOffset + axis] = edgePositions[edgeOffset + 3 + axis];
@@ -1389,7 +1665,7 @@ export function GraphScene({
         edgeBaseColor,
       );
       const idleWeight = 1 - progress;
-      const orbLineWeight = idleWeight * dimensionProgress;
+      const orbLineWeight = dimensionProgress;
       const planarCoreGain = idleWeight * (1 - dimensionProgress) * 0.14;
       const energyColorGain = 0.34 + idleWeight * (dimension === 3 ? 0.44 : 0.36);
       sourceColor.lerp(palette.selected, energyColorGain);
@@ -1407,7 +1683,33 @@ export function GraphScene({
       }
       sourceColor.toArray(edgeColors, edgeOffset);
       targetColor.toArray(edgeColors, edgeOffset + 3);
+      if (edgeSegments > 1) {
+        // Idle keeps the accepted spatial shell. Subdivide its straight chord
+        // into the same buffer capacity used by the exploration curves.
+        const ax = edgePositions[edgeOffset];
+        const ay = edgePositions[edgeOffset + 1];
+        const az = edgePositions[edgeOffset + 2];
+        const dx = edgePositions[edgeOffset + 3] - ax;
+        const dy = edgePositions[edgeOffset + 4] - ay;
+        const dz = edgePositions[edgeOffset + 5] - az;
+        for (let segment = 0; segment < edgeSegments; segment += 1) {
+          const t0 = segment / edgeSegments;
+          const t1 = (segment + 1) / edgeSegments;
+          const offset = edgeOffset + segment * 6;
+          edgePositions.set([ax + dx * t0, ay + dy * t0, az + dz * t0, ax + dx * t1, ay + dy * t1, az + dz * t1], offset);
+          sourceColor.toArray(edgeColors, offset);
+          targetColor.toArray(edgeColors, offset + 3);
+          for (let axis = 0; axis < 3; axis += 1) {
+            energyLineStarts[energyOffset + segment * 3 + axis] = edgePositions[offset + axis];
+            energyLineEnds[energyOffset + segment * 3 + axis] = edgePositions[offset + 3 + axis];
+          }
+        }
+      }
     });
+    writeNeuronRibbonTangents(energyLineStarts, energyLineEnds, edgeSegments,
+      energyLineTangentStarts, energyLineTangentEnds);
+    if (energyLineTangentStartAttributeRef.current) energyLineTangentStartAttributeRef.current.needsUpdate = true;
+    if (energyLineTangentEndAttributeRef.current) energyLineTangentEndAttributeRef.current.needsUpdate = true;
     if (edgePositionAttributeRef.current) edgePositionAttributeRef.current.needsUpdate = true;
     if (edgeColorAttributeRef.current) edgeColorAttributeRef.current.needsUpdate = true;
     if (energyLineStartAttributeRef.current) {
@@ -1423,12 +1725,18 @@ export function GraphScene({
     edgeEnergyStyle.sourceColors,
     edgeEnergyStyle.targetColors,
     edgePositions,
+    edgeSegments,
+    model.neuron,
+    model.hubMask,
     energyLineEnds,
     energyLineStarts,
+    energyLineTangentStarts,
+    energyLineTangentEnds,
     orbMorphModel.shellEdgePairs,
     palette,
     planarMorphModel.shellEdgePairs,
     renderEdges,
+    scenePlan.layout.weave,
   ]);
 
   const updateExtraShellEdges = useCallback((idlePositions, progress) => {
@@ -1438,6 +1746,12 @@ export function GraphScene({
       ? orbMorphModel.shellEdgePairs
       : planarMorphModel.shellEdgePairs;
     const dimensionVisibility = 0.32 + Math.abs(dimensionProgress - 0.5) * 1.36;
+    for (let index = 0; index < innerShellEdgePositions.length / 6; index += 1) {
+      const source = orbMorphModel.shellEdgePairs[index * 2] * 3;
+      const target = orbMorphModel.shellEdgePairs[index * 2 + 1] * 3;
+      innerShellEdgePositions.set(idlePositions.subarray(source, source + 3), index * 6);
+      innerShellEdgePositions.set(idlePositions.subarray(target, target + 3), index * 6 + 3);
+    }
     for (let index = 0; index < extraShellEdgeCount; index += 1) {
       const pairOffset = (edgeCapacity + index) * 2;
       const sourceOffset = shellEdgePairs[pairOffset] * 3;
@@ -1473,7 +1787,7 @@ export function GraphScene({
       );
     }
     if (shellEdgeObjectRef.current) {
-      shellEdgeObjectRef.current.visible = progress < 0.998
+      shellEdgeObjectRef.current.visible = !neuronSphere && progress < 0.998
         && (dimensionProgress < 0.002 || fx3d.edge.core.enabled);
     }
     if (innerShellEdgeMaterialRef.current) {
@@ -1486,7 +1800,7 @@ export function GraphScene({
       );
     }
     if (innerShellEdgeObjectRef.current) {
-      innerShellEdgeObjectRef.current.visible = fx3d.orb.innerNetwork.enabled
+      innerShellEdgeObjectRef.current.visible = !neuronSphere && fx3d.orb.innerNetwork.enabled
         && progress < 0.998
         && dimensionProgress > 0.002;
     }
@@ -1494,6 +1808,8 @@ export function GraphScene({
     edgeCapacity,
     extraShellEdgeCount,
     extraShellEdgePositions,
+    innerShellEdgePositions,
+    neuronSphere,
     orbMorphModel.shellEdgePairs,
     planarMorphModel.shellEdgePairs,
   ]);
@@ -1502,7 +1818,15 @@ export function GraphScene({
     focusedEdges.forEach((edge, index) => {
       const sourceOffset = edge.sourceIndex * 3;
       const targetOffset = edge.targetIndex * 3;
-      const edgeOffset = index * 6;
+      const edgeOffset = index * 6 * edgeSegments;
+      if (model.neuron) {
+        if (dimension === 3) {
+          writeSpatialNeuronCurve(focusedEdgePositions, edgeOffset, positions, edge, model.neuron, edgeSegments, scenePlan.layout.weave);
+        } else {
+          writeNeuronCurve(focusedEdgePositions, edgeOffset, positions, edge, model.neuron, edgeSegments);
+        }
+        return;
+      }
       focusedEdgePositions[edgeOffset] = positions[sourceOffset];
       focusedEdgePositions[edgeOffset + 1] = positions[sourceOffset + 1];
       focusedEdgePositions[edgeOffset + 2] = dimension === 3 ? positions[sourceOffset + 2] : 0.35;
@@ -1510,11 +1834,11 @@ export function GraphScene({
       focusedEdgePositions[edgeOffset + 4] = positions[targetOffset + 1];
       focusedEdgePositions[edgeOffset + 5] = dimension === 3 ? positions[targetOffset + 2] : 0.35;
     });
-    focusedEdgeGeometryRef.current?.setDrawRange(0, focusedEdges.length * 2);
+    focusedEdgeGeometryRef.current?.setDrawRange(0, focusedEdges.length * 2 * edgeSegments);
     if (focusedEdgePositionAttributeRef.current) {
       focusedEdgePositionAttributeRef.current.needsUpdate = true;
     }
-  }, [dimension, focusedEdgePositions, focusedEdges]);
+  }, [dimension, edgeSegments, focusedEdgePositions, focusedEdges, model.neuron, scenePlan.layout.weave]);
 
   const writeLabelSlot = useCallback((slot, nodeIndex, atlasEntry) => {
     const rectAttribute = labelRectAttributeRef.current ?? labelRectAttribute;
@@ -1527,9 +1851,11 @@ export function GraphScene({
       atlasEntry.width,
       atlasEntry.height,
     );
-    const color = nodeIndex >= 0 ? getNodeColor(nodeIndex) : palette.base;
+    const color = palette.base;
     colorAttribute.setXYZ(slot, color.r, color.g, color.b);
-  }, [getNodeColor, labelColorAttribute, labelRectAttribute, labelSlotCount, palette.base]);
+    rectAttribute.needsUpdate = true;
+    colorAttribute.needsUpdate = true;
+  }, [labelColorAttribute, labelRectAttribute, labelSlotCount, palette.base]);
 
   const syncDynamicLabelSlots = useCallback(() => {
     if (!labelAtlas) return;
@@ -1570,6 +1896,7 @@ export function GraphScene({
   const updateLabelMatrices = useCallback((positions, visibleBaseCount) => {
     const mesh = labelMeshRef.current;
     if (!mesh) return;
+    gl.getDrawingBufferSize(labelMaterial.uniforms.labelViewport.value);
     const nodeIndices = labelNodeIndicesRef.current;
     for (let slot = 0; slot < labelSlotCount; slot += 1) {
       const nodeIndex = nodeIndices[slot] ?? -1;
@@ -1585,34 +1912,34 @@ export function GraphScene({
       const offset = nodeIndex * 3;
       const hubMultiplier = model.hubMask[nodeIndex] ? scenePlan.nodes.hubScale : 1;
       const nodeSize = model.sizes[nodeIndex] * scenePlan.nodes.scale * hubMultiplier;
-      const emphasized = model.nodes[nodeIndex].id === selectedNodeId
-        || model.nodes[nodeIndex].id === hoveredNodeId;
-      const labelHeight = scenePlan.labels.fontSize * (emphasized ? 1.34 : 1.12);
-      const labelWidth = Math.max(labelHeight, (atlasEntry?.aspect ?? 2) * labelHeight);
+      const labelHeight = labelAtlas.layout.cellHeight;
+      const labelWidth = (atlasEntry?.aspect ?? 2) * labelHeight;
       NODE_MATRIX.makeScale(labelWidth, labelHeight, 1);
       NODE_MATRIX.setPosition(
-        positions[offset] + nodeSize + 4 + labelWidth * 0.5,
-        positions[offset + 1],
-        dimension === 3 ? positions[offset + 2] + nodeSize * 0.24 : 1,
+        positions[offset] + nodeSize + 4,
+        positions[offset + 1] - (neuronMode ? 18 / camera.zoom : 0),
+        dimension === 3 ? positions[offset + 2] : 1,
       );
       mesh.setMatrixAt(slot, NODE_MATRIX);
     }
     mesh.instanceMatrix.needsUpdate = true;
   }, [
+    camera,
     dimension,
-    hoveredNodeId,
+    gl,
     labelAtlas,
     labelBaseIndices.length,
+    labelMaterial,
     labelSlotCount,
     model,
-    scenePlan.labels.fontSize,
+    neuronMode,
     scenePlan.nodes.hubScale,
     scenePlan.nodes.scale,
-    selectedNodeId,
   ]);
 
   const getLabelLodCount = useCallback(() => {
     if (labelBaseIndices.length === 0) return 0;
+    if (neuronMode) return labelBaseIndices.length;
     let ratio = 1;
     if (camera.isOrthographicCamera) {
       if (camera.zoom < 0.58) ratio = 0.24;
@@ -1625,7 +1952,7 @@ export function GraphScene({
       else if (distance > 760) ratio = 0.74;
     }
     return Math.max(1, Math.ceil(labelBaseIndices.length * ratio));
-  }, [camera, labelBaseIndices.length]);
+  }, [camera, labelBaseIndices.length, neuronMode]);
 
   const applyPresentationPositions = useCallback((linearProgress, elapsed = 0) => {
     const graphPositions = graphPositionsRef.current;
@@ -1636,7 +1963,7 @@ export function GraphScene({
     const idleWeight = 1 - progress;
     const transitionEnergy = Math.sin(progress * Math.PI);
     const dimensionProgress = easeGraphOrbMorph(dimensionProgressRef.current);
-    const threeDEnergyWeight = dimensionProgress;
+    const threeDEnergyWeight = sharedStyle ? 1 : dimensionProgress;
     const orbEnergyWeight = idleWeight * threeDEnergyWeight;
     const orbAngle = orbAngleRef.current * idleWeight;
     const planarAngle = (reducedMotion ? 0 : Math.sin(elapsed * 0.11) * 0.035) * idleWeight;
@@ -1654,7 +1981,8 @@ export function GraphScene({
           * 0.008
           * fx3d.motion.breathingAmount
           * idleWeight;
-    const graphPresentationScale = dimension === 3 ? 1.72 : 1.18;
+    const graphPresentationScale = spatialNeuron ? 0.95 : dimension === 3 ? 1.72 : neuronMode ? 0.8 : 1.18;
+    let spatialRadius = 1;
 
     for (let offset = 0; offset < graphPositions.length; offset += 3) {
       const nodeIndex = offset / 3;
@@ -1691,6 +2019,9 @@ export function GraphScene({
       graphFramePositions[offset + 2] = dimension === 3
         ? graphPositions[offset + 2] * graphPresentationScale
         : 0;
+      if (spatialNeuron) spatialRadius = Math.max(spatialRadius, Math.hypot(
+        graphFramePositions[offset], graphFramePositions[offset + 1], graphFramePositions[offset + 2],
+      ));
       displayPositions[offset] = idleFramePositions[offset]
         + (graphFramePositions[offset] - idleFramePositions[offset]) * progress;
       displayPositions[offset + 1] = idleFramePositions[offset + 1]
@@ -1705,8 +2036,11 @@ export function GraphScene({
       nodePointPositionAttributeRef.current.needsUpdate = true;
     }
     updateNodeMatrices(displayPositions, progress);
-    updateEdges(displayPositions, graphFramePositions, idleFramePositions, progress);
-    updateExtraShellEdges(idleFramePositions, progress);
+    if (!neuronSphere || progress > 0.001) updateEdges(displayPositions, graphFramePositions, idleFramePositions, progress);
+    if (neuronSphere) {
+      if (shellEdgeObjectRef.current) shellEdgeObjectRef.current.visible = false;
+      if (innerShellEdgeObjectRef.current) innerShellEdgeObjectRef.current.visible = false;
+    } else updateExtraShellEdges(idleFramePositions, progress);
     updateFocusedEdges(displayPositions);
     updateLabelMatrices(displayPositions, getLabelLodCount());
     if (edgeMaterialRef.current) {
@@ -1717,10 +2051,12 @@ export function GraphScene({
       const configuredCoreOpacity = fx3d.edge.core.enabled
         ? fx3d.edge.master.opacity * fx3d.edge.core.opacity / 0.76
         : 0;
-      const coreOpacityScale = 1
-        + (configuredCoreOpacity - 1) * threeDEnergyWeight;
-      const energyCoreUnderlay = 1
-        - Number(fx3d.edge.core.enabled) * threeDEnergyWeight * 0.82;
+      const coreOpacityScale = configuredCoreOpacity;
+      // The energy band already draws the full relation core. Its additive
+      // underlay overwhelms dense 3D Explore graphs; retain it only for the
+      // accepted idle composition and the independent 2D renderer.
+      const energyCoreUnderlay = neuronMode || neuronSphere ? 0 : 1
+        - Number(fx3d.edge.core.enabled) * (0.82 + progress * threeDEnergyWeight * 0.18);
       edgeMaterialRef.current.opacity = (
         scenePlan.edges.opacity + (idleEdgeOpacity - scenePlan.edges.opacity) * idleWeight
       ) * dimensionVisibility
@@ -1728,8 +2064,7 @@ export function GraphScene({
         * coreOpacityScale
         * energyCoreUnderlay;
     }
-    const energyLineVisibility = Math.pow(threeDEnergyWeight, 1.28)
-      * (1 - transitionEnergy * 0.12);
+    const energyLineVisibility = 1 - transitionEnergy * 0.12;
     energyLineUniforms.lineHaloRadiusScale.value = relationHaloQualityScale
       * fx3d.edge.halo.radiusScale
       * (1 + transitionEnergy * 0.04);
@@ -1743,35 +2078,49 @@ export function GraphScene({
     energyLineUniforms.lineHaloOpacity.value = fx3d.edge.halo.opacity;
     energyLineUniforms.lineHaloVisibility.value = Number(fx3d.edge.halo.enabled);
     energyLineUniforms.lineMasterOpacity.value = fx3d.edge.master.opacity
-      * energyLineVisibility;
+      * energyLineVisibility * scenePlan.edges.opacity;
+    energyLineUniforms.lineSegmented.value = Number(edgeSegments > 1);
+    const filament = fx3d.edge.filament;
+    energyLineUniforms.lineFilamentEnabled.value = (neuronMode ? 1 : neuronSphere ? idleWeight : 0)
+      * Number(filament.taper > 0 || filament.roundness > 0 || filament.translucency > 0);
+    energyLineUniforms.lineTaper.value = filament.taper;
+    energyLineUniforms.lineRootWidth.value = filament.rootWidth;
+    energyLineUniforms.lineRoundness.value = filament.roundness;
+    energyLineUniforms.lineTranslucency.value = filament.translucency;
+    energyLineUniforms.linePerspective.value = neuronSphere
+      ? idleWeight + Number(dimension === 3) * progress : Number(dimension === 3);
+    energyLineUniforms.lineHotColor.value.copy(palette.hub);
+    energyLineUniforms.lineDepthContrast.value = (fx3d.orb?.network.depthContrast ?? 0)
+      * orbEnergyWeight + (spatialNeuron ? scenePlan.layout.depthContrast * progress : 0);
+    energyLineUniforms.lineOrbRadius.value = spatialNeuron
+      ? orbMorphModel.radius + (spatialRadius - orbMorphModel.radius) * progress : orbMorphModel.radius;
     energyLineUniforms.lineWidthByStrength.value = fx3d.edge.core.widthByStrength;
     energyLineUniforms.lineWidthScale.value = fx3d.edge.core.widthScale
       * (0.98 + transitionEnergy * 0.1);
     if (energyLineObjectRef.current) {
       energyLineObjectRef.current.visible = energyLineVisibility > 0.002
+        && (!neuronSphere || progress > 0.001)
         && (fx3d.edge.core.enabled || fx3d.edge.halo.enabled);
     }
     if (nodeMeshRef.current?.material) {
+      nodeMeshRef.current.visible = !neuronMode && (!neuronSphere || progress > 0.998);
       const configuredCoreOpacity = fx3d.node.core.enabled
         ? fx3d.node.master.opacity
         : 0;
       nodeMeshRef.current.material.opacity = scenePlan.nodes.opacity
         * (1 - threeDEnergyWeight * 0.74)
-        * (1 + (configuredCoreOpacity - 1) * threeDEnergyWeight);
+        * (1 - orbEnergyWeight)
+        * configuredCoreOpacity * fx3d.node.core.opacity;
     }
     if (nodeHaloMeshRef.current?.material) {
-      const referenceHaloOpacity = 0.06
-        + idleWeight
-          * (0.1 - dimensionProgress * 0.02);
       const configuredHaloOpacity = fx3d.node.halo.enabled
         ? fx3d.node.halo.opacity * fx3d.node.master.opacity
         : 0;
-      nodeHaloMeshRef.current.material.opacity = referenceHaloOpacity
-        + (configuredHaloOpacity - referenceHaloOpacity) * threeDEnergyWeight;
+      nodeHaloMeshRef.current.material.opacity = configuredHaloOpacity;
       nodeHaloMeshRef.current.material.color
         .set(scenePlan.nodes.activeColor)
         .multiplyScalar(
-          1 + (fx3d.node.halo.emissionIntensity - 1) * threeDEnergyWeight,
+          fx3d.node.halo.emissionIntensity,
         );
     }
     if (nodeEnergyMaterial.uniforms?.pointOpacity) {
@@ -1784,41 +2133,37 @@ export function GraphScene({
         + (1 - referenceCoreOpacity) * threeDEnergyWeight;
     }
     if (nodeEnergyMaterial.uniforms?.pointSize) {
-      const idlePointSize = 15.4 - dimensionProgress * 0.9;
-      const graphPointSize = 13.2 + dimensionProgress * 0.3;
+      const idlePointSize = sharedStyle ? 9 : 15.4 - dimensionProgress * 0.9;
+      // Explore changes the topology, not the selected 3D core/halo style.
+      const graphPointSize = sharedStyle || spatialNeuron ? 9 : dimension === 3 ? idlePointSize : neuronMode ? 14 : 13.2;
       const pointSize = idlePointSize
         + (graphPointSize - idlePointSize) * progress
-        + transitionEnergy * 0.65;
+        + (sharedStyle ? 0 : transitionEnergy * 0.65);
       nodeEnergyMaterial.uniforms.pointSize.value = pointSize
-        * (1 + (
-          fx3d.node.master.scale * fx3d.node.core.sizeScale - 1
-        ) * threeDEnergyWeight);
+        * fx3d.node.master.scale * scenePlan.nodes.scale;
     }
+    nodeEnergyMaterial.uniforms.pointCoreSizeScale.value = fx3d.node.core.sizeScale;
+    nodeEnergyMaterial.uniforms.pointPerspectiveFloor.value = spatialNeuron ? 0.68 - progress * 0.38 : 0.68;
+    nodeEnergyMaterial.uniforms.pointHaloRadiusScale.value = fx3d.node.halo.radiusScale;
     nodeEnergyMaterial.uniforms.energyTime.value = elapsed;
-    nodeEnergyMaterial.uniforms.orbStyle.value = orbEnergyWeight;
-    nodeEnergyMaterial.uniforms.pointColorVariation.value = threeDEnergyWeight;
-    nodeEnergyMaterial.uniforms.pointCoreEmissionIntensity.value = 1
-      + (fx3d.node.core.emissionIntensity - 1) * threeDEnergyWeight;
-    nodeEnergyMaterial.uniforms.pointCoreOpacity.value = 1
-      + (
-        fx3d.node.core.opacity * fx3d.node.master.opacity - 1
-      ) * threeDEnergyWeight;
-    nodeEnergyMaterial.uniforms.pointCoreVisibility.value = 1
-      + (Number(fx3d.node.core.enabled) - 1) * threeDEnergyWeight;
-    nodeEnergyMaterial.uniforms.pointHaloEmissionIntensity.value = 1
-      + (fx3d.node.halo.emissionIntensity - 1) * threeDEnergyWeight;
-    nodeEnergyMaterial.uniforms.pointHaloOpacity.value = 1
-      + (
-        fx3d.node.halo.opacity * fx3d.node.master.opacity - 1
-      ) * threeDEnergyWeight;
-    nodeEnergyMaterial.uniforms.pointHaloVisibility.value = 1
-      + (Number(fx3d.node.halo.enabled) - 1) * threeDEnergyWeight;
-    nodeEnergyMaterial.uniforms.pointScaleVariation.value = threeDEnergyWeight
-      * fx3d.node.size.byImportance;
+    nodeEnergyMaterial.uniforms.orbStyle.value = neuronMode ? 1 : threeDEnergyWeight;
+    nodeEnergyMaterial.uniforms.pointLayering.value = neuronSphere ? 0 : orbEnergyWeight;
+    nodeEnergyMaterial.uniforms.pointAbsoluteLayer.value = neuronSphere ? idleWeight : 0;
+    nodeEnergyMaterial.uniforms.pointOrbRadius.value = energyLineUniforms.lineOrbRadius.value;
+    nodeEnergyMaterial.uniforms.pointDepthContrast.value = (fx3d.orb?.network.depthContrast ?? 0)
+      * orbEnergyWeight + (spatialNeuron ? scenePlan.layout.depthContrast * progress : 0);
+    nodeEnergyMaterial.uniforms.pointColorVariation.value = neuronMode ? 1 : threeDEnergyWeight;
+    nodeEnergyMaterial.uniforms.pointCoreEmissionIntensity.value = fx3d.node.core.emissionIntensity;
+    nodeEnergyMaterial.uniforms.pointCoreOpacity.value = fx3d.node.core.opacity * fx3d.node.master.opacity * scenePlan.nodes.opacity;
+    nodeEnergyMaterial.uniforms.pointCoreVisibility.value = Number(fx3d.node.core.enabled);
+    nodeEnergyMaterial.uniforms.pointHaloEmissionIntensity.value = fx3d.node.halo.emissionIntensity;
+    nodeEnergyMaterial.uniforms.pointHaloOpacity.value = fx3d.node.halo.opacity * fx3d.node.master.opacity;
+    nodeEnergyMaterial.uniforms.pointHaloVisibility.value = Number(fx3d.node.halo.enabled);
+    nodeEnergyMaterial.uniforms.pointScaleVariation.value = fx3d.node.size.byImportance;
     nodeEnergyMaterial.uniforms.pointPulseMotion.value = Number(!reducedMotion);
     nodeEnergyMaterial.uniforms.pointPulseVisibility.value = Number(
       fx3d.node.pulse.enabled,
-    ) * fx3d.node.master.opacity * threeDEnergyWeight;
+    ) * fx3d.node.master.opacity;
     nodeEnergyMaterial.uniforms.pulseAmount.value = fx3d.node.pulse.amount;
     nodeEnergyMaterial.uniforms.pulseRate.value = fx3d.node.pulse.rate;
     ambientEnergyMaterial.uniforms.energyTime.value = elapsed;
@@ -1839,15 +2184,22 @@ export function GraphScene({
       : 0.64 * orbEnergyWeight;
     ambientEnergyMaterial.uniforms.pulseRate.value = 1.65;
     signalEnergyMaterial.uniforms.orbStyle.value = threeDEnergyWeight;
-    signalEnergyMaterial.uniforms.pointCoreEmissionIntensity.value = 1
-      + (fx3d.signal.emissionIntensity - 1) * threeDEnergyWeight;
-    signalEnergyMaterial.uniforms.pointHaloEmissionIntensity.value = 1
-      + (fx3d.signal.emissionIntensity - 1) * threeDEnergyWeight;
-    signalEnergyMaterial.uniforms.pointOpacity.value = 0.96
-      + (fx3d.signal.opacity - 0.96) * threeDEnergyWeight;
-    signalEnergyMaterial.uniforms.pointSize.value = (
+    signalEnergyMaterial.uniforms.pointCoreEmissionIntensity.value = fx3d.signal.emissionIntensity;
+    signalEnergyMaterial.uniforms.pointHaloEmissionIntensity.value = fx3d.signal.emissionIntensity;
+    signalEnergyMaterial.uniforms.pointOpacity.value = fx3d.signal.opacity;
+    signalEnergyMaterial.uniforms.pointSize.value = (sharedStyle ? 16.5 : (
       (dimension === 3 ? 10.5 : 9.5) + 6 * threeDEnergyWeight
-    ) * (1 + (fx3d.signal.sizeScale - 1) * threeDEnergyWeight);
+    )) * fx3d.signal.sizeScale;
+    if (sphereLineRef.current) {
+      sphereLineRef.current.visible = idleWeight > 0.001 && (fx3d.edge.core.enabled || fx3d.edge.halo.enabled);
+      sphereLineRef.current.rotation.set(tilt, orbAngle, 0);
+      sphereLineRef.current.position.set(0, -10, 0);
+      sphereLineRef.current.scale.setScalar(breathingScale);
+      sphereLineRef.current.updateMatrixWorld();
+      sphereLineMaterial.uniforms.lineMasterOpacity.value = energyLineUniforms.lineMasterOpacity.value * idleWeight;
+      energyLineUniforms.lineMasterOpacity.value *= progress;
+      if (edgeMaterialRef.current) edgeMaterialRef.current.opacity *= progress;
+    }
     if (orbAmbientRef.current) {
       orbAmbientRef.current.visible = fx3d.orb.sparks.enabled
         && orbEnergyWeight > 0.002;
@@ -1878,6 +2230,9 @@ export function GraphScene({
     dimension,
     displayPositions,
     ambientEnergyMaterial,
+    neuronSphere,
+    sharedStyle,
+    sphereLineMaterial,
     relationHaloQualityScale,
     energyLineUniforms,
     getLabelLodCount,
@@ -1887,13 +2242,18 @@ export function GraphScene({
     labelMaterial,
     model.nodes.length,
     nodeEnergyMaterial,
+    neuronMode,
     orbFramePositions,
     orbMorphModel.positions,
+    orbMorphModel.radius,
     orbRimUniforms,
     planarFramePositions,
     planarMorphModel.phases,
     planarMorphModel.positions,
     reducedMotion,
+    spatialNeuron,
+    edgeSegments,
+    scenePlan.layout.depthContrast,
     scenePlan.edges.opacity,
     scenePlan.labels.opacity,
     scenePlan.nodes.opacity,
@@ -1971,15 +2331,20 @@ export function GraphScene({
     edgeColorAttributeRef.current?.setUsage(DynamicDrawUsage);
     energyLineStartAttributeRef.current?.setUsage(DynamicDrawUsage);
     energyLineEndAttributeRef.current?.setUsage(DynamicDrawUsage);
+    energyLineTangentStartAttributeRef.current?.setUsage(DynamicDrawUsage);
+    energyLineTangentEndAttributeRef.current?.setUsage(DynamicDrawUsage);
     shellEdgePositionAttributeRef.current?.setUsage(DynamicDrawUsage);
     innerShellEdgePositionAttributeRef.current?.setUsage(DynamicDrawUsage);
     focusedEdgePositionAttributeRef.current?.setUsage(DynamicDrawUsage);
     signalPositionAttributeRef.current?.setUsage(DynamicDrawUsage);
     labelMeshRef.current?.instanceMatrix.setUsage(DynamicDrawUsage);
-    graphPositionsRef.current = model.initialPositions;
+    if (positionedModelRef.current !== model) {
+      positionedModelRef.current = model;
+      graphPositionsRef.current = model.initialPositions;
+      morphProgressRef.current = presentationTargetRef.current;
+    }
     positionsRef.current = displayPositions;
-    morphProgressRef.current = presentationTargetRef.current;
-    applyPositionsRef.current(model.initialPositions);
+    applyPositionsRef.current(graphPositionsRef.current);
   }, [
     displayPositions,
     edgePositions,
@@ -1996,9 +2361,7 @@ export function GraphScene({
   }, [energyLineUniforms, invalidate, viewportSize.height, viewportSize.width]);
 
   useLayoutEffect(() => {
-    const signalCount = dimension === 3
-      ? Math.min(profile3d.signal.count, orbMorphModel.signalEdgeIndices.length)
-      : orbMorphModel.signalEdgeIndices.length;
+    const signalCount = Math.min(profile3d.signal.count, orbMorphModel.signalEdgeIndices.length);
     signalGeometryRef.current?.setDrawRange(0, signalCount);
     applyPresentationPositionsRef.current(
       morphProgressRef.current,
@@ -2011,10 +2374,13 @@ export function GraphScene({
     edgePositions,
     fxRevisionKey,
     invalidate,
+    labelMaterial,
     orbMorphModel.signalEdgeIndices.length,
     profile3d.signal.count,
     scenePlan.edges.opacity,
     scenePlan.nodes.opacity,
+    scenePlan.layout.weave,
+    scenePlan.layout.depthContrast,
   ]);
 
   useLayoutEffect(() => {
@@ -2050,8 +2416,21 @@ export function GraphScene({
     };
   }, [invalidate, labelAtlas, labelRectAttribute, writeLabelSlot]);
 
-  useEffect(() => () => labelAtlas?.dispose(), [labelAtlas]);
+  useEffect(() => {
+    // StrictMode replays effect setup/cleanup while retaining memoized resources.
+    // Defer destructive canvas cleanup so the replay can reclaim the same atlas.
+    if (labelAtlasDisposalRef.current?.atlas === labelAtlas) {
+      clearTimeout(labelAtlasDisposalRef.current.timer);
+    }
+    return () => {
+      labelAtlasDisposalRef.current = {
+        atlas: labelAtlas,
+        timer: setTimeout(() => labelAtlas?.dispose(), 0),
+      };
+    };
+  }, [labelAtlas]);
   useEffect(() => () => labelMaterial?.dispose(), [labelMaterial]);
+  useEffect(() => () => sphereLineMaterial.dispose(), [sphereLineMaterial]);
   useEffect(() => () => energyLineMaterial.dispose(), [energyLineMaterial]);
   useEffect(() => () => orbRimMaterial.dispose(), [orbRimMaterial]);
   useEffect(() => () => nodeEnergyMaterial.dispose(), [nodeEnergyMaterial]);
@@ -2200,16 +2579,26 @@ export function GraphScene({
       signalPositionLength: signalPositions.length,
     });
     if (!reducedMotion && signalLayerActive) {
-      const visibleSignalCount = dimension === 3
-        ? Math.min(fx3d.signal.count, orbMorphModel.signalEdgeIndices.length)
-        : orbMorphModel.signalEdgeIndices.length;
+      const visibleSignalCount = Math.min(fx3d.signal.count, orbMorphModel.signalEdgeIndices.length);
       orbMorphModel.signalEdgeIndices.forEach((edgeIndex, signalIndex) => {
         if (signalIndex >= visibleSignalCount) return;
-        const edgeOffset = edgeIndex * 6;
         const positionOffset = signalIndex * 3;
-        const signalSpeed = dimension === 3 ? fx3d.signal.speed : 1;
+        const signalSpeed = fx3d.signal.speed;
         const rawProgress = (elapsed * 0.18 * signalSpeed + signalIndex * 0.173) % 1;
-        const travel = rawProgress * rawProgress * (3 - 2 * rawProgress);
+        const curveTravel = rawProgress * rawProgress * (3 - 2 * rawProgress) * edgeSegments;
+        const segment = Math.min(edgeSegments - 1, Math.floor(curveTravel));
+        const edgeOffset = (edgeIndex * edgeSegments + segment) * 6;
+        const travel = curveTravel - segment;
+        if (sphereCurves && morphProgressRef.current < 0.001 && sphereLineRef.current) {
+          const sphereTravel = rawProgress * rawProgress * (3 - 2 * rawProgress) * sphereCurves.segments;
+          const sphereSegment = Math.min(sphereCurves.segments - 1, Math.floor(sphereTravel));
+          const curveIndex = Math.floor((signalIndex + 0.35) / Math.max(1, visibleSignalCount) * orbMorphModel.edges.length);
+          const offset = (curveIndex * sphereCurves.segments + sphereSegment) * 3;
+          PICK_CENTER.fromArray(sphereCurves.starts, offset);
+          PICK_EDGE.fromArray(sphereCurves.ends, offset);
+          PICK_CENTER.lerp(PICK_EDGE, sphereTravel - sphereSegment).applyMatrix4(sphereLineRef.current.matrixWorld).toArray(signalPositions, positionOffset);
+          return;
+        }
         signalPositions[positionOffset] = edgePositions[edgeOffset]
           + (edgePositions[edgeOffset + 3] - edgePositions[edgeOffset]) * travel;
         signalPositions[positionOffset + 1] = edgePositions[edgeOffset + 1]
@@ -2249,10 +2638,8 @@ export function GraphScene({
       }
     }
     const visibleCount = getLabelLodCount();
-    if (visibleCount !== lastVisibleLabelCountRef.current) {
-      lastVisibleLabelCountRef.current = visibleCount;
-      updateLabelMatrices(positionsRef.current, visibleCount);
-    }
+    lastVisibleLabelCountRef.current = visibleCount;
+    updateLabelMatrices(positionsRef.current, visibleCount);
     if (shouldContinueGraphFrame({
       dimensionChanged,
       documentVisible: documentVisibleRef.current,
@@ -2450,6 +2837,10 @@ export function GraphScene({
       dimension,
       emitIntermediate: !reducedMotion,
       force: layoutSettings,
+      neuronStructure: model.neuron ? {
+        roots: model.neuron.roots, members: model.neuron.members,
+        children: model.neuron.children, satellites: model.neuron.satellites,
+      } : undefined,
       tickBudget: layoutSettings.tickBudget,
       nodes: model.nodes.map((node, index) => ({
         id: node.id,
@@ -2501,11 +2892,39 @@ export function GraphScene({
     revision,
   ]);
 
+  useEffect(() => {
+    Object.assign(gl.domElement.dataset, {
+      graphNodeCount: String(model.nodes.length),
+      graphLayout: neuronMode ? "neuron" : "force",
+      graphRenderedEdgeCount: String(renderEdges.length),
+      orbSurfaceNodeCount: String(orbMorphModel.shellNodeCount),
+      orbLinkCount: String(orbMorphModel.shellEdgePairs.length / 2),
+    });
+  }, [gl, model.nodes.length, neuronMode, renderEdges.length, orbMorphModel.shellNodeCount, orbMorphModel.shellEdgePairs.length]);
+
   const getPositions = useCallback(() => positionsRef.current, []);
 
   return (
     <group>
+      {sphereCurves ? (
+        <mesh ref={sphereLineRef} frustumCulled={false} raycast={() => null} renderOrder={1.25}>
+          <instancedBufferGeometry key={sphereCurves.strengths.length} instanceCount={sphereCurves.strengths.length}>
+            <bufferAttribute attach="attributes-position" args={[ENERGY_LINE_QUAD_POSITIONS, 3]} />
+            <instancedBufferAttribute attach="attributes-edgeStart" args={[sphereCurves.starts, 3]} />
+            <instancedBufferAttribute attach="attributes-edgeEnd" args={[sphereCurves.ends, 3]} />
+            <instancedBufferAttribute attach="attributes-edgeTangentStart" args={[sphereCurves.tangentStarts, 3]} />
+            <instancedBufferAttribute attach="attributes-edgeTangentEnd" args={[sphereCurves.tangentEnds, 3]} />
+            <instancedBufferAttribute attach="attributes-edgeFilamentWeights" args={[sphereCurves.filamentWeights, 2]} />
+            <instancedBufferAttribute attach="attributes-edgeColorStart" args={[sphereLineColors, 3]} />
+            <instancedBufferAttribute attach="attributes-edgeColorEnd" args={[sphereLineColors, 3]} />
+            <instancedBufferAttribute attach="attributes-edgeWidth" args={[sphereCurves.widths, 1]} />
+            <instancedBufferAttribute attach="attributes-edgeEnergy" args={[sphereCurves.strengths, 1]} />
+          </instancedBufferGeometry>
+          <primitive attach="material" object={sphereLineMaterial} />
+        </mesh>
+      ) : null}
       <GraphCameraNavigation
+        onViewChange={onCameraViewChange}
         command={cameraCommand}
         dimension={dimension}
         getPositions={getPositions}
@@ -2564,8 +2983,7 @@ export function GraphScene({
         <sphereGeometry args={[orbMorphModel.radius * 1.018, 48, 32]} />
         <primitive attach="material" object={orbRimMaterial} />
       </mesh>
-      {extraShellEdgeCount > 0 ? (
-        <>
+      {dimension === 3 && innerShellEdgePositions.length > 0 ? (
           <lineSegments
             ref={innerShellEdgeObjectRef}
             position={[0, -2.7, 0]}
@@ -2579,7 +2997,7 @@ export function GraphScene({
               <bufferAttribute
                 ref={innerShellEdgePositionAttributeRef}
                 attach="attributes-position"
-                args={[extraShellEdgePositions, 3]}
+                args={[innerShellEdgePositions, 3]}
               />
             </bufferGeometry>
             <lineBasicMaterial
@@ -2593,6 +3011,10 @@ export function GraphScene({
               toneMapped={false}
             />
           </lineSegments>
+      ) : null}
+      {extraShellEdgeCount > 0 ? (
+        <>
+
           <lineSegments
             ref={shellEdgeObjectRef}
             raycast={() => null}
@@ -2619,7 +3041,7 @@ export function GraphScene({
         </>
       ) : null}
       <lineSegments raycast={() => null} renderOrder={1}>
-        <bufferGeometry>
+        <bufferGeometry ref={baseEdgeGeometryRef}>
           <bufferAttribute
             ref={edgePositionAttributeRef}
             attach="attributes-position"
@@ -2649,7 +3071,7 @@ export function GraphScene({
           renderOrder={1.25}
           visible={dimension === 3}
         >
-          <instancedBufferGeometry instanceCount={edgeCapacity}>
+          <instancedBufferGeometry key={`${edgeCapacity}:${edgeSegments}`} instanceCount={edgeCapacity * edgeSegments}>
             <bufferAttribute
               attach="attributes-position"
               args={[ENERGY_LINE_QUAD_POSITIONS, 3]}
@@ -2663,6 +3085,20 @@ export function GraphScene({
               ref={energyLineEndAttributeRef}
               attach="attributes-edgeEnd"
               args={[energyLineEnds, 3]}
+            />
+            <instancedBufferAttribute
+              ref={energyLineTangentStartAttributeRef}
+              attach="attributes-edgeTangentStart"
+              args={[energyLineTangentStarts, 3]}
+            />
+            <instancedBufferAttribute
+              ref={energyLineTangentEndAttributeRef}
+              attach="attributes-edgeTangentEnd"
+              args={[energyLineTangentEnds, 3]}
+            />
+            <instancedBufferAttribute
+              attach="attributes-edgeFilamentWeights"
+              args={[energyLineFilamentWeights, 2]}
             />
             <instancedBufferAttribute
               attach="attributes-edgeColorStart"
@@ -2732,6 +3168,10 @@ export function GraphScene({
             args={[nodeEnergyStyle.scales, 1]}
           />
           <bufferAttribute
+            attach="attributes-pointLayerScale"
+            args={[orbMorphModel.scales, 1]}
+          />
+          <bufferAttribute
             attach="attributes-pointPhase"
             args={[orbMorphModel.phases, 1]}
           />
@@ -2740,6 +3180,7 @@ export function GraphScene({
       </points>
       <instancedMesh
         ref={nodeHaloMeshRef}
+        visible={dimension === 2 && !neuronMode}
         args={[undefined, undefined, model.nodes.length]}
         frustumCulled={false}
         raycast={() => null}
@@ -2760,6 +3201,7 @@ export function GraphScene({
       </instancedMesh>
       <instancedMesh
         ref={nodeMeshRef}
+        visible={!neuronMode}
         args={[undefined, undefined, model.nodes.length]}
         frustumCulled={false}
         raycast={() => null}
@@ -2792,7 +3234,7 @@ export function GraphScene({
       </instancedMesh>
       {!reducedMotion
         && signalPositions.length > 0
-        && (dimension !== 3 || (profile3d.signal.enabled && profile3d.signal.count > 0)) ? (
+        && profile3d.signal.enabled && profile3d.signal.count > 0 ? (
         <points
           frustumCulled={false}
           raycast={() => null}
@@ -2827,6 +3269,7 @@ export function GraphScene({
       {labelAtlas && labelMaterial && labelSlotCount > 0 ? (
         <instancedMesh
           ref={labelMeshRef}
+          layers-mask={1 << GRAPH_LABEL_LAYER}
           args={[undefined, undefined, labelSlotCount]}
           frustumCulled={false}
           raycast={() => null}

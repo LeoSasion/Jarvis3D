@@ -92,11 +92,11 @@ export function createGraphRenderPlan(settings, quality, environment = {}, graph
   const connectivityFloor = Math.min(edges.length, Math.max(0, nodes.length - 1));
   const layoutEdgeCount = Math.max(layoutEdgeTarget, connectivityFloor);
   const starCount = Math.min(requestedStars, quality.starBudget);
-  const bloomMode = settings?.scene?.bloom ?? "auto";
-  const bloomRequested = bloomMode === "on" || (bloomMode === "auto" && quality.bloom);
+  const profileBloom = settings?.profiles?.[`${settings?.view?.dimension ?? 3}d`]?.postFx?.bloom;
+  const bloomMode = profileBloom ? "profile" : settings?.scene?.bloom ?? "auto";
+  const bloomRequested = profileBloom?.enabled ?? (bloomMode === "on" || (bloomMode === "auto" && quality.bloom));
   const bloom = bloomRequested
-    && quality.bloom
-    && environment.reducedMotion !== true
+    && (profileBloom || quality.bloom && environment.reducedMotion !== true)
     && environment.forcedColors !== true;
 
   const constraints = [];
@@ -114,6 +114,8 @@ export function createGraphRenderPlan(settings, quality, environment = {}, graph
 
   return Object.freeze({
     quality,
+    sharedStyle: settings?.sharedStyle === true,
+    idleShape: settings?.idleShape,
     nodes: freezeSection({
       count: nodeCount,
       requested: requestedNodes,
@@ -139,6 +141,12 @@ export function createGraphRenderPlan(settings, quality, environment = {}, graph
       opacity: clamp(settings?.labels?.opacity, 0.35, 1, 1),
     }),
     layout: freezeSection({
+      mode: settings?.layout?.mode === "neuron" ? "neuron" : "force",
+      depth: clamp(settings?.layout?.depth, 0.2, 2, 1),
+      branchSpread: clamp(settings?.layout?.branchSpread, 0.15, 1, 0.48),
+      weave: clamp(settings?.layout?.weave, 0, 1.5, 0.8),
+      crossLinks: clamp(settings?.layout?.crossLinks, 0, 1, 0.3),
+      depthContrast: clamp(settings?.layout?.depthContrast, 0, 1, 0.7),
       repulsion: clamp(settings?.layout?.repulsion, 0.5, 2, 1),
       linkDistance: clamp(settings?.layout?.linkDistance, 0.6, 2, 1),
       linkStrength: clamp(settings?.layout?.linkStrength, 0.5, 1.5, 1),
@@ -196,7 +204,8 @@ export function applyGraphRuntimeQuality(renderPlan, quality, graph = {}) {
     renderPlan.scene.starCount,
     Math.max(0, Math.floor(quality.starBudget ?? renderPlan.scene.starCount)),
   );
-  const bloom = Boolean(renderPlan.scene.bloom && quality.bloom !== false);
+  const bloom = Boolean(renderPlan.scene.bloom
+    && (renderPlan.scene.bloomMode === "profile" || quality.bloom !== false));
 
   if (renderPlan.quality === quality
     && renderPlan.edges.count === edgeCount

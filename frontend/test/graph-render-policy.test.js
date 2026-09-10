@@ -28,7 +28,8 @@ test("graph render plan caps requested detail without mutating visual intent", (
   assert.equal(plan.layout.edgeBudget, 4_500);
   assert.equal(plan.layout.tickBudget, 96);
   assert.equal(plan.scene.starCount, 100);
-  assert.equal(plan.scene.bloom, false);
+  assert.equal(plan.scene.bloom, true);
+  assert.equal(plan.scene.bloomMode, "profile");
   assert.equal(plan.profiles["3d"].edge.halo.enabled, true);
   assert.equal(Object.isFrozen(plan.profiles["3d"].edge.halo), true);
   assert.ok(plan.constraints.includes("LABELS 24→12"));
@@ -122,7 +123,7 @@ test("effective runtime quality lowers every scene workload budget", () => {
   assert.equal(effective.layout.edgeBudget, 4_500);
   assert.equal(effective.layout.tickBudget, 96);
   assert.equal(effective.scene.starCount, 180);
-  assert.equal(effective.scene.bloom, false);
+  assert.equal(effective.scene.bloom, true); // Explicit profile Bloom uses quality-bounded mip levels.
   assert.equal(effective.profiles, requested.profiles);
   assert.equal(effective.profiles["3d"].edge.halo.enabled, true);
 });

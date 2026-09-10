@@ -8,26 +8,25 @@ async function readSource(path) {
   return readFile(new URL(path, sourceRoot), "utf8");
 }
 
-test("desktop telemetry can release the right workspace without stopping its data hooks", async () => {
-  const [rail, shellStyles] = await Promise.all([
+test("desktop panels preserve telemetry subscriptions and keep controls outside panel contents", async () => {
+  const [rail, workspace, tools, styles] = await Promise.all([
     readSource("components/TelemetryRail.jsx"),
-    readSource("shell-aesthetic.css"),
+    readSource("components/DesktopWorkspace.jsx"),
+    readSource("components/GraphViewControls.jsx"),
+    readSource("desktop-tool-rail.css"),
   ]);
 
-  assert.match(rail, /const \[railCollapsed, setRailCollapsed\] = useState\(false\)/u);
-  assert.match(rail, /setRailCollapsed\(\(current\) => !current\)/u);
-  assert.match(rail, /aria-label=\{t\("telemetry\.action\.hide"\)\}/u);
-  assert.match(rail, /aria-label=\{t\("telemetry\.action\.show"\)\}/u);
-  assert.match(rail, /aria-expanded="true"/u);
-  assert.match(rail, /aria-expanded="false"/u);
-  assert.match(rail, /is-rail-collapsed/u);
-  assert.ok(
-    rail.indexOf("useSystemSnapshot()") < rail.indexOf("if (railCollapsed)"),
-    "telemetry subscriptions must remain mounted while the rail is collapsed",
-  );
-
-  assert.match(shellStyles, /--telemetry-rail-width:\s*44px/u);
-  assert.match(shellStyles, /:has\(> \.telemetry-rail\.is-rail-collapsed\)/u);
-  assert.match(shellStyles, /\.graph-visual-settings\.is-overlay/u);
-  assert.match(shellStyles, /right:\s*calc\(var\(--telemetry-rail-width\) \+ 16px\) !important/u);
+  assert.match(rail, /useSystemSnapshot\(\)/u);
+  assert.match(rail, /useSystemFeed\(\)/u);
+  assert.match(rail, /hidden=\{railCollapsed\}/u);
+  assert.doesNotMatch(rail, /if \(railCollapsed\) return/u);
+  assert.match(workspace, /aria-controls="desktop-system-panel"/u);
+  assert.match(workspace, /aria-expanded=\{systemOpen\}/u);
+  assert.match(workspace, /"telemetry\.action\.hide" : "telemetry\.action\.show"/u);
+  assert.match(tools, /createPortal\(/u);
+  assert.match(tools, /if \(!active \|\| !graphToolsTarget\) return null/u);
+  assert.doesNotMatch(rail, /<GraphViewControls|CoreVisualCanvas/u);
+  assert.match(styles, /--desktop-tool-rail-width: 48px/u);
+  assert.match(styles, /inset: 0 var\(--desktop-tool-rail-width\) 0 auto/u);
+  assert.doesNotMatch(workspace, /issueCameraCommand|setZoom|CoreVisualCanvas/u);
 });

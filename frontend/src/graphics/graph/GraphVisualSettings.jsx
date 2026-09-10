@@ -13,6 +13,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
+import { getGraphVisualProfileLibrarySnapshot, saveGraphVisualProfile } from "../../graph/graph-visual-profile-library.js";
 import { useReducedMotion } from "../../hooks/useReducedMotion.js";
 import { useLanguage } from "../../i18n/language-system.js";
 import {
@@ -40,21 +41,17 @@ import {
   graphVisualPresets,
   graphVisualSettingRanges,
   initializeGraphVisualSettings,
-  resetGraphVisualSettings,
+  resetActiveGraphVisualSettings,
   resetGraphVisualProfile,
   resolveGraphVisualColors,
   setGraphVisualPreset,
   setGraphVisualProfileSetting,
   setGraphVisualSetting,
+  setGraphSharedNeuronStyle,
   subscribeGraphVisualSettings,
 } from "./graph-visual-settings.js";
 import "./graph-visual-settings.css";
 
-const bloomOptions = Object.freeze([
-  Object.freeze({ id: "auto", labelKey: "graphVisualSettings.option.auto" }),
-  Object.freeze({ id: "off", labelKey: "common.state.off" }),
-  Object.freeze({ id: "on", labelKey: "common.state.on" }),
-]);
 const qualityOptions = Object.freeze([
   Object.freeze({ id: "auto", labelKey: "graphVisualSettings.option.auto" }),
   Object.freeze({ id: "low", labelKey: "graphVisualSettings.option.quality.low" }),
@@ -70,6 +67,9 @@ const visibilityOptions = Object.freeze([
   Object.freeze({ id: false, labelKey: "common.state.off" }),
 ]);
 const presetDetailKeys = Object.freeze({
+  neuron3d: "graphVisualSettings.preset.neuron3d.detail",
+  neuron: "graphVisualSettings.preset.neuron.detail",
+  neural: "graphVisualSettings.preset.neural.detail",
   obsidian: "graphVisualSettings.preset.obsidian.detail",
   nebula: "graphVisualSettings.preset.nebula.detail",
   blueprint: "graphVisualSettings.preset.blueprint.detail",
@@ -312,7 +312,9 @@ export function GraphVisualSettings({
   const reducedMotion = useReducedMotion();
   const mobileDrawer = useMobileSettingsDrawer();
   const presetId = getGraphVisualPresetId(settings);
-  const profile3d = settings.profiles["3d"];
+  const profileId = `${settings.view.dimension}d`;
+  const activeProfile = settings.profiles[profileId];
+  const visiblePresets = graphVisualPresets.filter((preset) => !preset.dimensions || preset.dimensions.includes(settings.view.dimension));
   const environment = useMemo(
     () => readGraphicsEnvironment(reducedMotion),
     [reducedMotion],
@@ -334,11 +336,8 @@ export function GraphVisualSettings({
     }),
     [resolvedColors, settings.labels.opacity, themePalette.background],
   );
-  const bloomRequested = settings.scene.bloom === "on"
-    || (settings.scene.bloom === "auto" && quality.bloom);
+  const bloomRequested = activeProfile.postFx.bloom.enabled;
   const effectiveBloom = bloomRequested
-    && quality.bloom
-    && !environment.reducedMotion
     && !environment.forcedColors;
   const runtimeConstraints = useMemo(() => {
     if (environment.forcedColors) return ["FORCED COLORS → DOM FALLBACK"];
@@ -372,10 +371,14 @@ export function GraphVisualSettings({
       && activeElement instanceof HTMLElement
       ? activeElement
       : null;
-    const focusTarget = closeButtonRef.current ?? panelRef.current;
+    const panel = panelRef.current;
+    const focusTarget = closeButtonRef.current ?? panel;
     focusTarget?.focus({ preventScroll: true });
 
     return () => {
+      // Switching to another tool keeps focus on the newly chosen control.
+      const focusedElement = typeof document === "undefined" ? null : document.activeElement;
+      if (focusedElement && focusedElement !== document.body && !panel?.contains(focusedElement)) return;
       const returnTarget = returnFocusRef?.current ?? fallbackReturnTarget;
       if (returnTarget?.isConnected) returnTarget.focus({ preventScroll: true });
     };
@@ -408,20 +411,34 @@ export function GraphVisualSettings({
   }, [mobileDrawer, onClose]);
 
   const choosePreset = (preset) => {
+    if (["neural", "neuron", "neuron3d"].includes(preset.id) && presetId !== preset.id) {
+      const backupLabel = t(`graphVisualSettings.preset.${preset.id}.backup`);
+      if (!getGraphVisualProfileLibrarySnapshot().profiles.some((profile) => profile.label === backupLabel)) {
+        saveGraphVisualProfile(backupLabel, settings);
+      }
+    }
     setGraphVisualPreset(preset.id);
     onToast?.(t("graphVisualSettings.toast.presetSelected", {
-      profile: preset.label,
+      profile: preset.labelKey ? t(preset.labelKey) : preset.label,
     }));
   };
 
-  const reset = () => {
-    resetGraphVisualSettings();
-    onToast?.(t("graphVisualSettings.toast.resetNebula"));
+  const changeStyleLink = (enabled) => {
+    if (enabled && !settings.sharedStyle) {
+      const label = t("graphVisualSettings.shared.backup");
+      if (!getGraphVisualProfileLibrarySnapshot().profiles.some((profile) => profile.label === label)) saveGraphVisualProfile(label, settings);
+    }
+    setGraphSharedNeuronStyle(enabled);
   };
 
-  const resetProfile3d = () => {
-    resetGraphVisualProfile("3d");
-    onToast?.(t("graphVisualSettings.toast.reset3dProfile"));
+  const reset = () => {
+    resetActiveGraphVisualSettings();
+    onToast?.(t("graphVisualSettings.scope.reset", { dimension: settings.view.dimension }));
+  };
+
+  const resetActiveProfile = () => {
+    resetGraphVisualProfile(profileId);
+    onToast?.(t(settings.sharedStyle ? "graphVisualSettings.shared.reset" : "graphVisualSettings.scope.reset", { dimension: settings.view.dimension }));
   };
 
   const panel = (
@@ -454,28 +471,45 @@ export function GraphVisualSettings({
         ) : null}
       </header>
 
+      <div className="graph-visual-settings__mode">
+        <ChoiceGroup
+          label={t("graphVisualSettings.scope.title")}
+          value={settings.view.dimension}
+          options={dimensionOptions}
+          onChange={(value) => setGraphVisualSetting("view", "dimension", value)}
+          t={t}
+        />
+        <p>{t(settings.sharedStyle ? "graphVisualSettings.shared.detail" : "graphVisualSettings.scope.detail", { dimension: settings.view.dimension })}</p>
+        <ChoiceGroup
+          label={t("graphVisualSettings.shared.title")}
+          value={settings.sharedStyle}
+          options={[{ id: true, labelKey: "graphVisualSettings.shared.on" }, { id: false, labelKey: "graphVisualSettings.shared.off" }]}
+          onChange={changeStyleLink}
+          t={t}
+        />
+      </div>
       <div
         className="graph-visual-settings__presets"
         role="radiogroup"
         aria-label={t("graphVisualSettings.preset.aria")}
       >
-        {graphVisualPresets.map((preset, index) => (
+        {visiblePresets.map((preset, index) => (
           <button
             key={preset.id}
             type="button"
             role="radio"
             aria-checked={preset.id === presetId}
-            tabIndex={getRadioTabIndex(presetId, graphVisualPresets, index)}
+            tabIndex={getRadioTabIndex(presetId, visiblePresets, index)}
             className={preset.id === presetId ? "is-selected" : ""}
             onClick={() => choosePreset(preset)}
             onKeyDown={(event) => handleRadioNavigation(
               event,
-              graphVisualPresets,
+              visiblePresets,
               index,
-              (id) => choosePreset(graphVisualPresets.find((candidate) => candidate.id === id)),
+              (id) => choosePreset(visiblePresets.find((candidate) => candidate.id === id)),
             )}
           >
-            <strong>{preset.label}</strong>
+            <strong>{preset.labelKey ? t(preset.labelKey) : preset.label}</strong>
             <small>
               {presetDetailKeys[preset.id]
                 ? t(presetDetailKeys[preset.id])
@@ -485,21 +519,23 @@ export function GraphVisualSettings({
         ))}
       </div>
 
+      {settings.layout.mode === "neuron" && settings.view.dimension === 3 ? <GraphLayoutSettings settings={settings} t={t} open /> : null}
+
       <SettingsGroup
-        title={t("graphVisualSettings.section.profile3d")}
+        title={t(settings.sharedStyle ? "graphVisualSettings.shared.layers" : "graphVisualSettings.scope.layers", { dimension: settings.view.dimension })}
         meta={t("graphVisualSettings.profile.layerSummary", {
-          count: 10,
-          state: t(profile3d.edge.halo.enabled ? "common.state.on" : "common.state.off"),
+          count: settings.view.dimension === 3 ? (settings.idleShape === "neuronSphere" ? 9 : 10) : 7,
+          state: t(activeProfile.edge.halo.enabled ? "common.state.on" : "common.state.off"),
         })}
         open
       >
         <div className="graph-visual-settings__profile-intro">
           <span>
             <strong>{t("graphVisualSettings.profile.layerStack")}</strong>
-            <small>{t("graphVisualSettings.profile.layerStackDetail")}</small>
+            <small>{t(settings.sharedStyle ? "graphVisualSettings.shared.detail" : "graphVisualSettings.profile.layerStackDetail")}</small>
           </span>
-          <button type="button" onClick={resetProfile3d}>
-            <ArrowResetRegular />{t("graphVisualSettings.action.reset3d")}
+          <button type="button" onClick={resetActiveProfile}>
+            <ArrowResetRegular />{t(settings.sharedStyle ? "graphVisualSettings.shared.resetButton" : "graphVisualSettings.scope.resetButton", { dimension: settings.view.dimension })}
           </button>
         </div>
 
@@ -508,117 +544,137 @@ export function GraphVisualSettings({
           role="group"
           aria-label={t("graphVisualSettings.profile.layerVisibilityAria")}
         >
-          <FxLayerToggle profileId="3d" path="node.core.enabled" label={t("graphVisualSettings.layer.nodeCore")} enabled={profile3d.node.core.enabled} t={t} />
-          <FxLayerToggle profileId="3d" path="node.halo.enabled" label={t("graphVisualSettings.layer.nodeHalo")} enabled={profile3d.node.halo.enabled} t={t} />
-          <FxLayerToggle profileId="3d" path="node.pulse.enabled" label={t("graphVisualSettings.layer.nodePulse")} enabled={profile3d.node.pulse.enabled} t={t} />
-          <FxLayerToggle profileId="3d" path="edge.core.enabled" label={t("graphVisualSettings.layer.relationCore")} enabled={profile3d.edge.core.enabled} t={t} />
-          <FxLayerToggle profileId="3d" path="edge.halo.enabled" label={t("graphVisualSettings.layer.relationHalo")} enabled={profile3d.edge.halo.enabled} t={t} />
-          <FxLayerToggle profileId="3d" path="signal.enabled" label={t("graphVisualSettings.layer.relationSignals")} enabled={profile3d.signal.enabled} t={t} />
-          <FxLayerToggle profileId="3d" path="orb.innerNetwork.enabled" label={t("graphVisualSettings.layer.innerNetwork")} enabled={profile3d.orb.innerNetwork.enabled} t={t} />
-          <FxLayerToggle profileId="3d" path="orb.rim.enabled" label={t("graphVisualSettings.layer.orbRim")} enabled={profile3d.orb.rim.enabled} t={t} />
-          <FxLayerToggle profileId="3d" path="orb.sparks.enabled" label={t("graphVisualSettings.layer.ambientSparks")} enabled={profile3d.orb.sparks.enabled} t={t} />
-          <FxLayerToggle profileId="3d" path="postFx.bloom.enabled" label={t("graphVisualSettings.layer.bloom")} enabled={profile3d.postFx.bloom.enabled} t={t} />
+          <FxLayerToggle profileId={profileId} path="node.core.enabled" label={t("graphVisualSettings.layer.nodeCore")} enabled={activeProfile.node.core.enabled} t={t} />
+          <FxLayerToggle profileId={profileId} path="node.halo.enabled" label={t("graphVisualSettings.layer.nodeHalo")} enabled={activeProfile.node.halo.enabled} t={t} />
+          <FxLayerToggle profileId={profileId} path="node.pulse.enabled" label={t("graphVisualSettings.layer.nodePulse")} enabled={activeProfile.node.pulse.enabled} t={t} />
+          <FxLayerToggle profileId={profileId} path="edge.core.enabled" label={t("graphVisualSettings.layer.relationCore")} enabled={activeProfile.edge.core.enabled} t={t} />
+          <FxLayerToggle profileId={profileId} path="edge.halo.enabled" label={t("graphVisualSettings.layer.relationHalo")} enabled={activeProfile.edge.halo.enabled} t={t} />
+          <FxLayerToggle profileId={profileId} path="signal.enabled" label={t("graphVisualSettings.layer.relationSignals")} enabled={activeProfile.signal.enabled} t={t} />
+          {settings.view.dimension === 3 ? <>
+          {settings.idleShape !== "neuronSphere" ? <FxLayerToggle profileId={profileId} path="orb.innerNetwork.enabled" label={t("graphVisualSettings.layer.innerNetwork")} enabled={activeProfile.orb.innerNetwork.enabled} t={t} /> : null}
+          <FxLayerToggle profileId={profileId} path="orb.rim.enabled" label={t("graphVisualSettings.layer.orbRim")} enabled={activeProfile.orb.rim.enabled} t={t} />
+          <FxLayerToggle profileId={profileId} path="orb.sparks.enabled" label={t("graphVisualSettings.layer.ambientSparks")} enabled={activeProfile.orb.sparks.enabled} t={t} />
+          </> : null}
+          <FxLayerToggle profileId={profileId} path="postFx.bloom.enabled" label={t("graphVisualSettings.layer.bloom")} enabled={activeProfile.postFx.bloom.enabled} t={t} />
         </div>
 
         <FxCategory
           title={t("graphVisualSettings.category.nodeFx")}
           meta={t("graphVisualSettings.category.coreHaloSummary", {
-            coreState: t(profile3d.node.core.enabled ? "common.state.on" : "common.state.off"),
-            haloState: t(profile3d.node.halo.enabled ? "common.state.on" : "common.state.off"),
+            coreState: t(activeProfile.node.core.enabled ? "common.state.on" : "common.state.off"),
+            haloState: t(activeProfile.node.halo.enabled ? "common.state.on" : "common.state.off"),
           })}
         >
           <div className="graph-visual-settings__control-grid">
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="node.master.scale" label={technicalLabel(t, "NODE MASTER SCALE")} detail={t("graphVisualSettings.control.nodeMasterScale.detail")} format="strength" disabled={!profile3d.node.core.enabled && !profile3d.node.halo.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="node.master.opacity" label={technicalLabel(t, "NODE MASTER OPACITY")} detail={t("graphVisualSettings.control.nodeMasterOpacity.detail")} format="percent" disabled={!profile3d.node.core.enabled && !profile3d.node.halo.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="node.size.byImportance" label={technicalLabel(t, "NODE SIZE BY IMPORTANCE")} detail={t("graphVisualSettings.control.nodeSizeByImportance.detail")} format="percent" disabled={!profile3d.node.core.enabled && !profile3d.node.halo.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="node.core.sizeScale" label={technicalLabel(t, "NODE CORE SIZE SCALE")} detail={t("graphVisualSettings.control.nodeCoreSizeScale.detail")} format="strength" disabled={!profile3d.node.core.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="node.core.opacity" label={technicalLabel(t, "NODE CORE OPACITY")} detail={t("graphVisualSettings.control.nodeCoreOpacity.detail")} format="percent" disabled={!profile3d.node.core.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="node.core.emissionIntensity" label={technicalLabel(t, "NODE CORE EMISSION INTENSITY")} detail={t("graphVisualSettings.control.nodeCoreEmission.detail")} format="strength" disabled={!profile3d.node.core.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="node.halo.radiusScale" label={technicalLabel(t, "NODE HALO RADIUS SCALE")} detail={t("graphVisualSettings.control.nodeHaloRadius.detail")} format="strength" disabled={!profile3d.node.halo.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="node.halo.opacity" label={technicalLabel(t, "NODE HALO OPACITY")} detail={t("graphVisualSettings.control.nodeHaloOpacity.detail")} format="percent" disabled={!profile3d.node.halo.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="node.halo.emissionIntensity" label={technicalLabel(t, "NODE HALO EMISSION INTENSITY")} detail={t("graphVisualSettings.control.nodeHaloEmission.detail")} format="strength" disabled={!profile3d.node.halo.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="node.pulse.amount" label={technicalLabel(t, "NODE PULSE AMOUNT")} detail={t("graphVisualSettings.control.nodePulseAmount.detail")} format="strength" disabled={!profile3d.node.pulse.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="node.pulse.rate" label={technicalLabel(t, "NODE PULSE RATE")} detail={t("graphVisualSettings.control.nodePulseRate.detail")} format="strength" disabled={!profile3d.node.pulse.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.master.scale" label={technicalLabel(t, "NODE MASTER SCALE")} detail={t("graphVisualSettings.control.nodeMasterScale.detail")} format="strength" disabled={!activeProfile.node.core.enabled && !activeProfile.node.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.master.opacity" label={technicalLabel(t, "NODE MASTER OPACITY")} detail={t("graphVisualSettings.control.nodeMasterOpacity.detail")} format="percent" disabled={!activeProfile.node.core.enabled && !activeProfile.node.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.size.byImportance" label={technicalLabel(t, "NODE SIZE BY IMPORTANCE")} detail={t("graphVisualSettings.control.nodeSizeByImportance.detail")} format="percent" disabled={!activeProfile.node.core.enabled && !activeProfile.node.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.core.sizeScale" label={technicalLabel(t, "NODE CORE SIZE SCALE")} detail={t("graphVisualSettings.control.nodeCoreSizeScale.detail")} format="strength" disabled={!activeProfile.node.core.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.core.opacity" label={technicalLabel(t, "NODE CORE OPACITY")} detail={t("graphVisualSettings.control.nodeCoreOpacity.detail")} format="percent" disabled={!activeProfile.node.core.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.core.emissionIntensity" label={technicalLabel(t, "NODE CORE EMISSION INTENSITY")} detail={t("graphVisualSettings.control.nodeCoreEmission.detail")} format="strength" disabled={!activeProfile.node.core.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.halo.radiusScale" label={technicalLabel(t, "NODE HALO RADIUS SCALE")} detail={t("graphVisualSettings.control.nodeHaloRadius.detail")} format="strength" disabled={!activeProfile.node.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.halo.opacity" label={technicalLabel(t, "NODE HALO OPACITY")} detail={t("graphVisualSettings.control.nodeHaloOpacity.detail")} format="percent" disabled={!activeProfile.node.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.halo.emissionIntensity" label={technicalLabel(t, "NODE HALO EMISSION INTENSITY")} detail={t("graphVisualSettings.control.nodeHaloEmission.detail")} format="strength" disabled={!activeProfile.node.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.pulse.amount" label={technicalLabel(t, "NODE PULSE AMOUNT")} detail={t("graphVisualSettings.control.nodePulseAmount.detail")} format="strength" disabled={!activeProfile.node.pulse.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.pulse.rate" label={technicalLabel(t, "NODE PULSE RATE")} detail={t("graphVisualSettings.control.nodePulseRate.detail")} format="strength" disabled={!activeProfile.node.pulse.enabled} />
           </div>
         </FxCategory>
 
         <FxCategory
           title={t("graphVisualSettings.category.relationFx")}
           meta={t("graphVisualSettings.category.coreHaloSummary", {
-            coreState: t(profile3d.edge.core.enabled ? "common.state.on" : "common.state.off"),
-            haloState: t(profile3d.edge.halo.enabled ? "common.state.on" : "common.state.off"),
+            coreState: t(activeProfile.edge.core.enabled ? "common.state.on" : "common.state.off"),
+            haloState: t(activeProfile.edge.halo.enabled ? "common.state.on" : "common.state.off"),
           })}
           open
         >
           <div className="graph-visual-settings__control-grid">
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="edge.master.opacity" label={technicalLabel(t, "RELATION MASTER OPACITY")} detail={t("graphVisualSettings.control.relationMasterOpacity.detail")} format="percent" disabled={!profile3d.edge.core.enabled && !profile3d.edge.halo.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="edge.core.widthScale" label={technicalLabel(t, "RELATION CORE WIDTH SCALE")} detail={t("graphVisualSettings.control.relationCoreWidth.detail")} format="strength" disabled={!profile3d.edge.core.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="edge.core.opacity" label={technicalLabel(t, "RELATION CORE OPACITY")} detail={t("graphVisualSettings.control.relationCoreOpacity.detail")} format="percent" disabled={!profile3d.edge.core.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="edge.core.emissionIntensity" label={technicalLabel(t, "RELATION CORE EMISSION INTENSITY")} detail={t("graphVisualSettings.control.relationCoreEmission.detail")} format="strength" disabled={!profile3d.edge.core.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="edge.core.widthByStrength" label={technicalLabel(t, "CORE WIDTH BY STRENGTH")} detail={t("graphVisualSettings.control.coreWidthByStrength.detail")} format="percent" disabled={!profile3d.edge.core.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="edge.core.emissionByStrength" label={technicalLabel(t, "CORE EMISSION BY STRENGTH")} detail={t("graphVisualSettings.control.coreEmissionByStrength.detail")} format="percent" disabled={!profile3d.edge.core.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="edge.halo.radiusScale" label={technicalLabel(t, "RELATION HALO RADIUS SCALE")} detail={t("graphVisualSettings.control.relationHaloRadius.detail")} format="strength" disabled={!profile3d.edge.halo.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="edge.halo.opacity" label={technicalLabel(t, "RELATION HALO OPACITY")} detail={t("graphVisualSettings.control.relationHaloOpacity.detail")} format="percent" disabled={!profile3d.edge.halo.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="edge.halo.emissionIntensity" label={technicalLabel(t, "RELATION HALO EMISSION INTENSITY")} detail={t("graphVisualSettings.control.relationHaloEmission.detail")} format="strength" disabled={!profile3d.edge.halo.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="edge.halo.falloff" label={technicalLabel(t, "RELATION HALO FALLOFF")} detail={t("graphVisualSettings.control.relationHaloFalloff.detail")} format="strength" disabled={!profile3d.edge.halo.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="edge.halo.byStrength" label={technicalLabel(t, "RELATION HALO BY STRENGTH")} detail={t("graphVisualSettings.control.relationHaloByStrength.detail")} format="percent" disabled={!profile3d.edge.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.master.opacity" label={technicalLabel(t, "RELATION MASTER OPACITY")} detail={t("graphVisualSettings.control.relationMasterOpacity.detail")} format="percent" disabled={!activeProfile.edge.core.enabled && !activeProfile.edge.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.core.widthScale" label={technicalLabel(t, "RELATION CORE WIDTH SCALE")} detail={t("graphVisualSettings.control.relationCoreWidth.detail")} format="strength" disabled={!activeProfile.edge.core.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.core.opacity" label={technicalLabel(t, "RELATION CORE OPACITY")} detail={t("graphVisualSettings.control.relationCoreOpacity.detail")} format="percent" disabled={!activeProfile.edge.core.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.core.emissionIntensity" label={technicalLabel(t, "RELATION CORE EMISSION INTENSITY")} detail={t("graphVisualSettings.control.relationCoreEmission.detail")} format="strength" disabled={!activeProfile.edge.core.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.core.widthByStrength" label={technicalLabel(t, "CORE WIDTH BY STRENGTH")} detail={t("graphVisualSettings.control.coreWidthByStrength.detail")} format="percent" disabled={!activeProfile.edge.core.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.core.emissionByStrength" label={technicalLabel(t, "CORE EMISSION BY STRENGTH")} detail={t("graphVisualSettings.control.coreEmissionByStrength.detail")} format="percent" disabled={!activeProfile.edge.core.enabled} />
+            {settings.layout.mode === "neuron" || settings.idleShape === "neuronSphere" ? <>
+              <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.filament.taper" label={t("graphVisualSettings.filament.taper")} detail={t("graphVisualSettings.filament.taperDetail")} format="percent" disabled={!activeProfile.edge.core.enabled} />
+              <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.filament.rootWidth" label={t("graphVisualSettings.filament.rootWidth")} detail={t("graphVisualSettings.filament.rootWidthDetail")} format="strength" disabled={!activeProfile.edge.core.enabled || activeProfile.edge.filament.taper === 0} />
+              <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.filament.roundness" label={t("graphVisualSettings.filament.roundness")} detail={t("graphVisualSettings.filament.roundnessDetail")} format="percent" disabled={!activeProfile.edge.core.enabled} />
+              <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.filament.translucency" label={t("graphVisualSettings.filament.translucency")} detail={t("graphVisualSettings.filament.translucencyDetail")} format="percent" disabled={!activeProfile.edge.core.enabled && !activeProfile.edge.halo.enabled} />
+            </> : null}
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.halo.radiusScale" label={technicalLabel(t, "RELATION HALO RADIUS SCALE")} detail={t("graphVisualSettings.control.relationHaloRadius.detail")} format="strength" disabled={!activeProfile.edge.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.halo.opacity" label={technicalLabel(t, "RELATION HALO OPACITY")} detail={t("graphVisualSettings.control.relationHaloOpacity.detail")} format="percent" disabled={!activeProfile.edge.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.halo.emissionIntensity" label={technicalLabel(t, "RELATION HALO EMISSION INTENSITY")} detail={t("graphVisualSettings.control.relationHaloEmission.detail")} format="strength" disabled={!activeProfile.edge.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.halo.falloff" label={technicalLabel(t, "RELATION HALO FALLOFF")} detail={t("graphVisualSettings.control.relationHaloFalloff.detail")} format="strength" disabled={!activeProfile.edge.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.halo.byStrength" label={technicalLabel(t, "RELATION HALO BY STRENGTH")} detail={t("graphVisualSettings.control.relationHaloByStrength.detail")} format="percent" disabled={!activeProfile.edge.halo.enabled} />
           </div>
         </FxCategory>
 
         <FxCategory
           title={t("graphVisualSettings.category.signals")}
           meta={t("graphVisualSettings.category.signalsSummary", {
-            count: profile3d.signal.count,
-            speed: `${profile3d.signal.speed.toFixed(2)}×`,
+            count: activeProfile.signal.count,
+            speed: `${activeProfile.signal.speed.toFixed(2)}×`,
           })}
         >
           <div className="graph-visual-settings__control-grid">
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="signal.count" label={technicalLabel(t, "SIGNAL COUNT")} detail={t("graphVisualSettings.control.signalCount.detail")} format="count" disabled={!profile3d.signal.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="signal.speed" label={technicalLabel(t, "SIGNAL SPEED")} detail={t("graphVisualSettings.control.signalSpeed.detail")} format="strength" disabled={!profile3d.signal.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="signal.sizeScale" label={technicalLabel(t, "SIGNAL SIZE SCALE")} detail={t("graphVisualSettings.control.signalSize.detail")} format="strength" disabled={!profile3d.signal.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="signal.opacity" label={technicalLabel(t, "SIGNAL OPACITY")} detail={t("graphVisualSettings.control.signalOpacity.detail")} format="percent" disabled={!profile3d.signal.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="signal.emissionIntensity" label={technicalLabel(t, "SIGNAL EMISSION INTENSITY")} detail={t("graphVisualSettings.control.signalEmission.detail")} format="strength" disabled={!profile3d.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="signal.count" label={technicalLabel(t, "SIGNAL COUNT")} detail={t("graphVisualSettings.control.signalCount.detail")} format="count" disabled={!activeProfile.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="signal.speed" label={technicalLabel(t, "SIGNAL SPEED")} detail={t("graphVisualSettings.control.signalSpeed.detail")} format="strength" disabled={!activeProfile.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="signal.sizeScale" label={technicalLabel(t, "SIGNAL SIZE SCALE")} detail={t("graphVisualSettings.control.signalSize.detail")} format="strength" disabled={!activeProfile.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="signal.opacity" label={technicalLabel(t, "SIGNAL OPACITY")} detail={t("graphVisualSettings.control.signalOpacity.detail")} format="percent" disabled={!activeProfile.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="signal.emissionIntensity" label={technicalLabel(t, "SIGNAL EMISSION INTENSITY")} detail={t("graphVisualSettings.control.signalEmission.detail")} format="strength" disabled={!activeProfile.signal.enabled} />
           </div>
         </FxCategory>
 
+        {settings.view.dimension === 3 ? (
         <FxCategory
-          title={t("graphVisualSettings.category.orb")}
-          meta={t("graphVisualSettings.category.orbSummary")}
+          title={t("graphVisualSettings.scope.idleOrb")}
+          meta={t(settings.idleShape === "neuronSphere" ? "graphVisualSettings.sphere.summary" : "graphVisualSettings.category.orbSummary")}
         >
           <div className="graph-visual-settings__control-grid">
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="orb.innerNetwork.scale" label={technicalLabel(t, "INNER NETWORK SCALE")} detail={t("graphVisualSettings.control.innerNetworkScale.detail")} format="strength" disabled={!profile3d.orb.innerNetwork.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="orb.innerNetwork.opacity" label={technicalLabel(t, "INNER NETWORK OPACITY")} detail={t("graphVisualSettings.control.innerNetworkOpacity.detail")} format="percent" disabled={!profile3d.orb.innerNetwork.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="orb.innerNetwork.rotationSpeed" label={technicalLabel(t, "INNER COUNTER-ROTATION SPEED")} detail={t("graphVisualSettings.control.innerRotationSpeed.detail")} format="strength" disabled={!profile3d.orb.innerNetwork.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="orb.rim.intensity" label={technicalLabel(t, "ORB RIM INTENSITY")} detail={t("graphVisualSettings.control.orbRimIntensity.detail")} format="strength" disabled={!profile3d.orb.rim.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="orb.rim.fresnelPower" label={technicalLabel(t, "FRESNEL POWER")} detail={t("graphVisualSettings.control.fresnelPower.detail")} format="strength" disabled={!profile3d.orb.rim.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="orb.sparks.sizeScale" label={technicalLabel(t, "AMBIENT SPARK SIZE SCALE")} detail={t("graphVisualSettings.control.ambientSparkSize.detail")} format="strength" disabled={!profile3d.orb.sparks.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="orb.sparks.opacity" label={technicalLabel(t, "AMBIENT SPARK OPACITY")} detail={t("graphVisualSettings.control.ambientSparkOpacity.detail")} format="percent" disabled={!profile3d.orb.sparks.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="orb.sparks.emissionIntensity" label={technicalLabel(t, "AMBIENT SPARK EMISSION INTENSITY")} detail={t("graphVisualSettings.control.ambientSparkEmission.detail")} format="strength" disabled={!profile3d.orb.sparks.enabled} />
+            {settings.idleShape === "neuronSphere" ? <>
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.network.sizeScale" label={t("graphVisualSettings.sphere.size.label")} detail={t("graphVisualSettings.sphere.size.detail")} format="strength" />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.network.branchSpread" label={t("graphVisualSettings.sphere.spread.label")} detail={t("graphVisualSettings.sphere.spread.detail")} format="strength" />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.network.weave" label={t("graphVisualSettings.sphere.weave.label")} detail={t("graphVisualSettings.sphere.weave.detail")} format="strength" />
+            </> : null}
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.network.density" label={t("graphVisualSettings.control.shellDensity.label")} detail={t("graphVisualSettings.control.shellDensity.detail")} format="strength" />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.network.shellRatio" label={t("graphVisualSettings.control.shellRatio.label")} detail={t("graphVisualSettings.control.shellRatio.detail")} format="percent" />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.network.depthContrast" label={t("graphVisualSettings.control.depthContrast.label")} detail={t("graphVisualSettings.control.depthContrast.detail")} format="percent" />
+            {settings.idleShape !== "neuronSphere" ? <>
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.innerNetwork.scale" label={technicalLabel(t, "INNER NETWORK SCALE")} detail={t("graphVisualSettings.control.innerNetworkScale.detail")} format="strength" disabled={!activeProfile.orb.innerNetwork.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.innerNetwork.opacity" label={technicalLabel(t, "INNER NETWORK OPACITY")} detail={t("graphVisualSettings.control.innerNetworkOpacity.detail")} format="percent" disabled={!activeProfile.orb.innerNetwork.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.innerNetwork.rotationSpeed" label={technicalLabel(t, "INNER COUNTER-ROTATION SPEED")} detail={t("graphVisualSettings.control.innerRotationSpeed.detail")} format="strength" disabled={!activeProfile.orb.innerNetwork.enabled} />
+            </> : null}
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.rim.intensity" label={technicalLabel(t, "ORB RIM INTENSITY")} detail={t("graphVisualSettings.control.orbRimIntensity.detail")} format="strength" disabled={!activeProfile.orb.rim.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.rim.fresnelPower" label={technicalLabel(t, "FRESNEL POWER")} detail={t("graphVisualSettings.control.fresnelPower.detail")} format="strength" disabled={!activeProfile.orb.rim.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.sparks.sizeScale" label={technicalLabel(t, "AMBIENT SPARK SIZE SCALE")} detail={t("graphVisualSettings.control.ambientSparkSize.detail")} format="strength" disabled={!activeProfile.orb.sparks.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.sparks.opacity" label={technicalLabel(t, "AMBIENT SPARK OPACITY")} detail={t("graphVisualSettings.control.ambientSparkOpacity.detail")} format="percent" disabled={!activeProfile.orb.sparks.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.sparks.emissionIntensity" label={technicalLabel(t, "AMBIENT SPARK EMISSION INTENSITY")} detail={t("graphVisualSettings.control.ambientSparkEmission.detail")} format="strength" disabled={!activeProfile.orb.sparks.enabled} />
           </div>
         </FxCategory>
+        ) : null}
 
         <FxCategory
           title={t("graphVisualSettings.category.motion")}
           meta={t("graphVisualSettings.category.motionSummary")}
         >
           <div className="graph-visual-settings__control-grid">
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="motion.idleRotationSpeed" label={technicalLabel(t, "IDLE ROTATION SPEED")} detail={t("graphVisualSettings.control.idleRotationSpeed.detail")} format="strength" />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="motion.breathingAmount" label={technicalLabel(t, "BREATHING AMOUNT")} detail={t("graphVisualSettings.control.breathingAmount.detail")} format="strength" />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="motion.breathingRate" label={technicalLabel(t, "BREATHING RATE")} detail={t("graphVisualSettings.control.breathingRate.detail")} format="strength" />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="motion.idleRotationSpeed" label={technicalLabel(t, "IDLE ROTATION SPEED")} detail={t("graphVisualSettings.control.idleRotationSpeed.detail")} format="strength" />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="motion.breathingAmount" label={technicalLabel(t, "BREATHING AMOUNT")} detail={t("graphVisualSettings.control.breathingAmount.detail")} format="strength" />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="motion.breathingRate" label={technicalLabel(t, "BREATHING RATE")} detail={t("graphVisualSettings.control.breathingRate.detail")} format="strength" />
           </div>
         </FxCategory>
 
         <FxCategory
           title={t("graphVisualSettings.category.postFx")}
           meta={t("graphVisualSettings.category.bloomSummary", {
-            state: t(profile3d.postFx.bloom.enabled ? "common.state.on" : "common.state.off"),
+            state: t(activeProfile.postFx.bloom.enabled ? "common.state.on" : "common.state.off"),
           })}
         >
           <div className="graph-visual-settings__control-grid">
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="postFx.bloom.intensity" label={technicalLabel(t, "BLOOM INTENSITY")} detail={t("graphVisualSettings.control.bloomIntensity.detail")} disabled={!profile3d.postFx.bloom.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="postFx.bloom.threshold" label={technicalLabel(t, "BLOOM THRESHOLD")} detail={t("graphVisualSettings.control.bloomThreshold.detail")} disabled={!profile3d.postFx.bloom.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="postFx.bloom.softKnee" label={technicalLabel(t, "BLOOM SOFT KNEE")} detail={t("graphVisualSettings.control.bloomSoftKnee.detail")} disabled={!profile3d.postFx.bloom.enabled} />
-            <GraphFxRangeControl profileId="3d" profile={profile3d} path="postFx.bloom.radius" label={technicalLabel(t, "BLOOM RADIUS")} detail={t("graphVisualSettings.control.bloomRadius.detail")} disabled={!profile3d.postFx.bloom.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="postFx.bloom.intensity" label={technicalLabel(t, "BLOOM INTENSITY")} detail={t("graphVisualSettings.control.bloomIntensity.detail")} disabled={!activeProfile.postFx.bloom.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="postFx.bloom.threshold" label={technicalLabel(t, "BLOOM THRESHOLD")} detail={t("graphVisualSettings.control.bloomThreshold.detail")} disabled={!activeProfile.postFx.bloom.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="postFx.bloom.softKnee" label={technicalLabel(t, "BLOOM SOFT KNEE")} detail={t("graphVisualSettings.control.bloomSoftKnee.detail")} disabled={!activeProfile.postFx.bloom.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="postFx.bloom.radius" label={technicalLabel(t, "BLOOM RADIUS")} detail={t("graphVisualSettings.control.bloomRadius.detail")} disabled={!activeProfile.postFx.bloom.enabled} />
           </div>
         </FxCategory>
       </SettingsGroup>
@@ -726,18 +782,7 @@ export function GraphVisualSettings({
         </div>
       </SettingsGroup>
 
-      <SettingsGroup
-        title={t("graphVisualSettings.section.layoutForces")}
-        meta={t("graphVisualSettings.section.layoutSummary")}
-      >
-        <div className="graph-visual-settings__control-grid">
-          <RangeControl section="layout" setting="repulsion" label={technicalLabel(t, "REPULSION STRENGTH")} detail={t("graphVisualSettings.control.repulsion.detail")} value={settings.layout.repulsion} format="strength" />
-          <RangeControl section="layout" setting="linkDistance" label={technicalLabel(t, "PREFERRED RELATION LENGTH")} detail={t("graphVisualSettings.control.relationLength.detail")} value={settings.layout.linkDistance} format="strength" />
-          <RangeControl section="layout" setting="linkStrength" label={technicalLabel(t, "RELATION CONSTRAINT STRENGTH")} detail={t("graphVisualSettings.control.relationConstraint.detail")} value={settings.layout.linkStrength} format="strength" />
-          <RangeControl section="layout" setting="collision" label={technicalLabel(t, "COLLISION RADIUS")} detail={t("graphVisualSettings.control.collisionRadius.detail")} value={settings.layout.collision} format="strength" />
-          <RangeControl section="layout" setting="center" label={technicalLabel(t, "CENTERING FORCE")} detail={t("graphVisualSettings.control.centeringForce.detail")} value={settings.layout.center} />
-        </div>
-      </SettingsGroup>
+      {!(settings.layout.mode === "neuron" && settings.view.dimension === 3) ? <GraphLayoutSettings settings={settings} t={t} /> : null}
 
       <SettingsGroup
         title={t("graphVisualSettings.section.scenePerformance")}
@@ -748,15 +793,7 @@ export function GraphVisualSettings({
       >
         <div className="graph-visual-settings__control-grid">
           <RangeControl section="scene" setting="stars" label={technicalLabel(t, "STAR FIELD")} detail={t("graphVisualSettings.control.starField.detail", { count: quality.starBudget })} value={settings.scene.stars} format="count" />
-          <RangeControl section="scene" setting="bloomIntensity" label={technicalLabel(t, "BLOOM INTENSITY")} detail={t("graphVisualSettings.control.sceneBloomIntensity.detail")} value={settings.scene.bloomIntensity} />
         </div>
-        <ChoiceGroup
-          label={t("graphVisualSettings.choice.bloom")}
-          value={settings.scene.bloom}
-          options={bloomOptions}
-          onChange={(value) => setGraphVisualSetting("scene", "bloom", value)}
-          t={t}
-        />
         <ChoiceGroup
           label={t("graphVisualSettings.choice.quality")}
           value={settings.performance.quality}
@@ -780,7 +817,7 @@ export function GraphVisualSettings({
           })}
           {" "}
           {t("graphVisualSettings.footer.bloom", {
-            requested: settings.scene.bloom.toUpperCase(),
+            requested: bloomRequested ? "ON" : "OFF",
             effective: t(effectiveBloom ? "common.state.on" : "common.state.off"),
           })}
           {" "}
@@ -797,7 +834,7 @@ export function GraphVisualSettings({
             : t("graphVisualSettings.footer.noConstraints")}
         </p>
         <button type="button" onClick={reset}>
-          <ArrowResetRegular />{t("graphVisualSettings.action.resetNebula")}
+          <ArrowResetRegular />{t("graphVisualSettings.scope.resetAllButton", { dimension: settings.view.dimension })}
         </button>
       </footer>
     </section>
@@ -808,4 +845,31 @@ export function GraphVisualSettings({
   }
 
   return panel;
+}
+
+function GraphLayoutSettings({ settings, t, open = false }) {
+  return (
+      <SettingsGroup
+        title={t(settings.layout.mode === "neuron" ? "graphVisualSettings.neuron.layout" : "graphVisualSettings.section.layoutForces")}
+        open={open}
+        meta={t(settings.layout.mode === "neuron" ? "graphVisualSettings.neuron.layoutDetail" : "graphVisualSettings.section.layoutSummary")}
+      >
+        <div className="graph-visual-settings__control-grid">
+          <RangeControl section="layout" setting="repulsion" label={settings.layout.mode === "neuron" ? t("graphVisualSettings.neuron.spacing") : technicalLabel(t, "REPULSION STRENGTH")} detail={t(settings.layout.mode === "neuron" ? "graphVisualSettings.neuron.spacingDetail" : "graphVisualSettings.control.repulsion.detail")} value={settings.layout.repulsion} format="strength" />
+          <RangeControl section="layout" setting="linkDistance" label={settings.layout.mode === "neuron" ? t("graphVisualSettings.neuron.branchLength") : technicalLabel(t, "PREFERRED RELATION LENGTH")} detail={t(settings.layout.mode === "neuron" ? "graphVisualSettings.neuron.branchLengthDetail" : "graphVisualSettings.control.relationLength.detail")} value={settings.layout.linkDistance} format="strength" />
+          {settings.layout.mode === "neuron" && settings.view.dimension === 3 ? <>
+            <RangeControl section="layout" setting="depth" label={t("graphVisualSettings.neuron.depth")} detail={t("graphVisualSettings.neuron.depthDetail")} value={settings.layout.depth} format="strength" />
+            <RangeControl section="layout" setting="branchSpread" label={t("graphVisualSettings.neuron.branchSpread")} detail={t("graphVisualSettings.neuron.branchSpreadDetail")} value={settings.layout.branchSpread} format="percent" />
+            <RangeControl section="layout" setting="weave" label={t("graphVisualSettings.neuron.weave")} detail={t("graphVisualSettings.neuron.weaveDetail")} value={settings.layout.weave} format="strength" />
+            <RangeControl section="layout" setting="crossLinks" label={t("graphVisualSettings.neuron.crossLinks")} detail={t("graphVisualSettings.neuron.crossLinksDetail")} value={settings.layout.crossLinks} format="percent" />
+            <RangeControl section="layout" setting="depthContrast" label={t("graphVisualSettings.neuron.depthContrast")} detail={t("graphVisualSettings.neuron.depthContrastDetail")} value={settings.layout.depthContrast} format="percent" />
+          </> : null}
+          {settings.layout.mode !== "neuron" ? <>
+            <RangeControl section="layout" setting="linkStrength" label={technicalLabel(t, "RELATION CONSTRAINT STRENGTH")} detail={t("graphVisualSettings.control.relationConstraint.detail")} value={settings.layout.linkStrength} format="strength" />
+            <RangeControl section="layout" setting="collision" label={technicalLabel(t, "COLLISION RADIUS")} detail={t("graphVisualSettings.control.collisionRadius.detail")} value={settings.layout.collision} format="strength" />
+            <RangeControl section="layout" setting="center" label={technicalLabel(t, "CENTERING FORCE")} detail={t("graphVisualSettings.control.centeringForce.detail")} value={settings.layout.center} />
+          </> : null}
+        </div>
+      </SettingsGroup>
+  );
 }

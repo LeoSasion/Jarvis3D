@@ -10,7 +10,7 @@ import {
   syncLinkedSystemRailState,
 } from "../src/linked-system-rail-model.js";
 
-test("nominal linked system rail starts collapsed without inventing attention", () => {
+test("nominal linked system rail starts expanded without inventing attention", () => {
   const presentation = getLinkedSystemRailPresentation({
     feed: { items: [], unreadCount: 3 },
     agentState: { status: "idle" },
@@ -20,7 +20,7 @@ test("nominal linked system rail starts collapsed without inventing attention", 
   assert.equal(presentation.attentionCount, 0);
   assert.equal(presentation.priorityTitle, null);
   assert.equal(presentation.priorityTitleKey, "linkedSystem.priority.nominal");
-  assert.equal(createLinkedSystemRailState(presentation).expanded, false);
+  assert.equal(createLinkedSystemRailState(presentation).expanded, true);
 });
 
 test("warning and error events produce stable truthful attention keys", () => {

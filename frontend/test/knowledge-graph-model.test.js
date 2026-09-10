@@ -215,8 +215,8 @@ test("graph composite controls use bounded arrow, Home, and End navigation", () 
 
 test("graph zoom clamps invalid and extreme values", () => {
   assert.equal(clampKnowledgeGraphZoom(Number.NaN), 1);
-  assert.equal(clampKnowledgeGraphZoom(0.1), 0.72);
-  assert.equal(clampKnowledgeGraphZoom(4), 2.2);
+  assert.equal(clampKnowledgeGraphZoom(0.01), 0.1);
+  assert.equal(clampKnowledgeGraphZoom(40), 8);
   assert.equal(clampKnowledgeGraphZoom(1.4), 1.4);
 });
 

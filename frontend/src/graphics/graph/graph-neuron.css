@@ -1,0 +1,33 @@
+.core-stage__neuron-heading {
+  position: absolute;
+  z-index: 2;
+  top: 28px;
+  left: 32px;
+  pointer-events: none;
+  color: var(--shell-text-strong);
+}
+
+.core-stage__neuron-heading h2 {
+  margin: 0 0 7px;
+  font-size: clamp(23px, 1.8vw, 30px);
+  font-weight: 400;
+  letter-spacing: 0.1em;
+}
+
+.core-stage__neuron-heading p {
+  margin: 0;
+  color: var(--shell-muted);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 640px) {
+  .core-stage__neuron-heading {
+    top: 72px;
+    left: 18px;
+  }
+
+  .core-stage__neuron-heading p {
+    font-size: 12px;
+  }
+}

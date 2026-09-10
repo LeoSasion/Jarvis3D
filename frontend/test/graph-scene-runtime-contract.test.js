@@ -15,7 +15,7 @@ test("label atlas disposal follows atlas identity instead of hover-dependent fon
   assert.equal(disposeCalls.length, 1);
   assert.match(
     source,
-    /useEffect\(\(\) => \(\) => labelAtlas\?\.dispose\(\), \[labelAtlas\]\);/u,
+    /labelAtlas\?\.dispose\(\)[\s\S]*?\}, \[labelAtlas\]\);/u,
   );
   assert.doesNotMatch(
     source,
@@ -82,14 +82,18 @@ test("3D idle energy preserves orange hierarchy through separate Core and Halo l
   assert.match(source, /lineCoreVisibility\.value = Number\(fx3d\.edge\.core\.enabled\)/u);
   assert.match(source, /lineHaloVisibility\.value = Number\(fx3d\.edge\.halo\.enabled\)/u);
   assert.match(source, /lineHaloRadiusScale[\s\S]*\* lineHaloVisibility/u);
-  assert.match(source, /pointColorVariation\.value = threeDEnergyWeight/u);
-  assert.match(source, /pointCoreEmissionIntensity\.value = 1[\s\S]*fx3d\.node\.core\.emissionIntensity/u);
-  assert.match(source, /pointHaloEmissionIntensity\.value = 1[\s\S]*fx3d\.node\.halo\.emissionIntensity/u);
-  assert.match(source, /pointCoreVisibility\.value = 1[\s\S]*fx3d\.node\.core\.enabled/u);
-  assert.match(source, /pointHaloVisibility\.value = 1[\s\S]*fx3d\.node\.halo\.enabled/u);
+  assert.match(source, /pointColorVariation\.value = neuronMode \? 1 : threeDEnergyWeight/u);
+  assert.match(source, /pointCoreEmissionIntensity\.value = fx3d\.node\.core\.emissionIntensity/u);
+  assert.match(source, /pointHaloEmissionIntensity\.value = fx3d\.node\.halo\.emissionIntensity/u);
+  assert.match(source, /pointCoreVisibility\.value = Number\(fx3d\.node\.core\.enabled/u);
+  assert.match(source, /pointHaloVisibility\.value = Number\(fx3d\.node\.halo\.enabled/u);
   assert.match(source, /const configuredCoreOpacity = fx3d\.node\.core\.enabled/u);
   assert.match(source, /const configuredHaloOpacity = fx3d\.node\.halo\.enabled/u);
-  assert.match(source, /const orbLineWeight = idleWeight \* dimensionProgress/u);
+  assert.match(source, /const orbLineWeight = dimensionProgress/u);
+  assert.match(source, /nodeEnergyMaterial\.uniforms\.orbStyle\.value = neuronMode \? 1 : threeDEnergyWeight/u);
+  assert.match(source, /const graphPointSize = sharedStyle \|\| spatialNeuron \? 9 : dimension === 3 \? idlePointSize : neuronMode \? 14 : 13\.2/u);
+  assert.match(source, /pointLayering\.value = neuronSphere \? 0 : orbEnergyWeight/u);
+  assert.match(source, /pointAbsoluteLayer\.value = neuronSphere \? idleWeight : 0/u);
   assert.match(source, /EDGE_ORB_SOURCE_COLOR\.fromArray\(edgeEnergyStyle\.sourceColors/u);
   assert.match(source, /widths\[index\] = 0\.48 \+ Math\.pow\(strength, 1\.55\) \* 0\.88/u);
   assert.match(source, /mix\(1\.0, 1\.26, hierarchy\)/u);
@@ -119,20 +123,20 @@ test("Node Pulse and Relation Halo retain independent visible energy contributio
   assert.match(source, /min\(1\.0, baseAlpha \+ pulseAlpha\)/u);
   assert.match(
     source,
-    /pointPulseVisibility\.value = Number\([\s\S]*fx3d\.node\.pulse\.enabled[\s\S]*threeDEnergyWeight/u,
+    /pointPulseVisibility\.value = Number\([\s\S]*fx3d\.node\.pulse\.enabled[\s\S]*fx3d\.node\.master\.opacity/u,
   );
-  assert.match(source, /const threeDEnergyWeight = dimensionProgress/u);
-  assert.match(source, /Math\.pow\(threeDEnergyWeight, 1\.28\)/u);
+  assert.match(source, /const threeDEnergyWeight = sharedStyle \? 1 : dimensionProgress/u);
+  assert.match(source, /const energyLineVisibility = 1 - transitionEnergy \* 0\.12/u);
   assert.match(source, /uniform vec3 lineHaloColor/u);
   assert.match(source, /float haloPixels = \(2\.4 \+ haloStrength \* 6\.8\)/u);
   assert.match(source, /mix\(0\.22, 1\.0, pow\(strength, 1\.3\)\)/u);
   assert.match(
     settingsSource,
-    /path="node\.pulse\.amount"[\s\S]*disabled=\{!profile3d\.node\.pulse\.enabled\}/u,
+    /path="node\.pulse\.amount"[\s\S]*disabled=\{!activeProfile\.node\.pulse\.enabled\}/u,
   );
   assert.doesNotMatch(
     settingsSource,
-    /node\.pulse\.amount"[\s\S]{0,300}disabled=\{!profile3d\.node\.core\.enabled/u,
+    /node\.pulse\.amount"[\s\S]{0,300}disabled=\{!activeProfile\.node\.core\.enabled/u,
   );
 });
 
@@ -159,18 +163,18 @@ test("Orb Rim and Ambient Sparks retain independent visible energy contributions
   assert.match(source, /ambientEnergyMaterial\.uniforms\.pulseAmount\.value = reducedMotion[\s\S]*0\.64 \* orbEnergyWeight/u);
   assert.match(
     settingsSource,
-    /path="orb\.rim\.intensity"[\s\S]{0,350}disabled=\{!profile3d\.orb\.rim\.enabled\}/u,
+    /path="orb\.rim\.intensity"[\s\S]{0,350}disabled=\{!activeProfile\.orb\.rim\.enabled\}/u,
   );
   assert.match(
     settingsSource,
-    /path="orb\.sparks\.opacity"[\s\S]{0,350}disabled=\{!profile3d\.orb\.sparks\.enabled\}/u,
+    /path="orb\.sparks\.opacity"[\s\S]{0,350}disabled=\{!activeProfile\.orb\.sparks\.enabled\}/u,
   );
 });
 
 test("the 3D profile revision drives every independently visible idle layer", async () => {
   const source = await readFile(graphSceneUrl, "utf8");
 
-  assert.match(source, /const profile3d = scenePlan\.profiles\["3d"\];/u);
+  assert.match(source, /scenePlan\.profiles\[`\$\{dimension\}d`\]/u);
   assert.match(source, /const profile3dRef = useRef\(profile3d\);/u);
   assert.match(source, /profile3dRef\.current = profile3d;/u);
   assert.match(source, /const fxRevisionKey = JSON\.stringify\(profile3d\);/u);
@@ -178,7 +182,7 @@ test("the 3D profile revision drives every independently visible idle layer", as
     source,
     /useLayoutEffect\(\(\) => \{[\s\S]*signalGeometryRef\.current\?\.setDrawRange[\s\S]*applyPresentationPositionsRef\.current[\s\S]*fxRevisionKey,/u,
   );
-  assert.match(source, /innerShellEdgeObjectRef\.current\.visible = fx3d\.orb\.innerNetwork\.enabled/u);
+  assert.match(source, /innerShellEdgeObjectRef\.current\.visible = !neuronSphere && fx3d\.orb\.innerNetwork\.enabled/u);
   assert.match(source, /orbAmbientRef\.current\.visible = fx3d\.orb\.sparks\.enabled/u);
   assert.match(source, /orbRimRef\.current\.visible = fx3d\.orb\.rim\.enabled/u);
   assert.match(
@@ -189,5 +193,5 @@ test("the 3D profile revision drives every independently visible idle layer", as
   assert.match(source, /signalCount: fx3d\.signal\.count/u);
   assert.match(source, /signalEnabled: fx3d\.signal\.enabled/u);
   assert.match(source, /rimFresnelPower\.value = fx3d\.orb\.rim\.fresnelPower/u);
-  assert.match(source, /pointOpacity\.value = 0\.96[\s\S]*fx3d\.signal\.opacity/u);
+  assert.match(source, /pointOpacity\.value = fx3d\.signal\.opacity/u);
 });

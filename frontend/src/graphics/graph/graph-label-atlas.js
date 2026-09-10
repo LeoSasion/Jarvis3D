@@ -30,7 +30,11 @@ function nextPowerOfTwo(value) {
   return 2 ** Math.ceil(Math.log2(Math.max(1, value)));
 }
 
-export function createGraphLabelAtlasLayout(entryCount) {
+export function createGraphLabelAtlasLayout(entryCount, requestedFontSize = FONT_SIZE) {
+  const fontSize = Math.max(8, Math.min(64, Math.round(Number(requestedFontSize) || FONT_SIZE)));
+  const scale = fontSize / FONT_SIZE;
+  const cellWidth = Math.ceil(CELL_WIDTH * scale);
+  const cellHeight = Math.ceil(CELL_HEIGHT * scale);
   const count = Math.min(
     MAX_GRAPH_LABEL_ATLAS_ENTRIES,
     Math.max(1, Math.floor(entryCount || 1)),
@@ -41,10 +45,13 @@ export function createGraphLabelAtlasLayout(entryCount) {
     count,
     columns,
     rows,
-    cellWidth: CELL_WIDTH,
-    cellHeight: CELL_HEIGHT,
-    width: nextPowerOfTwo(columns * CELL_WIDTH),
-    height: nextPowerOfTwo(rows * CELL_HEIGHT),
+    fontSize,
+    padding: Math.ceil(TEXT_PADDING * scale),
+    baseline: Math.round(TEXT_BASELINE * scale),
+    cellWidth,
+    cellHeight,
+    width: nextPowerOfTwo(columns * cellWidth),
+    height: nextPowerOfTwo(rows * cellHeight),
   });
 }
 
@@ -104,23 +111,26 @@ function clearCell(context, layout, slot) {
 
 function drawEntry(context, layout, slot, value) {
   const { column, row } = clearCell(context, layout, slot);
-  const text = truncateLabel(value);
+  let text = truncateLabel(value);
   context.save();
-  context.font = `400 ${FONT_SIZE}px ${FONT_FAMILY}`;
+  context.font = `400 ${layout.fontSize}px ${FONT_FAMILY}`;
   context.textAlign = "left";
   context.textBaseline = "alphabetic";
-  context.lineJoin = "round";
-  context.miterLimit = 2;
-  context.strokeStyle = "rgba(0, 0, 0, 0.96)";
-  context.lineWidth = 6;
   context.fillStyle = "#ffffff";
-  const x = column * layout.cellWidth + TEXT_PADDING;
-  const y = row * layout.cellHeight + TEXT_BASELINE;
-  context.strokeText(text, x, y, layout.cellWidth - TEXT_PADDING * 2);
-  context.fillText(text, x, y, layout.cellWidth - TEXT_PADDING * 2);
+  const availableWidth = layout.cellWidth - layout.padding * 2;
+  if (context.measureText(text).width > availableWidth) {
+    const characters = Array.from(text);
+    do {
+      characters.pop();
+      text = `${characters.join("")}…`;
+    } while (characters.length > 0 && context.measureText(text).width > availableWidth);
+  }
+  const x = column * layout.cellWidth + layout.padding;
+  const y = row * layout.cellHeight + layout.baseline;
+  context.fillText(text, x, y);
   const measuredWidth = Math.min(
-    layout.cellWidth - TEXT_PADDING,
-    Math.ceil(context.measureText(text).width) + TEXT_PADDING * 2,
+    layout.cellWidth,
+    Math.ceil(context.measureText(text).width) + layout.padding * 2,
   );
   context.restore();
   return Object.freeze({
@@ -133,9 +143,9 @@ function drawEntry(context, layout, slot, value) {
   });
 }
 
-export function createGraphLabelAtlas(values, canvasFactory = null) {
+export function createGraphLabelAtlas(values, canvasFactory = null, fontSize = FONT_SIZE) {
   const createCanvas = canvasFactory ?? (() => document.createElement("canvas"));
-  const layout = createGraphLabelAtlasLayout(values.length);
+  const layout = createGraphLabelAtlasLayout(values.length, fontSize);
   const canvas = createCanvas();
   canvas.width = layout.width;
   canvas.height = layout.height;

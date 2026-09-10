@@ -10,6 +10,7 @@ import { LinkedWorkspaceHandle } from "./components/LinkedWorkspaceHandle.jsx";
 import { LinkedWorkspaceRoutes } from "./components/LinkedWorkspaceRoutes.jsx";
 import { Taskbar } from "./components/Taskbar.jsx";
 import { TelemetryRail } from "./components/TelemetryRail.jsx";
+import { DesktopWorkspace } from "./components/DesktopWorkspace.jsx";
 import { TopStatusBar } from "./components/TopStatusBar.jsx";
 import { JarvisMark } from "./components/VectorMarks.jsx";
 import { SystemNotice } from "./components/SystemNotice.jsx";
@@ -84,7 +85,6 @@ export function App() {
   const commandPresence = useTransientPresence(commandOpen ? "command" : null, { reducedMotion });
   const [explorerRequest, setExplorerRequest] = useState({ path: null, sequence: 0 });
   const [explorerSelection, setExplorerSelection] = useState([]);
-  const [graphSource, setGraphSource] = useState(null);
   const [inspectorTarget, setInspectorTarget] = useState(null);
   const [bootActive, setBootActive] = useState(true);
   const [graphLaunchpadHidden, setGraphLaunchpadHidden] = useState(false);
@@ -151,11 +151,6 @@ export function App() {
     return feedback;
   }, []);
 
-  useEffect(() => {
-    const connectedPath = graphSource?.currentPath ?? graphSource?.CurrentPath;
-    if (!connectedPath) return;
-    setNotice((current) => current?.id === "knowledge-graph-source-prompt" ? null : current);
-  }, [graphSource]);
   const showDesktopFeedback = useCallback((input) => showToast(
     typeof input === "string" ? { title: input, source: "desktop" } : { ...input, source: input?.source ?? "desktop" },
   ), [showToast]);
@@ -824,16 +819,6 @@ export function App() {
     1,
     workspaceState.viewport.width - workspaceState.viewport.left - workspaceState.viewport.right,
   );
-  const openGraphFiles = useCallback(() => {
-    openExplorer();
-    showToast({
-      id: "knowledge-graph-source-prompt",
-      severity: "info",
-      source: "desktop",
-      title: translate("feedback.graph.chooseSource.title"),
-      detail: translate("feedback.graph.chooseSource.detail"),
-    });
-  }, [openExplorer, showToast]);
 
   return (
     <main className={[
@@ -856,9 +841,10 @@ export function App() {
         onAbortAgent={agentSession.abort}
         agentState={agentSession.state}
         onPower={openSessionPanel}
+        onOpenDateTime={() => openShellPanel("date-time")}
       />
 
-      <section className="desktop-workspace" aria-label={t("workspace.desktop.ariaLabel")}>
+      <DesktopWorkspace aria-label={t("workspace.desktop.ariaLabel")}>
         <DesktopShortcuts
           selectedId={selectedShortcut}
           onSelect={setSelectedShortcut}
@@ -870,11 +856,10 @@ export function App() {
         />
         <CoreStage
           defaultGraphState={defaultKnowledgeGraph}
-          graphSource={graphSource}
           graphSelection={explorerSelection}
           desktopOnly={graphLaunchpadHidden}
           onOpenSearch={openCommand}
-          onOpenFiles={openGraphFiles}
+          onOpenFiles={openExplorer}
           onOpenGraphPath={openExplorer}
           onLinkGraphNode={linkKnowledgeGraphNodeToAgent}
           onKeepDesktop={() => {
@@ -889,7 +874,7 @@ export function App() {
           onInspect={inspect}
           onNotification={handleNotification}
         />
-      </section>
+      </DesktopWorkspace>
 
       {bootActive ? (
         <Suspense fallback={null}>
@@ -973,7 +958,6 @@ export function App() {
               notice={explorerInlineNotice}
               onDismissNotice={dismissNotice}
               onSelectionChange={setExplorerSelection}
-              onGraphSourceChange={setGraphSource}
               onAddToAgentContext={linkExplorerSelectionToAgent}
               onMinimize={() => minimizeWorkspaceWindow("explorer")}
               onToggleMaximize={() => handleToggleWorkspaceMaximize("explorer")}

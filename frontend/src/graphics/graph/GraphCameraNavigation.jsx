@@ -1,5 +1,5 @@
 import { useFrame, useThree } from "@react-three/fiber";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   MathUtils,
   Spherical,
@@ -7,6 +7,8 @@ import {
 } from "three";
 import { useLanguage } from "../../i18n/language-system.js";
 import { getGraphCameraZoom } from "../graphics-runtime-policy.js";
+
+import { graphWheelDepth, graphWheelPixels, graphWheelZoom } from "./graph-camera-input.js";
 
 const MIN_POLAR_ANGLE = 0.12;
 const MAX_POLAR_ANGLE = Math.PI - 0.12;
@@ -46,13 +48,32 @@ export function GraphCameraNavigation({
   interactive = false,
   reducedMotion = false,
   zoom = 1,
+  onViewChange,
 }) {
   const { t } = useLanguage();
   const camera = useThree((state) => state.camera);
   const gl = useThree((state) => state.gl);
   const invalidate = useThree((state) => state.invalidate);
   const size = useThree((state) => state.size);
-  const targetRef = useRef(new Vector3());
+  const targetRef = useMemo(() => {
+    camera.userData.graphTarget ??= new Vector3();
+    return { current: camera.userData.graphTarget };
+  }, [camera]);
+  const viewChangeRef = useRef(onViewChange);
+  viewChangeRef.current = onViewChange;
+  const publishView = useCallback(() => {
+    if (Boolean(camera.isPerspectiveCamera) !== (dimension === 3)) return;
+    const view = {
+      dimension,
+      zoom: camera.zoom / getGraphCameraZoom(1, size.width, size.height),
+      depth: camera.position.z,
+    };
+    Object.assign(gl.domElement.dataset, {
+      cameraX: String(camera.position.x), cameraY: String(camera.position.y),
+      cameraZ: String(camera.position.z), cameraZoom: String(camera.zoom),
+    });
+    viewChangeRef.current?.(view);
+  }, [camera, dimension, gl, size.width, size.height]);
   const scratchRef = useRef({
     offset: new Vector3(),
     right: new Vector3(),
@@ -61,7 +82,7 @@ export function GraphCameraNavigation({
   });
   const tweenRef = useRef(null);
   const dragRef = useRef(null);
-  const lastCommandIdRef = useRef(null);
+  const lastCommandIdRef = useRef(command?.id ?? null);
 
   const applyView = useCallback((nextView, animate = true) => {
     const duration = reducedMotion || !animate ? 0 : 0.22;
@@ -73,6 +94,7 @@ export function GraphCameraNavigation({
       camera.updateProjectionMatrix();
       tweenRef.current = null;
       invalidate();
+      publishView();
       return;
     }
     tweenRef.current = {
@@ -82,7 +104,7 @@ export function GraphCameraNavigation({
       to: nextView,
     };
     invalidate();
-  }, [camera, invalidate, reducedMotion]);
+  }, [camera, invalidate, publishView, reducedMotion]);
 
   const fitGraph = useCallback((animate = true) => {
     const bounds = readBounds(getPositions?.(), dimension);
@@ -91,7 +113,8 @@ export function GraphCameraNavigation({
     if (camera.isOrthographicCamera) {
       const spanX = Math.max(80, bounds.size.x * padding);
       const spanY = Math.max(80, bounds.size.y * padding);
-      const fitZoom = Math.max(0.16, Math.min(5.5, size.width / spanX, size.height / spanY));
+      const baseZoom = getGraphCameraZoom(1, size.width, size.height);
+      const fitZoom = Math.max(0.1 * baseZoom, Math.min(8 * baseZoom, size.width / spanX, size.height / spanY));
       applyView({
         position: new Vector3(bounds.center.x, bounds.center.y, 700),
         target: new Vector3(bounds.center.x, bounds.center.y, 0),
@@ -118,7 +141,7 @@ export function GraphCameraNavigation({
     applyView({
       position: new Vector3(0, 0, dimension === 3 ? 720 : 700),
       target: new Vector3(),
-      zoom: getGraphCameraZoom(zoom, size.width, size.height),
+      zoom: dimension === 3 ? 1 : getGraphCameraZoom(zoom, size.width, size.height),
     }, animate);
   }, [applyView, dimension, size.height, size.width, zoom]);
 
@@ -167,9 +190,30 @@ export function GraphCameraNavigation({
     invalidate();
   }, [camera, dimension, invalidate]);
 
+  const navigateWheel = useCallback((pixels) => {
+    if (!pixels) return;
+    tweenRef.current = null;
+    if (dimension === 2) {
+      const baseZoom = getGraphCameraZoom(1, size.width, size.height);
+      camera.zoom = graphWheelZoom(camera.zoom / baseZoom, pixels) * baseZoom;
+      camera.updateProjectionMatrix();
+    } else {
+      const distance = camera.position.distanceTo(targetRef.current);
+      // Dolly along the camera's local Z axis; perspective zoom/FOV stay unchanged.
+      camera.translateZ(graphWheelDepth(distance, pixels) - distance);
+      camera.updateMatrixWorld();
+    }
+    invalidate();
+    publishView();
+  }, [camera, dimension, invalidate, publishView, size.width, size.height, targetRef]);
+
+  useEffect(() => { publishView(); }, [publishView]);
+
   useEffect(() => {
     if (!command || command.id === lastCommandIdRef.current) return;
     lastCommandIdRef.current = command.id;
+    if (command.type === "dolly-in") navigateWheel(-60);
+    if (command.type === "dolly-out") navigateWheel(60);
     if (command.type === "fit") fitGraph();
     if (command.type === "reset") resetGraph();
     if (command.type === "pan-left") panBy(PAN_STEP, 0);
@@ -178,7 +222,7 @@ export function GraphCameraNavigation({
     if (command.type === "pan-down") panBy(0, PAN_STEP);
     if (command.type === "orbit-left") orbitBy(-0.16, 0);
     if (command.type === "orbit-right") orbitBy(0.16, 0);
-  }, [command, fitGraph, orbitBy, panBy, resetGraph]);
+  }, [command, fitGraph, navigateWheel, orbitBy, panBy, resetGraph]);
 
   useEffect(() => {
     const canvas = gl.domElement;
@@ -223,6 +267,7 @@ export function GraphCameraNavigation({
       if (dragRef.current?.pointerId !== event.pointerId) return;
       dragRef.current = null;
       canvas.releasePointerCapture?.(event.pointerId);
+      publishView();
     };
     const handleKeyDown = (event) => {
       const panAmount = event.shiftKey ? PAN_STEP * 2 : PAN_STEP;
@@ -239,6 +284,12 @@ export function GraphCameraNavigation({
       else return;
       event.preventDefault();
     };
+    const handleWheel = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      navigateWheel(graphWheelPixels(event.deltaY, event.deltaMode, size.height));
+    };
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
     const preventContextMenu = (event) => event.preventDefault();
     canvas.addEventListener("pointerdown", handlePointerDown);
     canvas.addEventListener("pointermove", handlePointerMove);
@@ -254,11 +305,12 @@ export function GraphCameraNavigation({
       canvas.removeEventListener("pointercancel", handlePointerUp);
       canvas.removeEventListener("keydown", handleKeyDown);
       canvas.removeEventListener("contextmenu", preventContextMenu);
+      canvas.removeEventListener("wheel", handleWheel);
       canvas.removeAttribute("tabindex");
       canvas.removeAttribute("aria-label");
       canvas.removeAttribute("aria-keyshortcuts");
     };
-  }, [dimension, fitGraph, gl, interactive, orbitBy, panBy, resetGraph, t]);
+  }, [dimension, fitGraph, gl, interactive, navigateWheel, orbitBy, panBy, publishView, resetGraph, size.height, t]);
 
   useFrame((_, delta) => {
     const tween = tweenRef.current;
@@ -271,7 +323,7 @@ export function GraphCameraNavigation({
     camera.zoom = MathUtils.lerp(tween.from.zoom, tween.to.zoom, eased);
     camera.lookAt(targetRef.current);
     camera.updateProjectionMatrix();
-    if (progress >= 1) tweenRef.current = null;
+    if (progress >= 1) { tweenRef.current = null; publishView(); }
     else invalidate();
   });
 

@@ -22,7 +22,7 @@ import {
 
 test("graph visual settings fail closed to a versioned Nebula default", () => {
   assert.equal(getGraphVisualPresetId(DEFAULT_GRAPH_VISUAL_SETTINGS), "nebula");
-  assert.equal(DEFAULT_GRAPH_VISUAL_SETTINGS.version, 6);
+  assert.equal(DEFAULT_GRAPH_VISUAL_SETTINGS.version, 7);
   assert.equal(DEFAULT_GRAPH_VISUAL_SETTINGS.profiles["3d"].edge.halo.enabled, true);
   assert.equal(Object.isFrozen(DEFAULT_GRAPH_VISUAL_SETTINGS.profiles), true);
   assert.equal(Object.isFrozen(DEFAULT_GRAPH_VISUAL_SETTINGS.profiles["2d"]), true);
@@ -95,6 +95,8 @@ test("numeric visual intent is clamped to safe renderer bounds", () => {
   assert.deepEqual(normalized.edge, { opacity: 0.05, color: "#112233" });
   assert.deepEqual(normalized.labels, { count: 64, fontSize: 8, opacity: 0.45 });
   assert.deepEqual(normalized.layout, {
+    depth: 1, branchSpread: 0.48, weave: 0.8, crossLinks: 0.3, depthContrast: 0.7,
+    mode: "force",
     repulsion: 2,
     linkDistance: 0.6,
     linkStrength: 1.5,
@@ -123,7 +125,7 @@ test("v3 visual intent migrates to v6 without changing user brightness", () => {
     labels: { ...DEFAULT_GRAPH_VISUAL_SETTINGS.labels, opacity: 0.57 },
   });
 
-  assert.equal(migrated.version, 6);
+  assert.equal(migrated.version, 7);
   assert.deepEqual(migrated.view, { enabled: true, dimension: 3 });
   assert.equal(migrated.node.maxCount, 4096);
   assert.equal(migrated.node.opacity, 0.63);
@@ -153,7 +155,7 @@ test("v5 Orb controls migrate to canonical 3D FX paths and restore Relation Halo
   });
 
   const profile = migrated.profiles["3d"];
-  assert.equal(migrated.version, 6);
+  assert.equal(migrated.version, 7);
   assert.deepEqual(profile.postFx.bloom, {
     enabled: true,
     intensity: 2.4,
@@ -181,6 +183,9 @@ test("all bounded presets round-trip and a single edit becomes Custom", () => {
   assert.deepEqual(
     graphVisualPresets.map(({ id, label }) => [id, label]),
     [
+      ["neuron3d", "NEURON · 3D"],
+      ["neuron", "NEURON"],
+      ["neural", "NEURAL ORB"],
       ["obsidian", "OBSIDIAN"],
       ["nebula", "NEBULA"],
       ["blueprint", "BLUEPRINT"],
@@ -189,7 +194,8 @@ test("all bounded presets round-trip and a single edit becomes Custom", () => {
     ],
   );
 
-  for (const { id } of graphVisualPresets) {
+  for (const { id, dimensions } of graphVisualPresets) {
+    if (dimensions) setGraphVisualSetting("view", "dimension", dimensions[0]);
     setGraphVisualPreset(id);
     assert.equal(getGraphVisualPresetId(getGraphVisualSettingsSnapshot()), id);
     assert.equal(getGraphVisualSettingsSnapshot().node.opacity, 1);

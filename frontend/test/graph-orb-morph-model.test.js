@@ -85,3 +85,44 @@ test("graph orb morph easing and buffer mixing preserve exact endpoints", () => 
   const middle = mixGraphOrbPositionBuffers(orb, graph, 0.5);
   assert.deepEqual(middle, new Float32Array([10, 20, 0, 9, 3, 7]));
 });
+
+test("a dense vault keeps every note while the idle shell has independent density", () => {
+  const vaultNodes = Array.from({ length: 808 }, (_, index) => ({ id: `note-${index}` }));
+  const options = { shellRatio: 0.28, shellEdgeCount: 542 };
+  const orb = createGraphOrbMorphModel(vaultNodes, 7809, options);
+  assert.equal(orb.nodeCount, 808);
+  assert.equal(orb.positions.length, 808 * 3);
+  assert.equal(orb.shellNodeCount, 226);
+  assert.equal(orb.shellEdgePairs.length, 542 * 2);
+  assert.deepEqual(orb, createGraphOrbMorphModel(vaultNodes, 7809, options));
+  const unique = new Set();
+  let totalDistance = 0;
+  for (let index = 0; index < orb.shellEdgePairs.length; index += 2) {
+    const source = orb.shellEdgePairs[index];
+    const target = orb.shellEdgePairs[index + 1];
+    assert.notEqual(source, target);
+    unique.add([source, target].sort((a, b) => a - b).join(":"));
+    const a = orb.positions.subarray(source * 3, source * 3 + 3);
+    const b = orb.positions.subarray(target * 3, target * 3 + 3);
+    assert.ok(Math.hypot(...a) > orb.radius * 0.98);
+    assert.ok(Math.hypot(...b) > orb.radius * 0.98);
+    totalDistance += Math.hypot(...a.map((value, axis) => value - b[axis]));
+  }
+  assert.equal(unique.size, 542);
+  assert.ok(totalDistance / unique.size < orb.radius * 0.4, "neighbors must form a local shell, not cross-sphere bands");
+  assert.equal(Array.from(orb.scales).filter((value) => value < 0.4).length, 582);
+});
+
+test("spatial shell generation remains local above the former 512-node boundary", () => {
+  const largeNodes = Array.from({ length: 4096 }, (_, index) => ({ id: `note-${index}` }));
+  const orb = createGraphOrbMorphModel(largeNodes, 12000, { shellEdgeCount: 8192 });
+  let longest = 0;
+  for (let index = 0; index < orb.shellEdgePairs.length; index += 2) {
+    const a = orb.shellEdgePairs[index] * 3;
+    const b = orb.shellEdgePairs[index + 1] * 3;
+    longest = Math.max(longest, Math.hypot(...[0, 1, 2].map((axis) => orb.positions[a + axis] - orb.positions[b + axis])));
+  }
+  assert.equal(orb.positions.length, 4096 * 3);
+  assert.equal(orb.shellEdgePairs.length, 8192 * 2);
+  assert.ok(longest < orb.radius * 0.3);
+});

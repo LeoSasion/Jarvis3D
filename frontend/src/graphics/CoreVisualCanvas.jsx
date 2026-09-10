@@ -26,6 +26,7 @@ import {
   getGraphVisualPresetId,
   initializeGraphVisualSettings,
   resolveGraphVisualColors,
+  selectGraphDimensionSettings,
   subscribeGraphVisualSettings,
 } from "./graph/graph-visual-settings.js";
 import {
@@ -103,6 +104,7 @@ function EnabledCoreVisualCanvas({
   selectedNodeId = null,
   onNodeHover,
   onNodeSelect,
+  onCameraViewChange,
   fallback = null,
   settings,
 }) {
@@ -143,13 +145,12 @@ function EnabledCoreVisualCanvas({
     () => selectGraphicsQualityProfile(environment, settings.performance.quality),
     [environment, settings.performance.quality],
   );
-  const resolvedDimension = dimension === 3 || dimension === 2
+  const resolvedDimension = !interactive && settings.idleShape === "neuronSphere" ? 3 : dimension === 3 || dimension === 2
     ? dimension
     : settings.view.dimension;
   const presentation = interactive
     ? "graph"
     : resolvedDimension === 3 ? "orb" : "constellation";
-  const orbEnergyPresentation = presentation === "orb" && resolvedDimension === 3;
   const budgetGraphRef = useRef(null);
   const budgetGraph = useMemo(
     () => {
@@ -174,7 +175,12 @@ function EnabledCoreVisualCanvas({
   const layoutTuningKey = createLayoutTuningKey(requestedLayoutTuning);
   const requestedLayoutRef = useRef(requestedLayoutTuning);
   requestedLayoutRef.current = requestedLayoutTuning;
-  const [settledLayoutTuning, setSettledLayoutTuning] = useState(requestedLayoutTuning);
+  const [settledLayoutState, setSettledLayoutState] = useState({
+    dimension: resolvedDimension, tuning: requestedLayoutTuning,
+  });
+  const settledLayoutTuning = settledLayoutState.dimension === resolvedDimension
+    ? settledLayoutState.tuning
+    : requestedLayoutTuning;
   const settledLayout = useMemo(() => Object.freeze({
     ...renderPlan.layout,
     ...settledLayoutTuning,
@@ -183,7 +189,7 @@ function EnabledCoreVisualCanvas({
     () => Object.freeze({ ...renderPlan, layout: settledLayout }),
     [renderPlan, settledLayout],
   );
-  const profile3dBloom = scenePlan.profiles["3d"].postFx.bloom;
+  const activeBloom = scenePlan.profiles[`${resolvedDimension}d`].postFx.bloom;
   const handleFault = useCallback((reason, runtimeSnapshot) => {
     setRuntimeState(reason);
     publishGraphicsDiagnostics(runtimeSnapshot, reason);
@@ -195,14 +201,14 @@ function EnabledCoreVisualCanvas({
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      setSettledLayoutTuning((current) => (
-        createLayoutTuningKey(current) === layoutTuningKey
+      setSettledLayoutState((current) => (
+        current.dimension === resolvedDimension && createLayoutTuningKey(current.tuning) === layoutTuningKey
           ? current
-          : requestedLayoutRef.current
+          : { dimension: resolvedDimension, tuning: requestedLayoutRef.current }
       ));
     }, 180);
     return () => clearTimeout(timeoutId);
-  }, [layoutTuningKey]);
+  }, [layoutTuningKey, resolvedDimension]);
 
   if (runtimeState === "render-error" || environment.forcedColors) return fallback;
 
@@ -222,12 +228,15 @@ function EnabledCoreVisualCanvas({
         dimension={resolvedDimension}
         fallback={fallback}
         interactive={interactive}
+        readableLabels={interactive}
         onFault={handleFault}
         onReady={handleReady}
         quality={quality}
         zoom={zoom}
       >
         <GraphScene
+          key={resolvedDimension}
+          onCameraViewChange={onCameraViewChange}
           cameraCommand={cameraCommand}
           dimension={resolvedDimension}
           graph={budgetGraph}
@@ -242,23 +251,13 @@ function EnabledCoreVisualCanvas({
           zoom={zoom}
         />
         <RenderPipeline
-          bloom={orbEnergyPresentation
-            ? (profile3dBloom.enabled ? "required" : false)
-            : settings.scene.bloom === "on" ? "required" : scenePlan.scene.bloom}
-          bloomIntensity={orbEnergyPresentation
-            ? profile3dBloom.intensity
-            : resolvedDimension === 3
-            ? Math.max(1.12, scenePlan.scene.bloomIntensity)
-            : Math.max(1.02, scenePlan.scene.bloomIntensity)}
-          bloomRadius={orbEnergyPresentation
-            ? profile3dBloom.radius
-            : undefined}
-          bloomSmoothing={orbEnergyPresentation
-            ? profile3dBloom.softKnee
-            : resolvedDimension === 3 ? 0.42 : 0.4}
-          bloomThreshold={orbEnergyPresentation
-            ? profile3dBloom.threshold
-            : resolvedDimension === 3 ? 0.14 : 0.18}
+          bloom={activeBloom.enabled ? "required" : false}
+          bloomIntensity={activeBloom.intensity}
+          bloomRadius={activeBloom.radius}
+          bloomSmoothing={activeBloom.softKnee}
+          bloomThreshold={activeBloom.threshold}
+          hdr={resolvedDimension === 3 || settings.sharedStyle}
+          labels
         />
       </GraphicsRuntime>
       {runtimeState === "context-lost" ? (
@@ -333,6 +332,7 @@ function NeuralOrbCoreVisualCanvas({
           bloomRadius={bloom?.radius ?? ORB_BLOOM_PROFILE.radius}
           bloomSmoothing={bloom?.softKnee ?? ORB_BLOOM_PROFILE.smoothing}
           bloomThreshold={bloom?.threshold ?? ORB_BLOOM_PROFILE.threshold}
+          hdr
         />
       </GraphicsRuntime>
       {runtimeState === "context-lost" ? (
@@ -343,7 +343,7 @@ function NeuralOrbCoreVisualCanvas({
 }
 
 export function CoreVisualCanvas(props) {
-  const settings = useSyncExternalStore(
+  const storedSettings = useSyncExternalStore(
     subscribeGraphVisualSettings,
     getGraphVisualSettingsSnapshot,
     getGraphVisualSettingsSnapshot,
@@ -352,6 +352,12 @@ export function CoreVisualCanvas(props) {
   useEffect(() => {
     initializeGraphVisualSettings();
   }, []);
+
+  const settings = useMemo(
+    () => selectGraphDimensionSettings(storedSettings, props.scene === "neural-orb"
+      || (!props.interactive && storedSettings.idleShape === "neuronSphere") ? 3 : props.dimension),
+    [storedSettings, props.dimension, props.scene, props.interactive],
+  );
 
   if (props.scene === "neural-orb") {
     return <NeuralOrbCoreVisualCanvas {...props} settings={settings} />;

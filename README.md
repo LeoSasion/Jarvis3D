@@ -4,6 +4,20 @@
 
 ![JARVIS operator HUD](docs/design/references/jarvis-operator-hud-overview.png)
 
+## Neural graph previews
+
+The idle neuron sphere and 3D graph share tapered, translucent connections with local highlights. Their layouts and depth controls remain independent, and graph labels stay sharp. These are screenshots of the running browser preview; the shell's simulated status is labeled in the interface.
+
+### Neuron sphere — idle view
+
+![JARVIS neuron sphere idle view](docs/validation/neuron-filament-sphere-preview.png)
+
+### 3D neuron graph — exploration view
+
+![JARVIS 3D neuron graph exploration view](docs/validation/neuron-filament-3d-preview.png)
+
+See the [shared filament implementation and controls](docs/design/concepts/neuron-filament-notes.md) for details.
+
 ## Current scope
 
 - Windows 10 and Windows 11 Home/Pro desktop environments
@@ -24,7 +38,7 @@
 - Truthful Windows notification-history readiness reporting; history remains disabled until a signed MSIX identity and user consent are available
 - Windows-native system telemetry and on-demand process/hardware inspection
 - Integrated PowerShell, Command Prompt, and WSL sessions through ConPTY
-- A source-bounded local Obsidian knowledge graph with 2D/3D views, persisted visual profiles, and metadata-only renderer contracts
+- A source-bounded local Obsidian knowledge graph with 2D/3D neuron views, a porous neuron sphere at idle, shared or independent visual profiles, and metadata-only renderer contracts
 - Configurable conservative, enhanced, and experimental immersive window styling
 - Layered low-glare HUD themes and optional local interaction sounds
 - Per-user installer and startup registration

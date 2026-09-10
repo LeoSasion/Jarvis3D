@@ -160,7 +160,7 @@ export function getLinkedSystemRailPresentation({ feed = {}, agentState = {} } =
 export function createLinkedSystemRailState(presentation) {
   const hasAttention = Number(presentation?.attentionCount) > 0;
   return {
-    expanded: hasAttention,
+    expanded: true,
     observedAttentionKeys: Array.isArray(presentation?.attentionKeys)
       ? [...presentation.attentionKeys]
       : [],

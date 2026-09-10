@@ -1,11 +1,8 @@
 import {
-  ArrowResetRegular,
   LinkRegular,
   OpenRegular,
   SearchRegular,
   SettingsRegular,
-  ZoomInRegular,
-  ZoomOutRegular,
 } from "@fluentui/react-icons";
 import {
   lazy,
@@ -21,7 +18,6 @@ import {
 } from "react";
 import {
   getGraphVisualSettingsSnapshot,
-  setGraphVisualSetting,
   subscribeGraphVisualSettings,
 } from "../graphics/graph/graph-visual-settings.js";
 import { useLanguage } from "../i18n/language-system.js";
@@ -32,8 +28,8 @@ import {
   getKnowledgeGraphNavigationIndex,
   getKnowledgeGraphNodeConnections,
   getKnowledgeGraphNodeContextItem,
-  getKnowledgeGraphWheelZoomDelta,
 } from "../knowledge-graph-model.js";
+import { GraphViewControls } from "./GraphViewControls.jsx";
 import { KnowledgeGraphField } from "./VectorMarks.jsx";
 
 const CoreVisualCanvas = lazy(() => import("../graphics/CoreVisualCanvas.jsx")
@@ -318,6 +314,7 @@ export function KnowledgeGraphWorkspace({
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
   const [exploreMode, setExploreMode] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [depth, setDepth] = useState(720);
   const [cameraCommand, setCameraCommand] = useState(null);
   const cameraCommandIdRef = useRef(0);
   const canvasRef = useRef(null);
@@ -386,13 +383,6 @@ export function KnowledgeGraphWorkspace({
     });
   }, []);
 
-  const handleWheel = useCallback((event) => {
-    if (!exploreMode) return;
-    event.preventDefault();
-    const delta = getKnowledgeGraphWheelZoomDelta(event.deltaY, event.deltaMode);
-    if (delta !== 0) changeZoom(delta);
-  }, [changeZoom, exploreMode]);
-
   const toggleGroup = useCallback((nodeId) => {
     setCollapsedIds((current) => current.includes(nodeId)
       ? current.filter((id) => id !== nodeId)
@@ -417,9 +407,9 @@ export function KnowledgeGraphWorkspace({
     setCollapsedIds([]);
     setSelectedNodeId(null);
     setHoveredNodeId(null);
-    setZoom(1);
+    if (visualSettings.view.dimension === 2) setZoom(1);
     issueCameraCommand("reset");
-  }, [issueCameraCommand]);
+  }, [issueCameraCommand, visualSettings.view.dimension]);
 
   const selectedContextItem = getKnowledgeGraphNodeContextItem(selectedNode);
   const sourceModeLabel = platformKind === "windows" && !graph.source.simulation
@@ -430,7 +420,7 @@ export function KnowledgeGraphWorkspace({
     : graph.visibleEntryCount <= 30 ? "balanced" : "compact";
 
   return (
-    <div className="knowledge-workspace" data-node-density={nodeDensity}>
+    <div className="knowledge-workspace" data-node-density={nodeDensity} data-exploring={exploreMode}>
       <header className="knowledge-workspace__toolbar">
         <button
           type="button"
@@ -460,44 +450,32 @@ export function KnowledgeGraphWorkspace({
           <span>{t("graph.workspace.facts.relations", { count: graph.relationCount })}</span>
           <span>{sourceModeLabel}</span>
         </div>
-        <div
-          className="knowledge-workspace__zoom"
-          role="group"
-          aria-label={t("graph.workspace.viewControls.aria")}
-        >
-          <button
-            type="button"
-            className={visualSettings.view.dimension === 2 ? "is-active" : ""}
-            onClick={() => setGraphVisualSetting("view", "dimension", 2)}
-            aria-pressed={visualSettings.view.dimension === 2}
-            aria-label={t("graph.workspace.action.switch2d")}
-          >2D</button>
-          <button
-            type="button"
-            className={visualSettings.view.dimension === 3 ? "is-active" : ""}
-            onClick={() => setGraphVisualSetting("view", "dimension", 3)}
-            aria-pressed={visualSettings.view.dimension === 3}
-            aria-label={t("graph.workspace.action.switch3d")}
-          >3D</button>
-          <button type="button" onClick={() => changeZoom(-0.12)} aria-label={t("graph.workspace.action.zoomOut")}><ZoomOutRegular /></button>
-          <output aria-label={t("graph.workspace.zoom.aria")}>{Math.round(zoom * 100)}%</output>
-          <button type="button" onClick={() => changeZoom(0.12)} aria-label={t("graph.workspace.action.zoomIn")}><ZoomInRegular /></button>
-          <button type="button" onClick={() => issueCameraCommand("fit")} aria-label={t("graph.workspace.action.fit")}>{t("graph.workspace.action.fitShort")}</button>
-          <button type="button" onClick={resetView} aria-label={t("graph.workspace.action.resetView")}><ArrowResetRegular /></button>
+        {!exploreMode ? (
           <button
             ref={visualSettingsTriggerRef}
             type="button"
+            className="graph-idle-settings"
             onClick={onOpenVisualSettings}
-            aria-label={t(visualSettingsOpen
-              ? "graph.workspace.action.closeVisualSettings"
-              : "graph.workspace.action.openVisualSettings")}
+            aria-label={t("graph.workspace.action.openVisualSettings")}
+            title={t("graph.workspace.action.openVisualSettings")}
             aria-controls="graph-visual-settings-panel"
             aria-expanded={visualSettingsOpen}
-          >
-            <SettingsRegular />
-          </button>
-        </div>
+          ><SettingsRegular aria-hidden="true" /></button>
+        ) : null}
       </header>
+      <GraphViewControls
+        active={exploreMode}
+        dimension={visualSettings.view.dimension}
+        zoom={zoom}
+        depth={depth}
+        onZoom={(delta) => visualSettings.view.dimension === 3
+          ? issueCameraCommand(delta > 0 ? "dolly-in" : "dolly-out") : changeZoom(delta)}
+        onFit={() => issueCameraCommand("fit")}
+        onReset={resetView}
+        onOpenVisualSettings={onOpenVisualSettings}
+        visualSettingsOpen={visualSettingsOpen}
+        visualSettingsTriggerRef={visualSettingsTriggerRef}
+      />
 
       <div
         ref={canvasRef}
@@ -507,10 +485,10 @@ export function KnowledgeGraphWorkspace({
           ? t("graph.workspace.canvas.aria", { source: graph.source.sourceName })
           : undefined}
         data-graphics-input-owner={exploreMode ? "graph" : undefined}
-        onWheel={handleWheel}
       >
         <Suspense fallback={<GraphFallback />}>
           <CoreVisualCanvas
+            onCameraViewChange={(view) => view.dimension === 2 ? setZoom(view.zoom) : setDepth(view.depth)}
             cameraCommand={cameraCommand}
             fallback={<GraphFallback />}
             graph={sceneGraph}

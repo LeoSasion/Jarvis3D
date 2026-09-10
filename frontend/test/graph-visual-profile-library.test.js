@@ -24,7 +24,7 @@ test("graph visual profile documents are versioned and settings are bounded", ()
   });
   assert.equal(documentValue.profiles[0].settings.view.dimension, 3);
   assert.equal(documentValue.profiles[0].settings.node.scale, 2.5);
-  assert.equal(documentValue.profiles[0].settings.version, 6);
+  assert.equal(documentValue.profiles[0].settings.version, 7);
   assert.equal(documentValue.profiles[0].settings.profiles["3d"].edge.halo.enabled, true);
 });
 
@@ -87,7 +87,7 @@ test("profile documents import v5 Orb controls as v6 3D FX", () => {
   });
   const settings = documentValue.profiles[0].settings;
 
-  assert.equal(settings.version, 6);
+  assert.equal(settings.version, 7);
   assert.equal(settings.profiles["3d"].postFx.bloom.intensity, 2.15);
   assert.equal(settings.profiles["3d"].edge.core.widthScale, 1.24);
   assert.equal(settings.profiles["3d"].edge.halo.enabled, true);

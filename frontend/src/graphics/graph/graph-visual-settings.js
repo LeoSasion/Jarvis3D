@@ -3,14 +3,16 @@ import {
   normalizeGraphFxProfiles,
   withGraphFxProfileSetting,
 } from "./graph-fx-profile.js";
+import { NEURON_SPATIAL_DEFAULTS } from "./graph-neuron-spatial-model.js";
 
-const STORAGE_KEY = "jarvis.graph-visual-settings.v6";
+const STORAGE_KEY = "jarvis.graph-visual-settings.v7";
+const VERSION_6_STORAGE_KEY = "jarvis.graph-visual-settings.v6";
 const PREVIOUS_STORAGE_KEY = "jarvis.graph-visual-settings.v5";
 const SECOND_PREVIOUS_STORAGE_KEY = "jarvis.graph-visual-settings.v4";
 const THIRD_PREVIOUS_STORAGE_KEY = "jarvis.graph-visual-settings.v3";
 const FOURTH_PREVIOUS_STORAGE_KEY = "jarvis.graph-visual-settings.v2";
 const LEGACY_STORAGE_KEY = "jarvis.graph-visual-settings.v1";
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
 const BLOOM_VALUES = new Set(["auto", "off", "on"]);
 const QUALITY_VALUES = new Set(["auto", "low", "balanced", "high"]);
@@ -42,6 +44,12 @@ const sectionFields = Object.freeze({
   edge: Object.freeze(["opacity", "color"]),
   labels: Object.freeze(["count", "fontSize", "opacity"]),
   layout: Object.freeze([
+    "mode",
+    "depth",
+    "branchSpread",
+    "weave",
+    "crossLinks",
+    "depthContrast",
     "repulsion",
     "linkDistance",
     "linkStrength",
@@ -68,6 +76,11 @@ export const graphVisualSettingRanges = Object.freeze({
     opacity: Object.freeze({ min: 0.45, max: 1, step: 0.01 }),
   }),
   layout: Object.freeze({
+    depth: Object.freeze({ min: 0.2, max: 2, step: 0.05 }),
+    branchSpread: Object.freeze({ min: 0.15, max: 1, step: 0.01 }),
+    weave: Object.freeze({ min: 0, max: 1.5, step: 0.05 }),
+    crossLinks: Object.freeze({ min: 0, max: 1, step: 0.05 }),
+    depthContrast: Object.freeze({ min: 0, max: 1, step: 0.05 }),
     repulsion: Object.freeze({ min: 0.5, max: 2, step: 0.05 }),
     linkDistance: Object.freeze({ min: 0.6, max: 2, step: 0.05 }),
     linkStrength: Object.freeze({ min: 0.5, max: 1.5, step: 0.05 }),
@@ -80,21 +93,35 @@ export const graphVisualSettingRanges = Object.freeze({
   }),
 });
 
+const DIMENSION_SECTIONS = ["node", "edge", "labels", "layout", "scene", "performance"];
+
+function dimensionSettings(value) {
+  return Object.freeze(Object.fromEntries(DIMENSION_SECTIONS.map(
+    (section) => [section, Object.freeze({ ...value[section] })],
+  )));
+}
+
 function freezeSettings(value) {
   return Object.freeze({
     version: SCHEMA_VERSION,
+    sharedStyle: value.sharedStyle === true,
+    idleShape: value.idleShape === "neuronSphere" ? "neuronSphere" : "orb",
+    ...(value.dimensions ? { dimensions: Object.freeze({
+      "2d": dimensionSettings(value.dimensions["2d"]),
+      "3d": dimensionSettings(value.dimensions["3d"]),
+    }) } : {}),
     view: Object.freeze({ ...value.view }),
     node: Object.freeze({ ...value.node }),
     edge: Object.freeze({ ...value.edge }),
     labels: Object.freeze({ ...value.labels }),
-    layout: Object.freeze({ ...value.layout }),
+    layout: Object.freeze({ ...NEURON_SPATIAL_DEFAULTS, ...value.layout }),
     profiles: normalizeGraphFxProfiles(value.profiles),
     scene: Object.freeze({ ...value.scene }),
     performance: Object.freeze({ ...value.performance }),
   });
 }
 
-const presetConfigurations = Object.freeze({
+const basePresetConfigurations = Object.freeze({
   obsidian: freezeSettings({
     view: { enabled: true, dimension: 2 },
     node: {
@@ -111,6 +138,7 @@ const presetConfigurations = Object.freeze({
     edge: { opacity: 0.16, color: "#747980" },
     labels: { count: 22, fontSize: 10, opacity: 1 },
     layout: {
+      mode: "force",
       repulsion: 1.05,
       linkDistance: 1,
       linkStrength: 1,
@@ -136,6 +164,7 @@ const presetConfigurations = Object.freeze({
     edge: { opacity: 0.32, color: "#77736C" },
     labels: { count: 24, fontSize: 10, opacity: 1 },
     layout: {
+      mode: "force",
       repulsion: 1,
       linkDistance: 1,
       linkStrength: 1,
@@ -161,6 +190,7 @@ const presetConfigurations = Object.freeze({
     edge: { opacity: 0.24, color: "#65625C" },
     labels: { count: 30, fontSize: 10, opacity: 1 },
     layout: {
+      mode: "force",
       repulsion: 1.1,
       linkDistance: 0.95,
       linkStrength: 1.1,
@@ -186,6 +216,7 @@ const presetConfigurations = Object.freeze({
     edge: { opacity: 0.09, color: "#595751" },
     labels: { count: 12, fontSize: 9, opacity: 1 },
     layout: {
+      mode: "force",
       repulsion: 0.9,
       linkDistance: 1.1,
       linkStrength: 1,
@@ -211,6 +242,7 @@ const presetConfigurations = Object.freeze({
     edge: { opacity: 0.07, color: "#55534E" },
     labels: { count: 8, fontSize: 9, opacity: 1 },
     layout: {
+      mode: "force",
       repulsion: 0.8,
       linkDistance: 1.1,
       linkStrength: 0.85,
@@ -222,9 +254,119 @@ const presetConfigurations = Object.freeze({
   }),
 });
 
-export const DEFAULT_GRAPH_VISUAL_SETTINGS = presetConfigurations.nebula;
+// Parameters calibrated to docs/design/references/jarvis-neural-orb-reference.jpg.
+// The new preset is opt-in; existing 2D/3D preferences are never migrated to it.
+const calibratedPresetConfigurations = Object.freeze({
+  ...basePresetConfigurations,
+  neuron: freezeSettings({
+    ...basePresetConfigurations.obsidian,
+    node: { ...basePresetConfigurations.obsidian.node, scale: 1, hubScale: 1.8 },
+    edge: { opacity: 0.55, color: basePresetConfigurations.nebula.node.activeColor },
+    labels: { count: 5, fontSize: 14, opacity: 1 },
+    layout: { ...basePresetConfigurations.obsidian.layout, mode: "neuron", repulsion: 1.1, linkDistance: 1.35 },
+    scene: { stars: 0, bloom: "on", bloomIntensity: 0.45 },
+    profiles: {
+      ...DEFAULT_GRAPH_FX_PROFILES,
+      "2d": {
+        ...DEFAULT_GRAPH_FX_PROFILES["2d"],
+        node: {
+          master: { scale: 1, opacity: 1 },
+          size: { byImportance: 1 },
+          core: { enabled: true, sizeScale: 1, opacity: 1, emissionIntensity: 2.7 },
+          halo: { enabled: true, radiusScale: 1.5, opacity: 0.22, emissionIntensity: 1.5 },
+          pulse: { enabled: false, amount: 0.1, rate: 0.5 },
+        },
+        edge: {
+          ...DEFAULT_GRAPH_FX_PROFILES["2d"].edge,
+          filament: { taper: 0.85, rootWidth: 5.2, roundness: 0.8, translucency: 0.7 },
+          core: { ...DEFAULT_GRAPH_FX_PROFILES["2d"].edge.core, widthScale: 0.65, opacity: 0.85, emissionIntensity: 1.6 },
+        },
+        signal: { ...DEFAULT_GRAPH_FX_PROFILES["2d"].signal, enabled: false, count: 4, speed: 0.3 },
+        motion: { idleRotationSpeed: 0, breathingAmount: 0, breathingRate: 0.5 },
+        postFx: { bloom: { enabled: true, intensity: 0.7, threshold: 0.7, softKnee: 0.15, radius: 0.25 } },
+      },
+    },
+  }),
+  neural: freezeSettings({
+    ...basePresetConfigurations.nebula,
+    node: {
+      ...basePresetConfigurations.nebula.node,
+      scale: 1, hubScale: 1.3, useThemeColors: true,
+      baseColor: "#FFA43A", hubColor: "#FFF0C7", activeColor: "#FF650A", groupColor: "#D8540C",
+    },
+    edge: { opacity: 0.55, color: "#FF650A" },
+    scene: { ...basePresetConfigurations.nebula.scene, stars: 0 },
+    profiles: {
+      ...DEFAULT_GRAPH_FX_PROFILES,
+      "3d": {
+        node: {
+          master: { scale: 1.28, opacity: 1 },
+          size: { byImportance: 0.45 },
+          core: { enabled: true, sizeScale: 1.5, opacity: 1, emissionIntensity: 3 },
+          halo: { enabled: true, radiusScale: 1.9, opacity: 0.14, emissionIntensity: 2.2 },
+          pulse: { enabled: false, amount: 0.15, rate: 0.5 },
+        },
+        edge: {
+          master: { opacity: 1 },
+          core: { enabled: true, widthScale: 1.25, opacity: 1, emissionIntensity: 3, widthByStrength: 0.25, emissionByStrength: 0.35 },
+          halo: { enabled: true, radiusScale: 1.3, opacity: 0.28, emissionIntensity: 2.8, falloff: 2.2, byStrength: 0.5 },
+        },
+        signal: { enabled: true, count: 6, speed: 0.5, sizeScale: 0.7, opacity: 0.9, emissionIntensity: 1.8 },
+        orb: {
+          network: { density: 2.4, shellRatio: 0.28, depthContrast: 0.78 },
+          innerNetwork: { enabled: true, scale: 0.73, opacity: 0.14, rotationSpeed: 0.3 },
+          rim: { enabled: false, intensity: 0.2, fresnelPower: 7 },
+          sparks: { enabled: true, sizeScale: 1.8, opacity: 0.3, emissionIntensity: 2.8 },
+        },
+        motion: { idleRotationSpeed: 0.3, breathingAmount: 0.15, breathingRate: 0.5 },
+        postFx: { bloom: { enabled: true, intensity: 1.8, threshold: 0.4, softKnee: 0.22, radius: 0.25 } },
+      },
+    },
+  }),
+});
+
+const spatialNeuronBase = calibratedPresetConfigurations.neural;
+const presetConfigurations = Object.freeze({
+  ...calibratedPresetConfigurations,
+  neuron3d: freezeSettings({
+    ...spatialNeuronBase,
+    node: { ...spatialNeuronBase.node, scale: 1, hubScale: 1.6 },
+    labels: { count: 5, fontSize: 12, opacity: 1 },
+    layout: {
+      ...spatialNeuronBase.layout, mode: "neuron", repulsion: 1.2, linkDistance: 1.5,
+      ...NEURON_SPATIAL_DEFAULTS,
+    },
+    profiles: {
+      ...spatialNeuronBase.profiles,
+      "3d": {
+        ...spatialNeuronBase.profiles["3d"],
+        node: {
+          ...spatialNeuronBase.profiles["3d"].node,
+          size: { byImportance: 1 },
+        },
+        edge: {
+          ...spatialNeuronBase.profiles["3d"].edge,
+          filament: { taper: 0.85, rootWidth: 5.2, roundness: 0.8, translucency: 0.7 },
+          core: { ...spatialNeuronBase.profiles["3d"].edge.core, widthScale: 0.95, emissionIntensity: 1.8 },
+          halo: { ...spatialNeuronBase.profiles["3d"].edge.halo, radiusScale: 1.15, opacity: 0.12, emissionIntensity: 2, falloff: 2.8 },
+        },
+      },
+    },
+  }),
+});
+
+export const DEFAULT_GRAPH_VISUAL_SETTINGS = freezeSettings({
+  ...presetConfigurations.nebula,
+  dimensions: {
+    "2d": dimensionSettings(presetConfigurations.obsidian),
+    "3d": dimensionSettings(presetConfigurations.nebula),
+  },
+});
 
 export const graphVisualPresets = Object.freeze([
+  Object.freeze({ id: "neuron3d", label: "NEURON · 3D", labelKey: "graphVisualSettings.preset.neuron3d.label", detail: "Spatial dendrites and interwoven axons", dimensions: Object.freeze([3]) }),
+  Object.freeze({ id: "neuron", label: "NEURON", labelKey: "graphVisualSettings.preset.neuron.label", detail: "Dendritic clusters with luminous cores and sparse axons", dimensions: Object.freeze([2]) }),
+  Object.freeze({ id: "neural", label: "NEURAL ORB", detail: "Reference orb · incandescent cores and warm diffusion", dimensions: Object.freeze([3]) }),
   Object.freeze({
     id: "obsidian",
     label: "OBSIDIAN",
@@ -293,13 +435,13 @@ function findLegacyPresetId(value) {
       .every((field) => value.labels?.[field] === expected.labels[field]);
     const otherSectionsMatch = ["edge", "layout", "scene", "performance"]
       .every((section) => Object.entries(expected[section]).every(
-        ([field, expectedValue]) => value[section]?.[field] === expectedValue,
+        ([field, expectedValue]) => field === "mode" || field in NEURON_SPATIAL_DEFAULTS || value[section]?.[field] === expectedValue,
       ));
     if (nodeFieldsMatch
       && labelsMatch
       && otherSectionsMatch
-      && value.node?.opacity === legacyPresetOpacity[preset.id].node
-      && value.labels?.opacity === legacyPresetOpacity[preset.id].labels
+      && value.node?.opacity === legacyPresetOpacity[preset.id]?.node
+      && value.labels?.opacity === legacyPresetOpacity[preset.id]?.labels
       && String(value.node?.hubColor).toUpperCase() === legacyHubColors[preset.id]) {
       return preset.id;
     }
@@ -423,7 +565,8 @@ function migrateVersion2Settings(value) {
   });
 }
 
-export function normalizeGraphVisualSettings(value) {
+export function normalizeGraphVisualSettings(value, flat = false) {
+  if (value?.version === 6) return normalizeGraphVisualSettings({ ...value, version: SCHEMA_VERSION }, flat);
   if (value?.version === 5) return migrateVersion5Settings(value);
   if (value?.version === 4) return migrateVersion4Settings(value);
   if (value?.version === 3) return migrateVersion3Settings(value);
@@ -434,7 +577,9 @@ export function normalizeGraphVisualSettings(value) {
   }
 
   const defaults = DEFAULT_GRAPH_VISUAL_SETTINGS;
-  return freezeSettings({
+  const normalized = freezeSettings({
+    sharedStyle: value.sharedStyle,
+    idleShape: value.idleShape,
     view: {
       enabled: typeof value.view?.enabled === "boolean"
         ? value.view.enabled
@@ -501,6 +646,10 @@ export function normalizeGraphVisualSettings(value) {
       ),
     },
     layout: {
+      mode: value.layout?.mode === "neuron" ? "neuron" : "force",
+      ...Object.fromEntries(Object.entries(NEURON_SPATIAL_DEFAULTS).map(([key, fallback]) => [
+        key, boundedNumber(value.layout?.[key], fallback, graphVisualSettingRanges.layout[key]),
+      ])),
       repulsion: boundedNumber(
         value.layout?.repulsion,
         defaults.layout.repulsion,
@@ -550,18 +699,43 @@ export function normalizeGraphVisualSettings(value) {
         : defaults.performance.quality,
     },
   });
+  if (flat) return normalized;
+  const active = `${normalized.view.dimension}d`;
+  const dimensions = {};
+  for (const id of ["2d", "3d"]) {
+    const stored = value.dimensions?.[id];
+    dimensions[id] = stored
+      ? dimensionSettings(normalizeGraphVisualSettings({ ...normalized, ...stored, view: { ...normalized.view, dimension: id === "2d" ? 2 : 3 } }, true))
+      : dimensionSettings(normalized);
+  }
+  // Top-level fields are a projection of the active dimension for existing consumers.
+  dimensions[active] = dimensionSettings(normalized);
+  const profiles = { ...normalized.profiles };
+  if (normalized.sharedStyle) {
+    for (const id of ["2d", "3d"]) {
+      dimensions[id] = dimensionSettings({ ...dimensions[id], node: normalized.node, edge: normalized.edge });
+      profiles[id] = { ...profiles[id], ...Object.fromEntries(
+        ["node", "edge", "signal", "motion", "postFx"].map((key) => [key, profiles[active][key]]),
+      ) };
+    }
+  }
+  return freezeSettings({ ...normalized, dimensions, profiles });
 }
 
 function configurationsMatch(left, right) {
-  return Object.entries(sectionFields).every(([section, fields]) => (
+  return left.sharedStyle === right.sharedStyle && left.idleShape === right.idleShape
+    && Object.entries(sectionFields).every(([section, fields]) => (
     fields.every((field) => left[section][field] === right[section][field])
-  )) && JSON.stringify(left.profiles) === JSON.stringify(right.profiles);
+  )) && JSON.stringify(left.profiles) === JSON.stringify(right.profiles)
+    && JSON.stringify(left.dimensions) === JSON.stringify(right.dimensions);
 }
 
 export function getGraphVisualPresetId(value) {
   const settings = normalizeGraphVisualSettings(value);
   for (const preset of graphVisualPresets) {
-    if (configurationsMatch(settings, presetConfigurations[preset.id])) return preset.id;
+    const presetSettings = presetConfigurations[preset.id];
+    if (JSON.stringify(dimensionSettings(settings)) === JSON.stringify(dimensionSettings(presetSettings))
+      && JSON.stringify(settings.profiles[`${settings.view.dimension}d`]) === JSON.stringify(presetSettings.profiles[`${settings.view.dimension}d`])) return preset.id;
   }
   return "custom";
 }
@@ -582,7 +756,7 @@ export function resolveGraphVisualColors(value, themePalette) {
     hubColor: hexColor(themePalette.hub, normalized.node.hubColor),
     activeColor: hexColor(themePalette.active, normalized.node.activeColor),
     groupColor: hexColor(themePalette.group, normalized.node.groupColor),
-    edgeColor: hexColor(themePalette.edge, normalized.edge.color),
+    edgeColor: hexColor(normalized.layout.mode === "neuron" ? themePalette.active : themePalette.edge, normalized.edge.color),
   });
 }
 
@@ -599,6 +773,12 @@ function readSettings() {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored !== null) return parseStoredValue(stored);
+    const version6 = window.localStorage.getItem(VERSION_6_STORAGE_KEY);
+    if (version6 !== null) {
+      const migrated = normalizeGraphVisualSettings(JSON.parse(version6));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+      return migrated;
+    }
     const previousRaw = window.localStorage.getItem(PREVIOUS_STORAGE_KEY);
     if (previousRaw !== null) {
       const migrated = migrateVersion5Settings(JSON.parse(previousRaw));
@@ -745,20 +925,62 @@ export function getGraphVisualSettingsSnapshot() {
   return settings;
 }
 
+export function selectGraphDimensionSettings(value, dimension) {
+  if (dimension !== 2 && dimension !== 3 || dimension === value.view.dimension) return value;
+  return Object.freeze({
+    ...value,
+    ...value.dimensions[`${dimension}d`],
+    view: Object.freeze({ ...value.view, dimension }),
+  });
+}
+
 export function subscribeGraphVisualSettings(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
+export function setGraphSharedNeuronStyle(enabled) {
+  if (enabled && settings.sharedStyle) return settings;
+  if (!enabled) return commitSettings({ ...settings, sharedStyle: false }, { historyKey: "style-link", immediate: true });
+  const source = settings.dimensions["3d"];
+  const dimensions = { ...settings.dimensions };
+  for (const id of ["2d", "3d"]) {
+    dimensions[id] = { ...dimensions[id], node: source.node, edge: source.edge,
+      layout: { ...dimensions[id].layout, mode: "neuron" } };
+  }
+  const profile = settings.profiles["3d"];
+  return commitSettings({
+    ...settings, sharedStyle: true, idleShape: "neuronSphere", dimensions,
+    ...dimensions[`${settings.view.dimension}d`],
+    profiles: { "2d": profile, "3d": { ...profile, orb: { ...profile.orb,
+      network: { ...profile.orb.network, shellRatio: 0.92, density: 1.2 },
+      innerNetwork: { ...profile.orb.innerNetwork, enabled: false },
+      rim: { ...profile.orb.rim, enabled: false }, sparks: { ...profile.orb.sparks, enabled: false },
+    } } },
+  }, { historyKey: "style-link", immediate: true });
+}
+
 export function setGraphVisualPreset(presetId) {
   const preset = presetConfigurations[presetId];
-  return preset ? commitSettings(preset, { historyKey: `preset:${presetId}` }) : settings;
+  if (!preset) return settings;
+  const dimensions = graphVisualPresets.find((entry) => entry.id === presetId)?.dimensions;
+  if (dimensions && !dimensions.includes(settings.view.dimension)) return settings;
+  const id = `${settings.view.dimension}d`;
+  return commitSettings({
+    ...settings,
+    ...dimensionSettings(preset),
+    profiles: { ...settings.profiles, [id]: preset.profiles[id] },
+  }, { historyKey: `preset:${id}:${presetId}` });
 }
 
 export function updateGraphVisualSettingsSection(section, patch) {
   if (!sectionFields[section] || !patch || typeof patch !== "object") return settings;
+  const dimensional = section === "view" && DIMENSION_VALUES.has(patch.dimension)
+    ? settings.dimensions[`${patch.dimension}d`]
+    : {};
   return commitSettings({
     ...settings,
+    ...dimensional,
     [section]: {
       ...settings[section],
       ...patch,
@@ -772,6 +994,13 @@ export function updateGraphVisualSettings(section, patch) {
 
 export function setGraphVisualSetting(section, setting, value) {
   if (!sectionFields[section]?.includes(setting)) return settings;
+  if (section === "view" && setting === "dimension" && DIMENSION_VALUES.has(value)) {
+    return commitSettings({
+      ...settings,
+      ...settings.dimensions[`${value}d`],
+      view: { ...settings.view, dimension: value },
+    }, { historyKey: "dimension" });
+  }
   const colorSetting = (section === "node"
     && ["baseColor", "hubColor", "activeColor", "groupColor"].includes(setting))
     || (section === "edge" && setting === "color");
@@ -799,7 +1028,10 @@ export function setGraphVisualSetting(section, setting, value) {
 }
 
 export function setGraphVisualProfileSetting(profileId, path, value) {
-  const profiles = withGraphFxProfileSetting(settings.profiles, profileId, path, value);
+  let profiles = withGraphFxProfileSetting(settings.profiles, profileId, path, value);
+  if (settings.sharedStyle && !path.startsWith("orb.")) {
+    profiles = withGraphFxProfileSetting(profiles, profileId === "3d" ? "2d" : "3d", path, value);
+  }
   return commitSettings({
     ...settings,
     profiles,
@@ -809,6 +1041,13 @@ export function setGraphVisualProfileSetting(profileId, path, value) {
 export function resetGraphVisualProfile(profileId) {
   const defaults = DEFAULT_GRAPH_FX_PROFILES[profileId];
   if (!defaults) return settings;
+  if (settings.sharedStyle) {
+    const common = presetConfigurations.neuron3d.profiles["3d"];
+    return commitSettings({ ...settings, profiles: {
+      "2d": common,
+      "3d": { ...common, orb: settings.profiles["3d"].orb },
+    } }, { historyKey: "profiles.shared.reset", immediate: true });
+  }
   return commitSettings({
     ...settings,
     profiles: {
@@ -819,6 +1058,23 @@ export function resetGraphVisualProfile(profileId) {
     historyKey: `profiles.${profileId}.reset`,
     immediate: true,
   });
+}
+
+export function resetActiveGraphVisualSettings() {
+  const id = `${settings.view.dimension}d`;
+  if (settings.sharedStyle) {
+    const preset = presetConfigurations[id === "2d" ? "neuron" : "neuron3d"];
+    const common = presetConfigurations.neuron3d;
+    return commitSettings({ ...settings,
+      ...dimensionSettings(preset), node: common.node, edge: common.edge,
+      profiles: { "2d": common.profiles["3d"], "3d": { ...common.profiles["3d"], orb: settings.profiles["3d"].orb } },
+    }, { historyKey: `reset:${id}`, immediate: true });
+  }
+  return commitSettings({
+    ...settings,
+    ...DEFAULT_GRAPH_VISUAL_SETTINGS.dimensions[id],
+    profiles: { ...settings.profiles, [id]: DEFAULT_GRAPH_FX_PROFILES[id] },
+  }, { historyKey: `reset:${id}`, immediate: true });
 }
 
 export function resetGraphVisualSettings() {

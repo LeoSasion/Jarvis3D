@@ -124,6 +124,29 @@ components:
 
 # Design System: JARVIS Operator HUD Workspace
 
+## Current 2D visual authority — September 2026
+
+The selected Explorer-only and Explorer/Agent images in `docs/design/references/`
+govern 2D composition and supersede the earlier OpenClaw shell calibration below.
+Persistent chrome is a square, black instrument surface with fine neutral seams;
+orange outlines identify selection, accepted context, focus, and active work.
+The top rail groups identity, local search, command/provider status, and the
+locale-aware clock. Provider status is read-only; the taskbar retains the only
+persistent Agent launcher. Browser data stays visibly labeled as simulated.
+
+Explorer-only uses navigation, the file ledger, and Inspector, with no redundant
+folder-heading band on the primary desktop sizes. Linked mode uses the existing
+Explorer/Agent/system proportions and opens with the system rail expanded; users
+can still collapse it. Agent turns follow one left-aligned timeline with small
+line icons and unboxed text. The composer and accepted file reference have square
+outlines. Rounded alternating chat bubbles and filled taskbar tiles are outside
+this visual direction. Ordinary prose and filenames retain readable casing;
+instrument labels and tabular metadata carry the compact console rhythm.
+
+This calibration leaves graph scenes, particle effects, theme palettes, native
+capabilities, recovery paths, and file-context permissions unchanged. The primary
+validation matrix remains 1280×720, 1920×1080, and 2560×1440.
+
 ## Overview
 
 **Creative North Star: "The Grounded Operator HUD"**

@@ -112,6 +112,7 @@ function RuntimeFrameSampler({
 
 function RuntimeController({
   children,
+  readableLabels,
   onDprChange,
   onFault,
   onReady,
@@ -143,6 +144,7 @@ function RuntimeController({
   );
   const maxTextureSize = Number(gl.capabilities.maxTextureSize) || 4_096;
   const effectiveDpr = calculateEffectiveGraphicsDpr({
+    minimumDpr: readableLabels ? 1 : 0,
     adaptiveTier,
     devicePixelRatio: displayEnvironment.devicePixelRatio,
     height: size.height,
@@ -260,13 +262,19 @@ function RuntimeController({
   );
 }
 
+function createGraphCamera(camera, depth) {
+  camera.position.set(0, 0, depth);
+  camera.lookAt(0, 0, 0);
+  return camera;
+}
+
 function CameraController({ dimension, zoom }) {
   const invalidate = useThree((state) => state.invalidate);
   const set = useThree((state) => state.set);
   const size = useThree((state) => state.size);
   const cameras = useMemo(() => ({
-    orthographic: new OrthographicCamera(),
-    perspective: new PerspectiveCamera(),
+    orthographic: createGraphCamera(new OrthographicCamera(), 700),
+    perspective: createGraphCamera(new PerspectiveCamera(), 720),
   }), []);
 
   useLayoutEffect(() => {
@@ -280,16 +288,13 @@ function CameraController({ dimension, zoom }) {
       camera.top = height / 2;
       camera.bottom = -height / 2;
       camera.zoom = cameraZoom;
-      camera.position.set(0, 0, 700);
     } else {
       camera.aspect = width / height;
       camera.fov = 48;
-      camera.zoom = cameraZoom;
-      camera.position.set(0, 0, 720);
+      camera.zoom = 1;
     }
     camera.near = 0.1;
     camera.far = 4_000;
-    camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
     set({ camera });
     invalidate();
@@ -305,6 +310,7 @@ export function GraphicsRuntime({
   zoom = 1,
   fallback = null,
   interactive = false,
+  readableLabels = false,
   onFault,
   onReady,
 }) {
@@ -334,6 +340,7 @@ export function GraphicsRuntime({
           style={{ pointerEvents: interactive ? "auto" : "none" }}
         >
           <RuntimeController
+            readableLabels={readableLabels}
             onDprChange={handleDprChange}
             onFault={onFault}
             onReady={onReady}

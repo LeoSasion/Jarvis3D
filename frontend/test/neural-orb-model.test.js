@@ -152,6 +152,6 @@ test("the orb is a scene module inside the shared graphics owner", async () => {
   assert.match(coreStage, /motionMode=\{graphMotionMode\}/u);
   assert.match(canvas, /resolveCanvasReducedMotion/u);
   assert.match(canvas, /data-motion=\{reducedMotion \? "reduced" : "full"\}/u);
-  assert.match(canvas, /orbEnergyPresentation/u);
+  assert.match(canvas, /activeBloom/u);
   assert.doesNotMatch(scene, /<Canvas|requestAnimationFrame/u);
 });

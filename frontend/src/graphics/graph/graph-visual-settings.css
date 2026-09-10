@@ -109,6 +109,18 @@
   background: var(--signal-fill-strong);
 }
 
+.graph-visual-settings__mode {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--structure);
+}
+
+.graph-visual-settings__mode > p {
+  margin: 8px 0 0;
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .graph-visual-settings__presets {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

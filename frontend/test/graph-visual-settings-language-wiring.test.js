@@ -19,21 +19,21 @@ test("graph visual settings subscribes to the shared language runtime", () => {
 });
 
 test("panel sections, controls, layer switches, feedback, and explanations use semantic keys", () => {
-  assert.match(panelSource, /t\("graphVisualSettings\.section\.profile3d"\)/u);
+  assert.match(panelSource, /t\(settings\.sharedStyle \? "graphVisualSettings\.shared\.layers" : "graphVisualSettings\.scope\.layers", \{/u);
   assert.match(panelSource, /t\("graphVisualSettings\.category\.relationFx"\)/u);
   assert.match(panelSource, /t\("graphVisualSettings\.section\.viewHelp"\)/u);
   assert.match(panelSource, /t\("graphVisualSettings\.control\.technicalLabel", \{ label \}\)/u);
   assert.match(panelSource, /t\("graphVisualSettings\.control\.nodeHaloEmission\.detail"\)/u);
   assert.match(panelSource, /t\("graphVisualSettings\.layer\.toggleAria", \{/u);
   assert.match(panelSource, /t\("graphVisualSettings\.toast\.presetSelected", \{/u);
-  assert.match(panelSource, /t\("graphVisualSettings\.toast\.resetNebula"\)/u);
+  assert.match(panelSource, /t\("graphVisualSettings\.scope\.reset", \{/u);
   assert.match(panelSource, /t\("graphVisualSettings\.footer\.activeConstraints", \{/u);
   assert.doesNotMatch(panelSource, /aria-label="Close graph visual settings"/u);
   assert.doesNotMatch(panelSource, /Graph visuals restored to Nebula defaults/u);
 });
 
 test("technical identifiers, profile names, dimensions, paths, and units stay raw", () => {
-  assert.match(panelSource, /<strong>\{preset\.label\}<\/strong>/u);
+  assert.match(panelSource, /<strong>\{preset\.labelKey \? t\(preset\.labelKey\) : preset\.label\}<\/strong>/u);
   assert.match(panelSource, /Object\.freeze\(\{ id: 2, label: "2D" \}\)/u);
   assert.match(panelSource, /Object\.freeze\(\{ id: 3, label: "3D" \}\)/u);
   assert.match(panelSource, /technicalLabel\(t, "NODE HALO EMISSION INTENSITY"\)/u);

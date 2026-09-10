@@ -1,5 +1,8 @@
-import { SearchRegular, StopRegular } from "@fluentui/react-icons";
+import { PowerRegular, SearchRegular, StopRegular } from "@fluentui/react-icons";
+import { getAgentProviderLabel, hasAgentProviderFault } from "../agent-provider-model.js";
+import { usePlatformClock, usePlatformKind } from "../hooks/usePlatformData.js";
 import { useLanguage } from "../i18n/language-system.js";
+import { formatClockPresentation } from "../i18n/locale-format.js";
 import { JarvisMark } from "./VectorMarks.jsx";
 
 function TopCluster({ className = "", children, as = "div", ...props }) {
@@ -15,10 +18,20 @@ export function TopStatusBar({
   onOpenCommand,
   onAbortAgent,
   agentState,
+  onOpenDateTime,
+  onPower,
 }) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
+  const clock = usePlatformClock();
+  const platformKind = usePlatformKind();
+  const localizedClock = formatClockPresentation(clock.dateTime, language);
   const agentStatus = agentState?.status ?? "unavailable";
   const agentRunning = agentStatus === "running" || agentStatus === "starting";
+  const agentFaulted = hasAgentProviderFault(agentState ?? {});
+  const statusLabel = t(agentFaulted ? "agent.status.needsAttention"
+    : agentRunning ? "agent.status.responding"
+      : !agentState?.available ? "agent.status.offline"
+        : agentState.connected ? "agent.status.connected" : "agent.status.ready");
 
   return (
     <header className="topbar hud-chassis" aria-label={t("topbar.accessibility.label")}>
@@ -42,8 +55,16 @@ export function TopStatusBar({
         </TopCluster>
       </div>
 
-      {agentRunning ? (
-        <div className="topbar__zone topbar__command-bus">
+      <div className="topbar__zone topbar__command-bus">
+        <span className="topbar__bus-label">{t("topbar.commandBus")}</span>
+        <div className={`topbar__agent-status${agentRunning ? " is-working" : ""}${agentFaulted ? " is-error" : ""}`}>
+          <i aria-hidden="true" />
+          <span>
+            <strong>{getAgentProviderLabel(agentState ?? {})}</strong>
+            <small>{statusLabel}</small>
+          </span>
+        </div>
+        {agentRunning ? (
           <TopCluster
             as="button"
             type="button"
@@ -54,8 +75,20 @@ export function TopStatusBar({
             <span className="stop-token" aria-hidden="true"><StopRegular /></span>
             <span>{t("topbar.agent.stop.label")}</span>
           </TopCluster>
-        </div>
-      ) : <span className="topbar__spacer" aria-hidden="true" />}
+        ) : null}
+      </div>
+      <div className="topbar__zone topbar__system">
+        {platformKind === "mock" ? <small className="topbar__preview">{t("topbar.preview")}</small> : null}
+        <button type="button" className="topbar__clock" onClick={onOpenDateTime}
+          aria-label={t("taskbar.clock.open", { date: localizedClock.longDate, time: localizedClock.time })}>
+          <span>{localizedClock.longDate}</span>
+          <time>{localizedClock.time}</time>
+        </button>
+        <button type="button" className="topbar__power" onClick={onPower}
+          aria-label={t("topbar.power")} title={t("topbar.power")}>
+          <PowerRegular />
+        </button>
+      </div>
     </header>
   );
 }

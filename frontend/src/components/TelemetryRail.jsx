@@ -5,6 +5,7 @@ import {
   InfoRegular,
 } from "@fluentui/react-icons";
 import { useMemo, useState } from "react";
+import { useDesktopTools } from "../desktop-tools-context.js";
 import { mergeSystemFeedEvents } from "../feedback-model.js";
 import { useSystemFeed, useSystemSnapshot } from "../hooks/usePlatformData.js";
 import { useLanguage } from "../i18n/language-system.js";
@@ -100,7 +101,8 @@ export function TelemetryRail({ compact = false, localEvents = [], onInspect, on
   const [resourcesExpanded, setResourcesExpanded] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
-  const [railCollapsed, setRailCollapsed] = useState(false);
+  const { activePanel, setActivePanel, systemToggleRef } = useDesktopTools();
+  const railCollapsed = activePanel !== "telemetry";
   const visibleResources = resourcesExpanded ? resources : resources.slice(0, 2);
   const visibleEvents = events.slice(0, 5);
   const unreadCount = Math.min(99, events.filter((item) => item.unread).length);
@@ -123,46 +125,24 @@ export function TelemetryRail({ compact = false, localEvents = [], onInspect, on
     : priorityState.kind === "connecting"
       ? InfoRegular
       : CheckmarkCircleRegular;
-  const toggleRail = () => setRailCollapsed((current) => !current);
-
-  if (railCollapsed) {
-    return (
-      <aside
-        className={`telemetry-rail is-${railMode} is-rail-collapsed`}
-        aria-label={t("telemetry.accessibility.label")}
-      >
-        <button
-          type="button"
-          className="telemetry-rail__visibility is-restore"
-          aria-label={t("telemetry.action.show")}
-          aria-expanded="false"
-          title={t("telemetry.action.show")}
-          onClick={toggleRail}
-        >
-          <ChevronRightRegular aria-hidden="true" />
-          <span>{t("telemetry.action.showSystem")}</span>
-        </button>
-      </aside>
-    );
-  }
-
   return (
-    <aside className={`telemetry-rail is-${railMode}`} aria-label={t("telemetry.accessibility.label")}>
+    <aside
+      id="desktop-system-panel"
+      className={`telemetry-rail is-${railMode} ${railCollapsed ? "is-rail-collapsed" : ""}`}
+      aria-label={t("telemetry.accessibility.label")}
+      hidden={railCollapsed}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.stopPropagation();
+        setActivePanel(null);
+        systemToggleRef.current?.focus();
+      }}
+    >
       <header className="telemetry-rail__chrome">
         <span className="telemetry-rail__chrome-label">
           <i aria-hidden="true" />
           <strong>{t("telemetry.title")}</strong>
         </span>
-        <button
-          type="button"
-          className="telemetry-rail__visibility"
-          aria-label={t("telemetry.action.hide")}
-          aria-expanded="true"
-          onClick={toggleRail}
-        >
-          <span>{t("telemetry.action.hideShort")}</span>
-          <ChevronRightRegular aria-hidden="true" />
-        </button>
       </header>
       {railMode === "compact-nominal" ? (
         <button

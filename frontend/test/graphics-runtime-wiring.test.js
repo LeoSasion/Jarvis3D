@@ -56,7 +56,7 @@ test("camera reset restores the controlled zoom after Fit in both graph surfaces
 
   assert.match(
     navigation,
-    /zoom: getGraphCameraZoom\(zoom, size\.width, size\.height\)/u,
+    /zoom: dimension === 3 \? 1 : getGraphCameraZoom\(zoom, size\.width, size\.height\)/u,
   );
   const resetImplementation = navigation.slice(
     navigation.indexOf("const resetGraph"),
@@ -67,7 +67,7 @@ test("camera reset restores the controlled zoom after Fit in both graph surfaces
   assert.match(canvas, /function EnabledCoreVisualCanvas\(\{[\s\S]*zoom = 1/u);
   assert.match(canvas, /<GraphScene[\s\S]*zoom=\{zoom\}/u);
   assert.match(workspace, /setZoom\(1\);[\s\S]*issueCameraCommand\("reset"\)/u);
-  assert.match(core, /onClick=\{\(\) => issueCameraCommand\("reset"\)\}/u);
+  assert.match(core, /setGraphZoom\(1\);[\s\S]*issueCameraCommand\("reset"\)/u);
 });
 
 test("one composer exclusively owns its buffers and consumes quality-aware passes", async () => {
@@ -85,18 +85,18 @@ test("one composer exclusively owns its buffers and consumes quality-aware passe
   assert.doesNotMatch(pipeline, /new EffectComposer/u);
 });
 
-test("the 3D profile owns toggleable Bloom and passes its explicit radius", async () => {
+test("each dimension profile owns toggleable Bloom and passes its explicit radius", async () => {
   const canvas = await readSource("graphics/CoreVisualCanvas.jsx");
 
-  assert.match(canvas, /const profile3dBloom = scenePlan\.profiles\["3d"\]\.postFx\.bloom;/u);
+  assert.match(canvas, /const activeBloom = scenePlan\.profiles\[`\$\{resolvedDimension\}d`\]\.postFx\.bloom;/u);
   assert.match(
     canvas,
-    /bloom=\{orbEnergyPresentation[\s\S]*profile3dBloom\.enabled \? "required" : false/u,
+    /bloom=\{activeBloom\.enabled \? "required" : false/u,
   );
-  assert.match(canvas, /bloomIntensity=\{orbEnergyPresentation[\s\S]*profile3dBloom\.intensity/u);
-  assert.match(canvas, /bloomRadius=\{orbEnergyPresentation[\s\S]*profile3dBloom\.radius/u);
-  assert.match(canvas, /bloomSmoothing=\{orbEnergyPresentation[\s\S]*profile3dBloom\.softKnee/u);
-  assert.match(canvas, /bloomThreshold=\{orbEnergyPresentation[\s\S]*profile3dBloom\.threshold/u);
+  assert.match(canvas, /bloomIntensity=\{activeBloom\.intensity/u);
+  assert.match(canvas, /bloomRadius=\{activeBloom\.radius/u);
+  assert.match(canvas, /bloomSmoothing=\{activeBloom\.softKnee/u);
+  assert.match(canvas, /bloomThreshold=\{activeBloom\.threshold/u);
   assert.match(canvas, /settings\.profiles\?\.\["3d"\]\?\.postFx\?\.bloom/u);
   assert.match(canvas, /ORB_BLOOM_PROFILE/u);
   assert.doesNotMatch(canvas, /settings\.orb|scenePlan\.orb/u);

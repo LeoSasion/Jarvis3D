@@ -51,8 +51,8 @@ function readPositiveNumber(value) {
   return Number.isFinite(number) && number > 0 ? number : null;
 }
 
-const GRAPH_RELATIVE_ZOOM_MIN = 0.55;
-const GRAPH_RELATIVE_ZOOM_MAX = 2.2;
+const GRAPH_RELATIVE_ZOOM_MIN = 0.1;
+const GRAPH_RELATIVE_ZOOM_MAX = 8;
 const QUALITY_PROFILE_ORDER = Object.freeze(["low", "balanced", "high"]);
 const ADAPTIVE_DPR_SCALES = Object.freeze([1, 0.9, 0.75]);
 
@@ -91,6 +91,7 @@ export function calculateEffectiveGraphicsDpr({
   maxTextureSize,
   qualityProfile,
   adaptiveTier = 0,
+  minimumDpr = 0,
 } = {}) {
   const safeWidth = readPositiveNumber(width) ?? 1;
   const safeHeight = readPositiveNumber(height) ?? 1;
@@ -105,11 +106,14 @@ export function calculateEffectiveGraphicsDpr({
   const textureBound = Math.min(textureSize / safeWidth, textureSize / safeHeight);
   const pixelBound = Math.sqrt(maxRenderPixels / (safeWidth * safeHeight));
   const adaptiveBound = maxDpr * getAdaptiveGraphicsDprScale(adaptiveTier);
+  // Interactive text must not be rasterized below CSS-pixel resolution and
+  // stretched back up. Device and GPU texture limits still take precedence.
+  const readabilityFloor = Math.min(1, Math.max(0, Number(minimumDpr) || 0));
   return Math.max(0.01, roundDown(Math.min(
     requestedDpr,
-    adaptiveBound,
+    Math.max(readabilityFloor, adaptiveBound),
     textureBound,
-    pixelBound,
+    Math.max(readabilityFloor, pixelBound),
   )));
 }
 

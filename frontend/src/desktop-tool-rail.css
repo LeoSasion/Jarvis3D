@@ -1,0 +1,198 @@
+/* A fixed tool edge; opening a panel never resizes the graph canvas. */
+.desktop-workspace {
+  --desktop-tool-rail-width: 48px;
+  --desktop-open-panel-width: 0px;
+}
+
+.desktop-workspace[data-side-panel="telemetry"] {
+  --desktop-open-panel-width: var(--telemetry-rail-width);
+}
+
+.desktop-workspace[data-side-panel="graph-settings"] {
+  --desktop-open-panel-width: min(420px, calc(100% - var(--desktop-tool-rail-width)));
+}
+
+.jarvis-shell.is-layout-desktop .desktop-workspace > .core-stage {
+  margin-right: var(--desktop-tool-rail-width);
+}
+
+.desktop-tool-rail {
+  position: absolute;
+  z-index: 6;
+  inset: 0 0 0 auto;
+  width: var(--desktop-tool-rail-width);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 4px;
+  border-left: var(--rail-outline) solid var(--shell-border-strong);
+  background: var(--shell-bg);
+  color: var(--shell-text);
+}
+
+.desktop-tool-rail button {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--shell-text);
+  font: 600 11px/1 var(--font-data);
+  cursor: pointer;
+}
+
+.desktop-tool-rail button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.desktop-tool-rail button:hover {
+  background: var(--shell-hover);
+  color: var(--shell-text-strong);
+}
+
+.desktop-tool-rail button:is([aria-pressed="true"], [aria-expanded="true"]) {
+  border-color: var(--shell-accent);
+  color: var(--shell-accent);
+}
+
+.desktop-tool-rail button:focus-visible,
+.graph-idle-settings:focus-visible {
+  outline: 2px solid var(--shell-accent);
+  outline-offset: -2px;
+}
+
+.desktop-tool-rail__system {
+  flex: 0 0 48px;
+  flex-direction: column;
+}
+
+.desktop-tool-rail__system[aria-expanded="false"] > svg {
+  transform: rotate(180deg);
+}
+
+.desktop-tool-rail__system > span {
+  font-size: 9px;
+}
+
+.desktop-tool-rail__graph {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.desktop-graph-tools__group {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: var(--rail-outline) solid var(--shell-border-subtle);
+}
+
+.desktop-graph-tools output {
+  padding-block: 4px;
+  color: var(--shell-text);
+  text-align: center;
+  font: 10px/1.2 var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.jarvis-shell.is-layout-desktop .desktop-workspace > .telemetry-rail {
+  position: absolute;
+  grid-area: auto;
+  z-index: 5;
+  inset: 0 var(--desktop-tool-rail-width) 0 auto;
+  width: var(--telemetry-rail-width);
+  max-width: calc(100% - var(--desktop-tool-rail-width));
+  overflow-y: auto;
+}
+
+.desktop-workspace > .telemetry-rail[hidden] {
+  display: none;
+}
+
+.jarvis-shell.is-layout-desktop .desktop-workspace .graph-visual-settings.is-overlay {
+  inset: 0 0 0 auto !important;
+  width: min(420px, 100%);
+  max-height: none;
+  border-radius: 0;
+}
+
+/* Only the lightweight header reflows around an open panel. */
+.jarvis-shell.is-layout-desktop .desktop-workspace .knowledge-workspace__toolbar {
+  left: var(--desktop-shortcuts-width);
+  right: var(--desktop-open-panel-width);
+  grid-template-columns: auto minmax(100px, 1fr) auto auto;
+  gap: 12px;
+}
+
+.jarvis-shell.is-layout-desktop .desktop-workspace .core-stage__graph-toolbar,
+.jarvis-shell.is-layout-desktop .desktop-workspace .core-stage__readout.is-graph-source,
+.jarvis-shell.is-layout-desktop .desktop-workspace .core-stage__graph-inspector,
+.jarvis-shell.is-layout-desktop .desktop-workspace .knowledge-workspace__inspector,
+.jarvis-shell.is-layout-desktop .desktop-workspace .knowledge-workspace__hint {
+  right: calc(var(--desktop-open-panel-width) + 16px);
+}
+
+.core-stage:has(> .core-stage__graph-inspector) .core-stage__readout.is-graph-source {
+  visibility: hidden;
+}
+
+.knowledge-workspace__facts {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.knowledge-workspace__facts span + span {
+  padding-left: 8px;
+}
+
+.graph-idle-settings {
+  width: 36px;
+  min-height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  color: var(--shell-text);
+  background: transparent;
+}
+
+.graph-idle-settings:hover {
+  color: var(--shell-accent);
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .desktop-tool-rail {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+@media (max-width: 1365px) {
+  .desktop-workspace:not([data-side-panel="closed"]) .knowledge-workspace__facts strong {
+    max-width: 110px;
+  }
+
+  .desktop-workspace:not([data-side-panel="closed"]) .knowledge-workspace__facts {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 720px) {
+  .jarvis-shell.is-layout-desktop .desktop-workspace .knowledge-workspace__toolbar {
+    right: 0;
+    grid-template-columns: auto minmax(80px, 1fr) auto;
+  }
+
+  .knowledge-workspace__facts {
+    display: none;
+  }
+}

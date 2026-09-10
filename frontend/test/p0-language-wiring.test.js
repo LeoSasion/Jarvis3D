@@ -45,8 +45,10 @@ test("the desktop graph translates interaction copy without translating technica
   assert.match(coreStage, /t\("core\.graph\.health\.chooseVault"\)/u);
   assert.match(coreStage, /t\("core\.graph\.readout\.gpuReleased"\)/u);
   assert.match(coreStage, /dimension: "3D"/u);
-  assert.match(coreStage, />2D<\/button>/u);
-  assert.match(coreStage, />3D<\/button>/u);
+  const tools = await readSource("components/GraphViewControls.jsx");
+  assert.match(tools, /\[2, 3\]\.map/u);
+  assert.match(tools, />\{value\}D<\/button>/u);
+  assert.match(tools, /aria-label=\{actionLabel\(`switch\$\{value\}d`\)\}/u);
   assert.doesNotMatch(coreStage, /aria-label="JARVIS knowledge graph workspace"/u);
   assert.doesNotMatch(coreStage, /SEARCH NODES|CHOOSE A LOCAL START|SHOW START OPTIONS/u);
 });

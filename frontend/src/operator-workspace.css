@@ -372,44 +372,6 @@
   color: var(--signal-pale);
 }
 
-.knowledge-workspace__zoom {
-  height: var(--operator-hit-size);
-  display: grid;
-  grid-template-columns: repeat(8, var(--operator-hit-size));
-  align-items: stretch;
-  border-inline: var(--stroke) solid var(--structure);
-}
-
-.knowledge-workspace__zoom button.is-active,
-.knowledge-workspace__zoom button[aria-pressed="true"] {
-  color: var(--signal-hot);
-  background: var(--signal-fill-strong);
-}
-
-.knowledge-workspace__zoom button,
-.knowledge-workspace__zoom output {
-  min-width: var(--operator-hit-size);
-  min-height: var(--operator-hit-size);
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-right: var(--stroke) solid var(--structure);
-  color: var(--ink-2);
-  background: transparent;
-  font: var(--operator-label-size)/1 var(--font-data);
-}
-
-.knowledge-workspace__zoom button:last-child {
-  border-right: 0;
-}
-
-.knowledge-workspace__zoom button:hover,
-.knowledge-workspace__zoom button:focus-visible {
-  color: var(--signal-hot);
-  background: var(--signal-fill-strong);
-}
-
 .knowledge-workspace__canvas {
   position: absolute;
   inset: var(--graph-toolbar-height) 0 0;
@@ -830,7 +792,6 @@
 
   .knowledge-workspace__toolbar input,
   .knowledge-workspace__facts,
-  .knowledge-workspace__zoom :where(button, output),
   .knowledge-workspace__hint,
   .knowledge-workspace__limit,
   .knowledge-workspace__inspector :where(dt, dd, header span, footer button),
@@ -850,7 +811,6 @@
 
   .knowledge-workspace__toolbar input,
   .knowledge-workspace__facts,
-  .knowledge-workspace__zoom :where(button, output),
   .knowledge-workspace__inspector :where(dt, dd, header span, footer button),
   .linked-system-rail :where(h2, dt, dd, button, small) {
     font-size: 12px;
@@ -871,14 +831,6 @@
   .knowledge-workspace__toolbar {
     gap: 8px;
     padding-inline: 8px;
-  }
-
-  .knowledge-workspace__zoom {
-    grid-template-columns: repeat(7, var(--operator-hit-size));
-  }
-
-  .knowledge-workspace__zoom output {
-    display: none;
   }
 
   .core-stage__graph-toolbar > form {
@@ -1235,7 +1187,6 @@
 
   .core-stage__graph-settings-trigger,
   .knowledge-workspace__toolbar > label,
-  .knowledge-workspace__zoom :where(button, output),
   .knowledge-workspace__inspector > footer button,
   .linked-system-rail-toggle,
   .telemetry-inline-action {

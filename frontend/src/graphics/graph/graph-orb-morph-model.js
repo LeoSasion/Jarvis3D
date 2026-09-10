@@ -36,6 +36,56 @@ function distanceSquared(positions, left, right) {
   return x * x + y * y + z * z;
 }
 
+function createSpatialShellEdgePairs(positions, nodeCount, edgeCount, seed, indices = null) {
+  const nodes = indices ?? Array.from({ length: nodeCount }, (_, index) => index);
+  const count = Math.min(Math.max(0, edgeCount), nodes.length * (nodes.length - 1) / 2);
+  if (nodes.length < 2 || count === 0) return new Int32Array(0);
+  const ordered = [...nodes].sort((a, b) => unitHash(a ^ seed) - unitHash(b ^ seed) || a - b);
+  // Spatial neighbors stay local even with thousands of notes. Index strides
+  // on a Fibonacci sphere produce latitude bands and long cross-sphere chords.
+  const extent = Math.max(...positions.map(Math.abs), 1);
+  const cellSize = extent * 2 / Math.max(2, Math.sqrt(nodes.length / 8));
+  const cellOf = (index) => [0, 1, 2].map((axis) => Math.floor(positions[index * 3 + axis] / cellSize));
+  const buckets = new Map();
+  for (const node of nodes) {
+    const key = cellOf(node).join(":");
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(node);
+  }
+  const nearest = new Map(nodes.map((source) => {
+    const cell = cellOf(source);
+    const candidates = new Set();
+    for (let radius = 1; radius <= 2 && candidates.size < Math.min(16, nodes.length); radius += 1) {
+      for (let x = -radius; x <= radius; x += 1) {
+        for (let y = -radius; y <= radius; y += 1) {
+          for (let z = -radius; z <= radius; z += 1) {
+            const key = [cell[0] + x, cell[1] + y, cell[2] + z].join(":");
+            for (const node of buckets.get(key) ?? []) if (node !== source) candidates.add(node);
+          }
+        }
+      }
+    }
+    return [source, [...candidates].sort((a, b) => distanceSquared(positions, source, a) - distanceSquared(positions, source, b) || a - b)];
+  }));
+  const pairs = [];
+  const unique = new Set();
+  const add = (source, target) => {
+    if (source === target || target === undefined || pairs.length >= count * 2) return;
+    const key = pairKey(source, target);
+    if (unique.has(key)) return;
+    unique.add(key);
+    pairs.push(source, target);
+  };
+  for (let rank = 0; rank < 16 && pairs.length < count * 2; rank += 1) {
+    for (const source of ordered) add(source, nearest.get(source)[rank]);
+  }
+  // Only unusually dense requests need bridges; never duplicate an edge.
+  for (let step = 1; step < ordered.length && pairs.length < count * 2; step += 1) {
+    for (let index = 0; index < ordered.length; index += 1) add(ordered[index], ordered[(index + step) % ordered.length]);
+  }
+  return new Int32Array(pairs);
+}
+
 function createShellEdgePairs(positions, nodeCount, edgeCount, seed) {
   const pairs = new Int32Array(Math.max(0, edgeCount) * 2);
   if (nodeCount < 2 || edgeCount <= 0) return pairs;
@@ -150,14 +200,17 @@ export function mixGraphOrbPositionBuffers(
 export function createGraphOrbMorphModel(
   nodes = [],
   edgeCount = 0,
-  { radius = 188, seed = 0x4a415256, shellEdgeCount = edgeCount } = {},
+  { radius = 188, seed = 0x4a415256, shellEdgeCount = edgeCount, shellRatio = 1 } = {},
 ) {
   const nodeCount = Math.max(0, nodes.length);
   const safeEdgeCount = Math.max(0, Math.floor(Number(edgeCount) || 0));
-  const safeShellEdgeCount = Math.max(
-    safeEdgeCount,
-    Math.floor(Number(shellEdgeCount) || safeEdgeCount),
-  );
+  const safeShellEdgeCount = Math.max(0, Math.floor(Number(shellEdgeCount) || 0));
+  const shellNodeCount = Math.min(nodeCount, Math.max(4, Math.round(nodeCount * Math.max(0.1, Math.min(1, shellRatio)))));
+  const shellIndices = Array.from({ length: nodeCount }, (_, index) => index)
+    .sort((a, b) => unitHash(hashText(nodes[a]?.id, seed)) - unitHash(hashText(nodes[b]?.id, seed)) || a - b)
+    .slice(0, shellNodeCount);
+  const shellRanks = new Map(shellIndices.map((index, rank) => [index, rank]));
+  let innerRank = 0;
   const safeRadius = Math.min(360, Math.max(48, Number(radius) || 188));
   const positions = new Float32Array(nodeCount * 3);
   const phases = new Float32Array(nodeCount);
@@ -165,26 +218,32 @@ export function createGraphOrbMorphModel(
 
   for (let index = 0; index < nodeCount; index += 1) {
     const identityHash = hashText(nodes[index]?.id ?? index, seed + index * 17);
-    const vertical = 1 - ((index + 0.5) / Math.max(1, nodeCount)) * 2;
+    const isShell = shellRanks.has(index);
+    const rank = isShell ? shellRanks.get(index) : innerRank++;
+    const layerCount = isShell ? shellNodeCount : nodeCount - shellNodeCount;
+    const vertical = 1 - ((rank + 0.5) / Math.max(1, layerCount)) * 2;
     const ring = Math.sqrt(Math.max(0, 1 - vertical * vertical));
-    const azimuth = index * GOLDEN_ANGLE + (unitHash(identityHash) - 0.5) * 0.34;
+    const azimuth = rank * GOLDEN_ANGLE + (unitHash(identityHash) - 0.5) * 0.08;
     const depthRandom = unitHash(identityHash ^ 0x9e3779b9);
-    const radialScale = depthRandom > 0.86
-      ? 0.68 + unitHash(identityHash ^ 0x85ebca6b) * 0.18
-      : 0.93 + unitHash(identityHash ^ 0xc2b2ae35) * 0.085;
+    const radialScale = isShell
+      ? 0.985 + depthRandom * 0.025
+      : 0.35 + Math.cbrt(depthRandom) * 0.49;
     const offset = index * 3;
     positions[offset] = Math.cos(azimuth) * ring * safeRadius * radialScale;
     positions[offset + 1] = vertical * safeRadius * radialScale;
     positions[offset + 2] = Math.sin(azimuth) * ring * safeRadius * radialScale;
     phases[index] = unitHash(identityHash ^ 0x27d4eb2f) * Math.PI * 2;
-    scales[index] = 0.82 + unitHash(identityHash ^ 0x165667b1) * 0.54;
+    scales[index] = isShell
+      ? 0.9 + unitHash(identityHash ^ 0x165667b1) * 0.35
+      : 0.18 + unitHash(identityHash ^ 0x165667b1) * 0.2;
   }
 
-  const shellEdgePairs = createShellEdgePairs(
+  const shellEdgePairs = createSpatialShellEdgePairs(
     positions,
     nodeCount,
     safeShellEdgeCount,
     seed >>> 0,
+    shellIndices,
   );
   const signalCount = Math.min(12, safeEdgeCount);
   const signalEdgeIndices = new Uint32Array(signalCount);
@@ -197,6 +256,7 @@ export function createGraphOrbMorphModel(
 
   return Object.freeze({
     nodeCount,
+    shellNodeCount,
     phases,
     positions,
     radius: safeRadius,

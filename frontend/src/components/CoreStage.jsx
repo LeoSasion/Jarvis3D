@@ -1,5 +1,4 @@
 import {
-  ArrowResetRegular,
   ArrowSyncRegular,
   ChevronRightRegular,
   DesktopRegular,
@@ -27,15 +26,18 @@ import {
   setGraphVisualSetting,
   subscribeGraphVisualSettings,
 } from "../graphics/graph/graph-visual-settings.js";
+import { useDesktopTools } from "../desktop-tools-context.js";
+import { GraphViewControls } from "./GraphViewControls.jsx";
 import { usePlatformKind } from "../hooks/usePlatformData.js";
 import { useReducedMotion } from "../hooks/useReducedMotion.js";
 import { useLanguage } from "../i18n/language-system.js";
-import { getKnowledgeGraphPresentation } from "../knowledge-graph-model.js";
+import { clampKnowledgeGraphZoom, getKnowledgeGraphPresentation } from "../knowledge-graph-model.js";
 import {
   GraphAccessibleNavigator,
   KnowledgeGraphWorkspace,
 } from "./KnowledgeGraphWorkspace.jsx";
 import { KnowledgeGraphField } from "./VectorMarks.jsx";
+import "../graphics/graph/graph-neuron.css";
 
 const CoreVisualCanvas = lazy(() => import("../graphics/CoreVisualCanvas.jsx")
   .then((module) => ({ default: module.CoreVisualCanvas })));
@@ -120,7 +122,15 @@ export function CoreStage({
   const motionReduced = useReducedMotion();
   const graphMotionMode = getDesktopGraphMotionMode();
   const platformKind = usePlatformKind();
-  const [visualSettingsOpen, setVisualSettingsOpen] = useState(false);
+  const { activePanel, setActivePanel, togglePanel } = useDesktopTools();
+  const visualSettingsOpen = activePanel === "graph-settings";
+  const toggleVisualSettings = () => togglePanel("graph-settings");
+  const [graphZoom, setGraphZoom] = useState(1);
+  const [graphDepth, setGraphDepth] = useState(720);
+  const handleCameraViewChange = useCallback((view) => {
+    if (view.dimension === 2) setGraphZoom(view.zoom);
+    else setGraphDepth(view.depth);
+  }, []);
   const [graphExploreMode, setGraphExploreMode] = useState(false);
   const [graphQuery, setGraphQuery] = useState("");
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState(null);
@@ -288,14 +298,22 @@ export function CoreStage({
             onLinkNodeToAgent={onLinkGraphNode}
             visualSettingsOpen={visualSettingsOpen}
             visualSettingsTriggerRef={visualSettingsTriggerRef}
-            onOpenVisualSettings={() => setVisualSettingsOpen((current) => !current)}
+            onOpenVisualSettings={toggleVisualSettings}
           />
         </div>
       ) : defaultGraphReady ? (
         <div className={`core-stage__media is-graphics ${graphExploreMode ? "is-exploring" : ""} ${graphVisualSettings.view.enabled ? "" : "is-disabled"}`}>
+          {graphExploreMode && graphVisualSettings.view.enabled
+            && graphVisualSettings.layout.mode === "neuron" ? (
+              <div className="core-stage__neuron-heading">
+                <h2>{t("core.graph.neuron.title")}</h2>
+                <p>{t(graphVisualSettings.view.dimension === 3 ? "core.graph.neuron.spatialDetail" : "core.graph.neuron.detail")}</p>
+              </div>
+            ) : null}
           {graphVisualSettings.view.enabled ? (
             <Suspense fallback={<GraphFallback />}>
               <CoreVisualCanvas
+                onCameraViewChange={handleCameraViewChange}
                 cameraCommand={cameraCommand}
                 fallback={<GraphFallback runtimeFallback />}
                 graph={defaultGraph}
@@ -305,6 +323,7 @@ export function CoreStage({
                 onNodeHover={(node) => setHoveredGraphNodeId(node?.id ?? null)}
                 onNodeSelect={selectDefaultGraphNode}
                 selectedNodeId={selectedGraphNodeId}
+                zoom={graphZoom}
               />
             </Suspense>
           ) : null}
@@ -319,13 +338,15 @@ export function CoreStage({
                   nodes: defaultGraph.nodes.length,
                   relations: defaultGraph.edges.length,
                 })
-                : t("core.graph.readout.idleReady", {
+                : t(graphVisualSettings.idleShape === "neuronSphere" ? "core.graph.readout.neuronSphere" : "core.graph.readout.idleReady", {
                   dimension: `${graphVisualSettings.view.dimension}D`,
                 })
               : t("core.graph.readout.gpuReleased")}</small>
             <small>{defaultGraph.source.simulation
               ? t("core.graph.source.browserPreview")
-              : t("core.graph.source.windowsReadOnly")}</small>
+              : t(defaultGraph.source.resolution === "local-preview"
+                ? "core.graph.source.localVault"
+                : "core.graph.source.windowsReadOnly")}</small>
           </div>
         </div>
       ) : defaultGraphConnected ? (
@@ -337,7 +358,9 @@ export function CoreStage({
             <small>{t("core.graph.readout.emptyVault", { dimension: "3D" })}</small>
             <small>{defaultGraph.source.simulation
               ? t("core.graph.source.browserPreview")
-              : t("core.graph.source.windowsReadOnly")}</small>
+              : t(defaultGraph.source.resolution === "local-preview"
+                ? "core.graph.source.localVault"
+                : "core.graph.source.windowsReadOnly")}</small>
           </div>
         </div>
       ) : (
@@ -399,44 +422,34 @@ export function CoreStage({
               </button>
             </form>
           ) : null}
-          <button
-            type="button"
-            className={graphVisualSettings.view.dimension === 2 ? "is-active" : ""}
-            aria-pressed={graphVisualSettings.view.dimension === 2}
-            title={t("core.graph.toolbar.dimension2d")}
-            onClick={() => setGraphVisualSetting("view", "dimension", 2)}
-          >2D</button>
-          <button
-            type="button"
-            className={graphVisualSettings.view.dimension === 3 ? "is-active" : ""}
-            aria-pressed={graphVisualSettings.view.dimension === 3}
-            onClick={() => setGraphVisualSetting("view", "dimension", 3)}
-          >3D</button>
-          {graphVisualSettings.view.enabled && graphExploreMode ? (
-            <button type="button" onClick={() => issueCameraCommand("fit")}>
-              {t("core.graph.toolbar.fit")}
-            </button>
-          ) : null}
-          {graphVisualSettings.view.enabled && graphExploreMode ? (
+          {!graphExploreMode ? (
             <button
+              ref={visualSettingsTriggerRef}
               type="button"
-              onClick={() => issueCameraCommand("reset")}
-              aria-label={t("core.graph.toolbar.resetCamera")}
-            >
-              <ArrowResetRegular aria-hidden="true" />
-            </button>
+              aria-label={t("core.graph.toolbar.visualSettings")}
+              title={t("core.graph.toolbar.visualSettings")}
+              aria-controls="graph-visual-settings-panel"
+              aria-expanded={visualSettingsOpen}
+              onClick={toggleVisualSettings}
+            ><SettingsRegular aria-hidden="true" /></button>
           ) : null}
-          <button
-            ref={visualSettingsTriggerRef}
-            type="button"
-            aria-label={t("core.graph.toolbar.visualSettings")}
-            aria-controls="graph-visual-settings-panel"
-            aria-expanded={visualSettingsOpen}
-            onClick={() => setVisualSettingsOpen((current) => !current)}
-          >
-            <SettingsRegular aria-hidden="true" />
-            <span className="sr-only">{t("core.graph.toolbar.visualSettings")}</span>
-          </button>
+          <GraphViewControls
+            active={graphVisualSettings.view.enabled && graphExploreMode}
+            dimension={graphVisualSettings.view.dimension}
+            zoom={graphZoom}
+            depth={graphDepth}
+            onZoom={(delta) => graphVisualSettings.view.dimension === 3
+              ? issueCameraCommand(delta > 0 ? "dolly-in" : "dolly-out")
+              : setGraphZoom((current) => clampKnowledgeGraphZoom(current + delta))}
+            onFit={() => issueCameraCommand("fit")}
+            onReset={() => {
+              if (graphVisualSettings.view.dimension === 2) setGraphZoom(1);
+              issueCameraCommand("reset");
+            }}
+            onOpenVisualSettings={toggleVisualSettings}
+            visualSettingsOpen={visualSettingsOpen}
+            visualSettingsTriggerRef={visualSettingsTriggerRef}
+          />
         </div>
       ) : null}
       {defaultGraphReady && !presentation.connected ? (
@@ -496,7 +509,7 @@ export function CoreStage({
       ) : null}
       {semanticGraphActive && visualSettingsOpen ? (
         <GraphVisualSettings
-          onClose={() => setVisualSettingsOpen(false)}
+          onClose={() => setActivePanel(null)}
           returnFocusRef={visualSettingsTriggerRef}
         />
       ) : null}

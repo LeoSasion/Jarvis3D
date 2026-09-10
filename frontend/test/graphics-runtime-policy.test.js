@@ -47,9 +47,9 @@ test("graph composition grows at 1920 and remains bounded on 4K displays", () =>
 });
 
 test("graph camera zoom clamps relative intent before applying viewport scale", () => {
-  assert.equal(getGraphCameraZoom(0.1, 960, 640), 0.55);
+  assert.equal(getGraphCameraZoom(0.01, 960, 640), 0.1);
   assert.equal(getGraphCameraZoom(Number.NaN, 960, 640), 1);
-  assert.equal(getGraphCameraZoom(8, 960, 640), 2.2);
+  assert.equal(getGraphCameraZoom(80, 960, 640), 8);
   assert.equal(getGraphCameraZoom(2.2, 1_440, 960), 3.3000000000000003);
   assert.equal(getGraphCameraZoom(2.2, 3_200, 2_000), 4.4);
 });

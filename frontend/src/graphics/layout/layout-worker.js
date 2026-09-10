@@ -9,6 +9,8 @@ import {
   forceZ,
 } from "d3-force-3d";
 import Graph from "graphology";
+import { createNeuronPositions, createNeuronStructure } from "../graph/graph-neuron-model.js";
+import { createSpatialNeuronPositions } from "../graph/graph-neuron-spatial-model.js";
 import { getLayoutChunkMessageType } from "./layout-worker-policy.js";
 
 const CHUNK_TICKS = 12;
@@ -104,7 +106,18 @@ function runChunk(job) {
 
 function startLayout(message) {
   activeJob?.simulation.stop();
+  activeJob = null;
   const dimension = message.dimension === 3 ? 3 : 2;
+  if (message.force?.mode === "neuron") {
+    const structure = message.neuronStructure ?? createNeuronStructure(message.nodes, message.edges);
+    const positions = dimension === 3
+      ? createSpatialNeuronPositions(message.nodes, structure, message.force)
+      : createNeuronPositions(message.nodes, structure, message.force);
+    self.postMessage({
+      type: "positions", revision: message.revision, iteration: 1, settled: true, positions,
+    }, [positions.buffer]);
+    return;
+  }
   const forceSettings = normalizeForceSettings(message.force);
   const topology = buildTopology(message.nodes, message.edges);
   const nodes = message.nodes.map((node, index) => ({
