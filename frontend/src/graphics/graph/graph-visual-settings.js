@@ -278,12 +278,12 @@ const calibratedPresetConfigurations = Object.freeze({
         },
         edge: {
           ...DEFAULT_GRAPH_FX_PROFILES["2d"].edge,
-          filament: { taper: 0.85, rootWidth: 5.2, roundness: 0.8, translucency: 0.7 },
+          filament: { taper: 0.85, rootWidth: 4.4, roundness: 0.8, translucency: 0.8 },
           core: { ...DEFAULT_GRAPH_FX_PROFILES["2d"].edge.core, widthScale: 0.65, opacity: 0.85, emissionIntensity: 1.6 },
         },
         signal: { ...DEFAULT_GRAPH_FX_PROFILES["2d"].signal, enabled: false, count: 4, speed: 0.3 },
         motion: { idleRotationSpeed: 0, breathingAmount: 0, breathingRate: 0.5 },
-        postFx: { bloom: { enabled: true, intensity: 0.7, threshold: 0.7, softKnee: 0.15, radius: 0.25 } },
+        postFx: { radiance: { temperature: 1, focus: 0.6, transmissionLink: 1 }, bloom: { enabled: true, intensity: 0.7, threshold: 0.7, softKnee: 0.15, radius: 0.25 } },
       },
     },
   }),
@@ -334,20 +334,28 @@ const presetConfigurations = Object.freeze({
     labels: { count: 5, fontSize: 12, opacity: 1 },
     layout: {
       ...spatialNeuronBase.layout, mode: "neuron", repulsion: 1.2, linkDistance: 1.5,
-      ...NEURON_SPATIAL_DEFAULTS,
+      ...NEURON_SPATIAL_DEFAULTS, depthContrast: 0,
     },
     profiles: {
       ...spatialNeuronBase.profiles,
       "3d": {
         ...spatialNeuronBase.profiles["3d"],
+        orb: {
+          ...spatialNeuronBase.profiles["3d"].orb,
+          network: { ...spatialNeuronBase.profiles["3d"].orb.network, depthContrast: 0 },
+        },
+        postFx: {
+          radiance: { temperature: 1, focus: 0.6, transmissionLink: 1 },
+          bloom: { enabled: true, intensity: 1.1, threshold: 0.8, softKnee: 0.18, radius: 0.2 },
+        },
         node: {
           ...spatialNeuronBase.profiles["3d"].node,
           size: { byImportance: 1 },
         },
         edge: {
           ...spatialNeuronBase.profiles["3d"].edge,
-          filament: { taper: 0.85, rootWidth: 5.2, roundness: 0.8, translucency: 0.7 },
-          core: { ...spatialNeuronBase.profiles["3d"].edge.core, widthScale: 0.95, emissionIntensity: 1.8 },
+          filament: { taper: 0.85, rootWidth: 4.4, roundness: 0.8, translucency: 0.8 },
+          core: { ...spatialNeuronBase.profiles["3d"].edge.core, widthScale: 0.82, emissionIntensity: 1.8 },
           halo: { ...spatialNeuronBase.profiles["3d"].edge.halo, radiusScale: 1.15, opacity: 0.12, emissionIntensity: 2, falloff: 2.8 },
         },
       },

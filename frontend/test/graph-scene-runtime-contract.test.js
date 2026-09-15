@@ -63,7 +63,7 @@ test("2D and 3D presentation changes preserve morph progress instead of snapping
   assert.match(source, /nodeEnergyMaterial\.uniforms\.energyTime\.value = elapsed/u);
 });
 
-test("3D idle energy preserves orange hierarchy through separate Core and Halo layers", async () => {
+test("energy preserves legacy halo controls while neuron materials use scene Bloom", async () => {
   const source = await readFile(graphSceneUrl, "utf8");
 
   assert.match(source, /function createNodeEnergyStyle/u);
@@ -80,13 +80,13 @@ test("3D idle energy preserves orange hierarchy through separate Core and Halo l
   assert.match(source, /uniform float lineHaloEmissionIntensity/u);
   assert.match(source, /uniform float lineHaloVisibility/u);
   assert.match(source, /lineCoreVisibility\.value = Number\(fx3d\.edge\.core\.enabled\)/u);
-  assert.match(source, /lineHaloVisibility\.value = Number\(fx3d\.edge\.halo\.enabled\)/u);
+  assert.match(source, /lineHaloVisibility\.value = Number\(fx3d\.edge\.halo\.enabled && !neuronMaterials\)/u);
   assert.match(source, /lineHaloRadiusScale[\s\S]*\* lineHaloVisibility/u);
   assert.match(source, /pointColorVariation\.value = neuronMode \? 1 : threeDEnergyWeight/u);
   assert.match(source, /pointCoreEmissionIntensity\.value = fx3d\.node\.core\.emissionIntensity/u);
   assert.match(source, /pointHaloEmissionIntensity\.value = fx3d\.node\.halo\.emissionIntensity/u);
   assert.match(source, /pointCoreVisibility\.value = Number\(fx3d\.node\.core\.enabled/u);
-  assert.match(source, /pointHaloVisibility\.value = Number\(fx3d\.node\.halo\.enabled/u);
+  assert.match(source, /pointHaloVisibility\.value = Number\(fx3d\.node\.halo\.enabled && !neuronMaterials\)/u);
   assert.match(source, /const configuredCoreOpacity = fx3d\.node\.core\.enabled/u);
   assert.match(source, /const configuredHaloOpacity = fx3d\.node\.halo\.enabled/u);
   assert.match(source, /const orbLineWeight = dimensionProgress/u);

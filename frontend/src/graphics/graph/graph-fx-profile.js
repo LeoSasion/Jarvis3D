@@ -6,6 +6,7 @@ const COMMON_BOOLEAN_PATHS = Object.freeze([
   "node.pulse.enabled",
   "edge.core.enabled",
   "edge.halo.enabled",
+  "edge.signal.enabled",
   "signal.enabled",
   "postFx.bloom.enabled",
 ]);
@@ -29,6 +30,8 @@ export const graphFxSettingRanges = Object.freeze({
   "node.pulse.amount": Object.freeze({ min: 0, max: 2, step: 0.01 }),
   "node.pulse.rate": Object.freeze({ min: 0.25, max: 2.5, step: 0.05 }),
   "edge.master.opacity": Object.freeze({ min: 0, max: 1, step: 0.01 }),
+  "edge.signal.speed": Object.freeze({ min: 0.1, max: 3, step: 0.05 }),
+  "edge.signal.emissionIntensity": Object.freeze({ min: 0, max: 3, step: 0.05 }),
   "edge.filament.taper": Object.freeze({ min: 0, max: 1, step: 0.01 }),
   "edge.filament.rootWidth": Object.freeze({ min: 1, max: 6, step: 0.05 }),
   "edge.filament.roundness": Object.freeze({ min: 0, max: 1, step: 0.01 }),
@@ -65,6 +68,9 @@ export const graphFxSettingRanges = Object.freeze({
   "orb.sparks.sizeScale": Object.freeze({ min: 0.5, max: 2, step: 0.01 }),
   "orb.sparks.opacity": Object.freeze({ min: 0, max: 1, step: 0.01 }),
   "orb.sparks.emissionIntensity": Object.freeze({ min: 0, max: 3, step: 0.05 }),
+  "postFx.radiance.temperature": Object.freeze({ min: 0, max: 1, step: 0.05 }),
+  "postFx.radiance.focus": Object.freeze({ min: 0, max: 1, step: 0.05 }),
+  "postFx.radiance.transmissionLink": Object.freeze({ min: 0, max: 1, step: 0.05 }),
   "postFx.bloom.intensity": Object.freeze({ min: 0, max: 3, step: 0.05 }),
   "postFx.bloom.threshold": Object.freeze({ min: 0, max: 1, step: 0.01 }),
   "postFx.bloom.softKnee": Object.freeze({ min: 0, max: 1, step: 0.01 }),
@@ -82,6 +88,7 @@ const RAW_DEFAULT_PROFILES = {
     },
     edge: {
       master: { opacity: 1 },
+      signal: { enabled: true, speed: 1, emissionIntensity: 1 },
       filament: { taper: 0, rootWidth: 4.2, roundness: 0, translucency: 0 },
       core: {
         enabled: true,
@@ -110,6 +117,7 @@ const RAW_DEFAULT_PROFILES = {
     },
     motion: { idleRotationSpeed: 0.35, breathingAmount: 0.35, breathingRate: 0.8 },
     postFx: {
+      radiance: { temperature: 0, focus: 0, transmissionLink: 1 },
       bloom: { enabled: false, intensity: 1.02, threshold: 0.28, softKnee: 0.38, radius: 0.72 },
     },
   },
@@ -123,6 +131,7 @@ const RAW_DEFAULT_PROFILES = {
     },
     edge: {
       master: { opacity: 1 },
+      signal: { enabled: true, speed: 1, emissionIntensity: 1 },
       filament: { taper: 0, rootWidth: 4.2, roundness: 0, translucency: 0 },
       core: {
         enabled: true,
@@ -157,6 +166,7 @@ const RAW_DEFAULT_PROFILES = {
     },
     motion: { idleRotationSpeed: 1, breathingAmount: 1, breathingRate: 1 },
     postFx: {
+      radiance: { temperature: 0, focus: 0, transmissionLink: 1 },
       bloom: { enabled: true, intensity: 1.85, threshold: 0.18, softKnee: 0.42, radius: 0.92 },
     },
   },

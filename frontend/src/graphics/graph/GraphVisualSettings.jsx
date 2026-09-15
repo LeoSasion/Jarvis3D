@@ -314,6 +314,8 @@ export function GraphVisualSettings({
   const presetId = getGraphVisualPresetId(settings);
   const profileId = `${settings.view.dimension}d`;
   const activeProfile = settings.profiles[profileId];
+  // An idle sphere must not hide controls used by the independent Explore view.
+  const neuronMaterials = settings.layout.mode === "neuron";
   const visiblePresets = graphVisualPresets.filter((preset) => !preset.dimensions || preset.dimensions.includes(settings.view.dimension));
   const environment = useMemo(
     () => readGraphicsEnvironment(reducedMotion),
@@ -523,9 +525,9 @@ export function GraphVisualSettings({
 
       <SettingsGroup
         title={t(settings.sharedStyle ? "graphVisualSettings.shared.layers" : "graphVisualSettings.scope.layers", { dimension: settings.view.dimension })}
-        meta={t("graphVisualSettings.profile.layerSummary", {
-          count: settings.view.dimension === 3 ? (settings.idleShape === "neuronSphere" ? 9 : 10) : 7,
-          state: t(activeProfile.edge.halo.enabled ? "common.state.on" : "common.state.off"),
+        meta={t(neuronMaterials ? "graphVisualSettings.profile.sceneLayerSummary" : "graphVisualSettings.profile.layerSummary", {
+          count: (settings.view.dimension === 3 ? (settings.idleShape === "neuronSphere" ? 9 : 10) : 7) - (neuronMaterials ? 1 : 0),
+          state: t((neuronMaterials ? activeProfile.postFx.bloom.enabled : activeProfile.edge.halo.enabled) ? "common.state.on" : "common.state.off"),
         })}
         open
       >
@@ -545,11 +547,12 @@ export function GraphVisualSettings({
           aria-label={t("graphVisualSettings.profile.layerVisibilityAria")}
         >
           <FxLayerToggle profileId={profileId} path="node.core.enabled" label={t("graphVisualSettings.layer.nodeCore")} enabled={activeProfile.node.core.enabled} t={t} />
-          <FxLayerToggle profileId={profileId} path="node.halo.enabled" label={t("graphVisualSettings.layer.nodeHalo")} enabled={activeProfile.node.halo.enabled} t={t} />
+          {!neuronMaterials && <FxLayerToggle profileId={profileId} path="node.halo.enabled" label={t("graphVisualSettings.layer.nodeHalo")} enabled={activeProfile.node.halo.enabled} t={t} />}
           <FxLayerToggle profileId={profileId} path="node.pulse.enabled" label={t("graphVisualSettings.layer.nodePulse")} enabled={activeProfile.node.pulse.enabled} t={t} />
           <FxLayerToggle profileId={profileId} path="edge.core.enabled" label={t("graphVisualSettings.layer.relationCore")} enabled={activeProfile.edge.core.enabled} t={t} />
-          <FxLayerToggle profileId={profileId} path="edge.halo.enabled" label={t("graphVisualSettings.layer.relationHalo")} enabled={activeProfile.edge.halo.enabled} t={t} />
-          <FxLayerToggle profileId={profileId} path="signal.enabled" label={t("graphVisualSettings.layer.relationSignals")} enabled={activeProfile.signal.enabled} t={t} />
+          {!neuronMaterials && <FxLayerToggle profileId={profileId} path="edge.halo.enabled" label={t("graphVisualSettings.layer.relationHalo")} enabled={activeProfile.edge.halo.enabled} t={t} />}
+          {neuronMaterials && <FxLayerToggle profileId={profileId} path="edge.signal.enabled" label={t("graphVisualSettings.routeSignals.title")} enabled={activeProfile.edge.signal.enabled} t={t} />}
+          <FxLayerToggle profileId={profileId} path="signal.enabled" label={t(neuronMaterials ? "graphVisualSettings.routeSignals.background" : "graphVisualSettings.layer.relationSignals")} enabled={activeProfile.signal.enabled} t={t} />
           {settings.view.dimension === 3 ? <>
           {settings.idleShape !== "neuronSphere" ? <FxLayerToggle profileId={profileId} path="orb.innerNetwork.enabled" label={t("graphVisualSettings.layer.innerNetwork")} enabled={activeProfile.orb.innerNetwork.enabled} t={t} /> : null}
           <FxLayerToggle profileId={profileId} path="orb.rim.enabled" label={t("graphVisualSettings.layer.orbRim")} enabled={activeProfile.orb.rim.enabled} t={t} />
@@ -560,21 +563,23 @@ export function GraphVisualSettings({
 
         <FxCategory
           title={t("graphVisualSettings.category.nodeFx")}
-          meta={t("graphVisualSettings.category.coreHaloSummary", {
+          meta={t(neuronMaterials ? "graphVisualSettings.category.sceneGlowSummary" : "graphVisualSettings.category.coreHaloSummary", {
             coreState: t(activeProfile.node.core.enabled ? "common.state.on" : "common.state.off"),
             haloState: t(activeProfile.node.halo.enabled ? "common.state.on" : "common.state.off"),
           })}
         >
           <div className="graph-visual-settings__control-grid">
-            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.master.scale" label={technicalLabel(t, "NODE MASTER SCALE")} detail={t("graphVisualSettings.control.nodeMasterScale.detail")} format="strength" disabled={!activeProfile.node.core.enabled && !activeProfile.node.halo.enabled} />
-            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.master.opacity" label={technicalLabel(t, "NODE MASTER OPACITY")} detail={t("graphVisualSettings.control.nodeMasterOpacity.detail")} format="percent" disabled={!activeProfile.node.core.enabled && !activeProfile.node.halo.enabled} />
-            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.size.byImportance" label={technicalLabel(t, "NODE SIZE BY IMPORTANCE")} detail={t("graphVisualSettings.control.nodeSizeByImportance.detail")} format="percent" disabled={!activeProfile.node.core.enabled && !activeProfile.node.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.master.scale" label={technicalLabel(t, "NODE MASTER SCALE")} detail={t("graphVisualSettings.control.nodeMasterScale.detail")} format="strength" disabled={!activeProfile.node.core.enabled && (neuronMaterials || !activeProfile.node.halo.enabled)} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.master.opacity" label={technicalLabel(t, "NODE MASTER OPACITY")} detail={t("graphVisualSettings.control.nodeMasterOpacity.detail")} format="percent" disabled={!activeProfile.node.core.enabled && (neuronMaterials || !activeProfile.node.halo.enabled)} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.size.byImportance" label={technicalLabel(t, "NODE SIZE BY IMPORTANCE")} detail={t("graphVisualSettings.control.nodeSizeByImportance.detail")} format="percent" disabled={!activeProfile.node.core.enabled && (neuronMaterials || !activeProfile.node.halo.enabled)} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.core.sizeScale" label={technicalLabel(t, "NODE CORE SIZE SCALE")} detail={t("graphVisualSettings.control.nodeCoreSizeScale.detail")} format="strength" disabled={!activeProfile.node.core.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.core.opacity" label={technicalLabel(t, "NODE CORE OPACITY")} detail={t("graphVisualSettings.control.nodeCoreOpacity.detail")} format="percent" disabled={!activeProfile.node.core.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.core.emissionIntensity" label={technicalLabel(t, "NODE CORE EMISSION INTENSITY")} detail={t("graphVisualSettings.control.nodeCoreEmission.detail")} format="strength" disabled={!activeProfile.node.core.enabled} />
+            {!neuronMaterials && <>
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.halo.radiusScale" label={technicalLabel(t, "NODE HALO RADIUS SCALE")} detail={t("graphVisualSettings.control.nodeHaloRadius.detail")} format="strength" disabled={!activeProfile.node.halo.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.halo.opacity" label={technicalLabel(t, "NODE HALO OPACITY")} detail={t("graphVisualSettings.control.nodeHaloOpacity.detail")} format="percent" disabled={!activeProfile.node.halo.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.halo.emissionIntensity" label={technicalLabel(t, "NODE HALO EMISSION INTENSITY")} detail={t("graphVisualSettings.control.nodeHaloEmission.detail")} format="strength" disabled={!activeProfile.node.halo.enabled} />
+            </>}
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.pulse.amount" label={technicalLabel(t, "NODE PULSE AMOUNT")} detail={t("graphVisualSettings.control.nodePulseAmount.detail")} format="strength" disabled={!activeProfile.node.pulse.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.pulse.rate" label={technicalLabel(t, "NODE PULSE RATE")} detail={t("graphVisualSettings.control.nodePulseRate.detail")} format="strength" disabled={!activeProfile.node.pulse.enabled} />
           </div>
@@ -582,14 +587,14 @@ export function GraphVisualSettings({
 
         <FxCategory
           title={t("graphVisualSettings.category.relationFx")}
-          meta={t("graphVisualSettings.category.coreHaloSummary", {
+          meta={t(neuronMaterials ? "graphVisualSettings.category.sceneGlowSummary" : "graphVisualSettings.category.coreHaloSummary", {
             coreState: t(activeProfile.edge.core.enabled ? "common.state.on" : "common.state.off"),
             haloState: t(activeProfile.edge.halo.enabled ? "common.state.on" : "common.state.off"),
           })}
           open
         >
           <div className="graph-visual-settings__control-grid">
-            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.master.opacity" label={technicalLabel(t, "RELATION MASTER OPACITY")} detail={t("graphVisualSettings.control.relationMasterOpacity.detail")} format="percent" disabled={!activeProfile.edge.core.enabled && !activeProfile.edge.halo.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.master.opacity" label={technicalLabel(t, "RELATION MASTER OPACITY")} detail={t("graphVisualSettings.control.relationMasterOpacity.detail")} format="percent" disabled={!activeProfile.edge.core.enabled && (neuronMaterials || !activeProfile.edge.halo.enabled)} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.core.widthScale" label={technicalLabel(t, "RELATION CORE WIDTH SCALE")} detail={t("graphVisualSettings.control.relationCoreWidth.detail")} format="strength" disabled={!activeProfile.edge.core.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.core.opacity" label={technicalLabel(t, "RELATION CORE OPACITY")} detail={t("graphVisualSettings.control.relationCoreOpacity.detail")} format="percent" disabled={!activeProfile.edge.core.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.core.emissionIntensity" label={technicalLabel(t, "RELATION CORE EMISSION INTENSITY")} detail={t("graphVisualSettings.control.relationCoreEmission.detail")} format="strength" disabled={!activeProfile.edge.core.enabled} />
@@ -599,18 +604,27 @@ export function GraphVisualSettings({
               <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.filament.taper" label={t("graphVisualSettings.filament.taper")} detail={t("graphVisualSettings.filament.taperDetail")} format="percent" disabled={!activeProfile.edge.core.enabled} />
               <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.filament.rootWidth" label={t("graphVisualSettings.filament.rootWidth")} detail={t("graphVisualSettings.filament.rootWidthDetail")} format="strength" disabled={!activeProfile.edge.core.enabled || activeProfile.edge.filament.taper === 0} />
               <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.filament.roundness" label={t("graphVisualSettings.filament.roundness")} detail={t("graphVisualSettings.filament.roundnessDetail")} format="percent" disabled={!activeProfile.edge.core.enabled} />
-              <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.filament.translucency" label={t("graphVisualSettings.filament.translucency")} detail={t("graphVisualSettings.filament.translucencyDetail")} format="percent" disabled={!activeProfile.edge.core.enabled && !activeProfile.edge.halo.enabled} />
+              <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.filament.translucency" label={t("graphVisualSettings.filament.translucency")} detail={t("graphVisualSettings.filament.translucencyDetail")} format="percent" disabled={!activeProfile.edge.core.enabled && (neuronMaterials || !activeProfile.edge.halo.enabled)} />
             </> : null}
+            {!neuronMaterials && <>
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.halo.radiusScale" label={technicalLabel(t, "RELATION HALO RADIUS SCALE")} detail={t("graphVisualSettings.control.relationHaloRadius.detail")} format="strength" disabled={!activeProfile.edge.halo.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.halo.opacity" label={technicalLabel(t, "RELATION HALO OPACITY")} detail={t("graphVisualSettings.control.relationHaloOpacity.detail")} format="percent" disabled={!activeProfile.edge.halo.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.halo.emissionIntensity" label={technicalLabel(t, "RELATION HALO EMISSION INTENSITY")} detail={t("graphVisualSettings.control.relationHaloEmission.detail")} format="strength" disabled={!activeProfile.edge.halo.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.halo.falloff" label={technicalLabel(t, "RELATION HALO FALLOFF")} detail={t("graphVisualSettings.control.relationHaloFalloff.detail")} format="strength" disabled={!activeProfile.edge.halo.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.halo.byStrength" label={technicalLabel(t, "RELATION HALO BY STRENGTH")} detail={t("graphVisualSettings.control.relationHaloByStrength.detail")} format="percent" disabled={!activeProfile.edge.halo.enabled} />
+            </>}
           </div>
         </FxCategory>
 
+        {neuronMaterials && <FxCategory title={t("graphVisualSettings.routeSignals.title")} meta={t(activeProfile.edge.signal.enabled ? "common.state.on" : "common.state.off")}>
+          <div className="graph-visual-settings__control-grid">
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.signal.speed" label={t("graphVisualSettings.routeSignals.speed")} detail={t("graphVisualSettings.routeSignals.speedDetail")} format="strength" disabled={!activeProfile.edge.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.signal.emissionIntensity" label={t("graphVisualSettings.routeSignals.emission")} detail={t("graphVisualSettings.routeSignals.emissionDetail")} format="strength" disabled={!activeProfile.edge.signal.enabled} />
+          </div>
+        </FxCategory>}
+
         <FxCategory
-          title={t("graphVisualSettings.category.signals")}
+          title={t(neuronMaterials ? "graphVisualSettings.routeSignals.background" : "graphVisualSettings.category.signals")}
           meta={t("graphVisualSettings.category.signalsSummary", {
             count: activeProfile.signal.count,
             speed: `${activeProfile.signal.speed.toFixed(2)}×`,
@@ -663,6 +677,16 @@ export function GraphVisualSettings({
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="motion.breathingRate" label={technicalLabel(t, "BREATHING RATE")} detail={t("graphVisualSettings.control.breathingRate.detail")} format="strength" />
           </div>
         </FxCategory>
+
+        {(settings.layout.mode === "neuron" || settings.idleShape === "neuronSphere") && (
+          <FxCategory title={t("graphVisualSettings.radiance.title")} meta={t("graphVisualSettings.radiance.summary")}>
+            <div className="graph-visual-settings__control-grid">
+              {["temperature", "focus", "transmissionLink"].map((control) => (
+                <GraphFxRangeControl key={control} profileId={profileId} profile={activeProfile} path={`postFx.radiance.${control}`} label={t(`graphVisualSettings.radiance.${control}`)} detail={t(`graphVisualSettings.radiance.${control}Detail`)} format="percent" />
+              ))}
+            </div>
+          </FxCategory>
+        )}
 
         <FxCategory
           title={t("graphVisualSettings.category.postFx")}

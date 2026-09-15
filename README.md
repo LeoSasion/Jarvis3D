@@ -6,15 +6,15 @@
 
 ## Neural graph previews
 
-The idle neuron sphere and 3D graph share tapered, translucent connections with local highlights. Their layouts and depth controls remain independent, and graph labels stay sharp. These are screenshots of the running browser preview; the shell's simulated status is labeled in the interface.
+The idle neuron sphere and 3D graph share translucent polygon cells with bright membranes and small nuclei. Ordinary cells have stable ±25% size variation and three nearby orange hues assigned by knowledge cluster, turning brighter warm white on hover, selection, or active relation highlighting; primary somas retain their bright cores and size. Highlighted associations follow paths through the existing visible connections with a gentle brightness breath. Short electrical pulses travel continuously along these curves and through their junctions, with warm-white heads and brief orange wakes, without introducing new terminal shortcuts. Tapered connections preserve orange bodies with rapidly fading yellow highlights along their own transparency gradients, independent of line length and camera distance. Scene-wide Bloom derives glow from brightness, with no local node or connection halo overlays; graph labels stay sharp. These are screenshots of the running browser preview; the shell's simulated status is labeled in the interface.
 
 ### Neuron sphere — idle view
 
-![JARVIS neuron sphere idle view](docs/validation/neuron-filament-sphere-preview.png)
+![JARVIS neuron sphere idle view](docs/validation/neuron-radiance-sphere-preview.jpg)
 
 ### 3D neuron graph — exploration view
 
-![JARVIS 3D neuron graph exploration view](docs/validation/neuron-filament-3d-preview.png)
+![JARVIS 3D neuron graph exploration view](docs/validation/neuron-radiance-3d-preview.jpg)
 
 See the [shared filament implementation and controls](docs/design/concepts/neuron-filament-notes.md) for details.
 

@@ -128,7 +128,7 @@ test("the 3D editor exposes the named FX profile layers as independent switches"
     ["node.pulse.enabled", "graphVisualSettings.layer.nodePulse"],
     ["edge.core.enabled", "graphVisualSettings.layer.relationCore"],
     ["edge.halo.enabled", "graphVisualSettings.layer.relationHalo"],
-    ["signal.enabled", "graphVisualSettings.layer.relationSignals"],
+    ["edge.signal.enabled", "graphVisualSettings.routeSignals.title"],
     ["orb.innerNetwork.enabled", "graphVisualSettings.layer.innerNetwork"],
     ["orb.rim.enabled", "graphVisualSettings.layer.orbRim"],
     ["orb.sparks.enabled", "graphVisualSettings.layer.ambientSparks"],
@@ -141,7 +141,8 @@ test("the 3D editor exposes the named FX profile layers as independent switches"
 
   assert.match(settingsPanel, /t\("graphVisualSettings\.category\.nodeFx"\)/u);
   assert.match(settingsPanel, /t\("graphVisualSettings\.category\.relationFx"\)/u);
-  assert.match(settingsPanel, /t\("graphVisualSettings\.category\.signals"\)/u);
+  assert.match(settingsPanel, /path="signal\.enabled" label=\{t\(neuronMaterials \? "graphVisualSettings\.routeSignals\.background" : "graphVisualSettings\.layer\.relationSignals"\)\}/u);
+  assert.match(settingsPanel, /title=\{t\(neuronMaterials \? "graphVisualSettings\.routeSignals\.background" : "graphVisualSettings\.category\.signals"\)\}/u);
   assert.match(settingsPanel, /t\("graphVisualSettings\.scope\.idleOrb"\)/u);
   assert.match(settingsPanel, /t\("graphVisualSettings\.category\.postFx"\)/u);
   assert.match(settingsPanel, /path="postFx\.bloom\.radius" label=\{technicalLabel\(t, "BLOOM RADIUS"\)\}/u);

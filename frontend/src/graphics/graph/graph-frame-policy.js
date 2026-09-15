@@ -11,6 +11,7 @@ export function isGraphSignalLayerActive({
 export function shouldContinueGraphFrame({
   dimensionChanged = false,
   documentVisible = true,
+  focusedFilamentActive = false,
   idlePresentation = false,
   presentationChanged = false,
   reducedMotion = false,
@@ -19,6 +20,7 @@ export function shouldContinueGraphFrame({
   if (reducedMotion || !documentVisible) return false;
   return Boolean(
     signalLayerActive
+      || focusedFilamentActive
       || presentationChanged
       || dimensionChanged
       || idlePresentation,
