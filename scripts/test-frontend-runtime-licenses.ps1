@@ -367,3 +367,8 @@ finally {
         Remove-Item -LiteralPath $testParent -Force
     }
 }
+
+# Expected-failure fixtures leave a nonzero native exit code even when every
+# assertion passes. Publish success only after the suite and cleanup succeed;
+# otherwise GitHub Actions propagates the last deliberately rejected fixture.
+$global:LASTEXITCODE = 0

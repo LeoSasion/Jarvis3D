@@ -98,6 +98,27 @@ public sealed class WindowsSuspendedProcessLauncherTests
         Assert.Contains("ERR:ping", error, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(37)]
+    public async Task ImmediateExitRetainsTheActualExitCode(int exitCode)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var processJob = WindowsProcessJob.CreateKillOnClose();
+        using var launched = WindowsSuspendedProcessLauncher.Start(
+            CreateCommandStartInfo($"exit /b {exitCode}"),
+            processJob);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        await launched.Process.WaitForExitAsync(timeout.Token);
+
+        Assert.Equal(exitCode, launched.Process.ExitCode);
+    }
+
     [Fact]
     public void AssignmentFailureTerminatesTheStillSuspendedStandIn()
     {

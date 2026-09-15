@@ -118,6 +118,9 @@ internal static class WindowsSuspendedProcessLauncher
             processJob.Assign(nativeProcess);
 
             managedProcess = Process.GetProcessById(checked((int)processId));
+            // GetProcessById is lazy: retain the managed handle while the child
+            // is still suspended so even an immediate exit remains observable.
+            _ = managedProcess.SafeHandle;
             standardInput = new FileStream(
                 parentStandardInput,
                 FileAccess.Write,
