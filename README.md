@@ -18,6 +18,17 @@ The idle neuron sphere and 3D graph share translucent polygon cells with bright 
 
 See the [shared filament implementation and controls](docs/design/concepts/neuron-filament-notes.md) for details.
 
+### Screen recording
+
+Use **Record / 录屏** in the top rail, choose the current tab in the browser's capture picker,
+then click **Stop recording / 停止录屏** to download the video. Recording captures the final
+page composition, including the graph's glow and interface, directly as H.264 MP4 with a
+6 Mbps target bitrate, up to 1920×1080 at 30 fps, and no audio. The button shows elapsed time;
+the browser's stop-sharing control also finishes the download. A runtime without screen
+capture or resize-safe H.264 MP4 encoding (`avc3`) reports that limitation instead of
+substituting another codec. Use an up-to-date Chrome or Edge browser; resizing the captured
+tab or window during recording is supported.
+
 ### Local graph visual settings
 
 The active graph configuration is saved in `%LOCALAPPDATA%\JARVIS\Settings\graph-visual-settings.json`.

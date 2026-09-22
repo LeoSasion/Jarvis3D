@@ -837,6 +837,7 @@ export function App() {
     }}>
       <div className="ambient-field" aria-hidden="true" />
       <TopStatusBar
+        onFeedback={showToast}
         onOpenCommand={openCommand}
         onAbortAgent={agentSession.abort}
         agentState={agentSession.state}

@@ -184,11 +184,38 @@ body {
 .topbar__system {
   justify-content: flex-end;
 }
-.topbar__preview {
-  padding-inline: 16px;
-  color: var(--shell-muted);
+.topbar__record {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 96px;
+  height: calc(100% - 16px);
+  padding: 0 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--shell-text);
   font: 11px/1 var(--shell-code-font);
-  text-transform: uppercase;
+  white-space: nowrap;
+}
+.topbar__record > svg {
+  width: 16px;
+  height: 16px;
+}
+.topbar__record:hover:not(:disabled) {
+  background: var(--shell-hover);
+}
+.topbar__record.is-recording {
+  color: var(--shell-danger);
+}
+.topbar__record time {
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.topbar__record:disabled {
+  color: var(--shell-muted);
+  cursor: wait;
 }
 .topbar__clock {
   display: flex;
@@ -260,7 +287,7 @@ body {
     width: 160px !important;
     padding-inline: 12px !important;
   }
-  .topbar__bus-label, .topbar__preview {
+  .topbar__bus-label {
     display: none;
   }
   .topbar__agent-status {

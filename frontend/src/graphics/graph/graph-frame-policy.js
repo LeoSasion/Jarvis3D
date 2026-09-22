@@ -12,6 +12,7 @@ export function shouldContinueGraphFrame({
   dimensionChanged = false,
   documentVisible = true,
   focusedFilamentActive = false,
+  routeSignalActive = false,
   nodeActivationActive = false,
   idlePresentation = false,
   presentationChanged = false,
@@ -22,6 +23,7 @@ export function shouldContinueGraphFrame({
   return Boolean(
     signalLayerActive
       || focusedFilamentActive
+      || routeSignalActive
       || nodeActivationActive
       || presentationChanged
       || dimensionChanged

@@ -1,9 +1,10 @@
 import { PowerRegular, SearchRegular, StopRegular } from "@fluentui/react-icons";
 import { getAgentProviderLabel, hasAgentProviderFault } from "../agent-provider-model.js";
-import { usePlatformClock, usePlatformKind } from "../hooks/usePlatformData.js";
+import { usePlatformClock } from "../hooks/usePlatformData.js";
 import { useLanguage } from "../i18n/language-system.js";
 import { formatClockPresentation } from "../i18n/locale-format.js";
 import { JarvisMark } from "./VectorMarks.jsx";
+import { ScreenRecordingButton } from "./ScreenRecordingButton.jsx";
 
 function TopCluster({ className = "", children, as = "div", ...props }) {
   const Tag = as;
@@ -20,10 +21,10 @@ export function TopStatusBar({
   agentState,
   onOpenDateTime,
   onPower,
+  onFeedback,
 }) {
   const { language, t } = useLanguage();
   const clock = usePlatformClock();
-  const platformKind = usePlatformKind();
   const localizedClock = formatClockPresentation(clock.dateTime, language);
   const agentStatus = agentState?.status ?? "unavailable";
   const agentRunning = agentStatus === "running" || agentStatus === "starting";
@@ -78,7 +79,7 @@ export function TopStatusBar({
         ) : null}
       </div>
       <div className="topbar__zone topbar__system">
-        {platformKind === "mock" ? <small className="topbar__preview">{t("topbar.preview")}</small> : null}
+        <ScreenRecordingButton onFeedback={onFeedback} />
         <button type="button" className="topbar__clock" onClick={onOpenDateTime}
           aria-label={t("taskbar.clock.open", { date: localizedClock.longDate, time: localizedClock.time })}>
           <span>{localizedClock.longDate}</span>

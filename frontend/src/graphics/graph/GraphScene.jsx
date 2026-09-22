@@ -35,8 +35,12 @@ import { GRAPH_CELL_SHADER } from "./graph-cell-shader.js";
 import { createGraphCellRoles, createGraphCellVariations, writeGraphCellHighlights, usesGraphCellMaterial } from "./graph-cell-state.js";
 import {
   createRestingRouteIndex, createFocusedRestingRoutePlan, getFocusedFilamentGain,
-  writeFocusedRouteMask, writeFocusedSignalDistances, FOCUSED_SIGNAL_SHADER, advanceFocusedSignalTravel, FOCUSED_SIGNAL_SPACING, FOCUSED_SIGNAL_SPEED,
+  writeFocusedRouteMask, FOCUSED_SIGNAL_SHADER, FOCUSED_SIGNAL_SPACING, FOCUSED_SIGNAL_SPEED,
 } from "./graph-focus-filament.js";
+import {
+  createFocusedSignalState, syncFocusedSignalOrigins, updateFocusedSignalGeometry,
+  advanceFocusedSignals, endFocusedSignalSession, FOCUSED_SIGNAL_HISTORY_SHADER,
+} from "./graph-focus-signals.js";
 import { createNodeActivationState, chargeSignalContacts, touchNodeActivation, updateNodeActivation } from "./graph-node-activation.js";
 import { createFilamentActivationState, writeFilamentActivationContacts, chargeBackgroundFilament } from "./graph-filament-activation.js";
 import { GraphCameraNavigation } from "./GraphCameraNavigation.jsx";
@@ -58,7 +62,7 @@ import {
 import { GRAPH_LABEL_LAYER } from "./graph-label-rendering.js";
 import { createNeuronSphereModel, createNeuronSphereCurves } from "./graph-neuron-sphere-model.js";
 import { createIdleSignalState, advanceIdleSignals, writeNextIdleSignalRoutes } from "./graph-idle-signals.js";
-import { createSignalColorPalette, sampleFocusedSignalColor, advanceSignalCycleBase, SIGNAL_BIRTH_COLOR_SHADER } from "./graph-signal-color.js";
+import { createSignalColorPalette, SIGNAL_BIRTH_COLOR_SHADER } from "./graph-signal-color.js";
 import {
   createGraphPointerQueue,
   createGraphScreenIndex,
@@ -458,6 +462,7 @@ const ENERGY_LINE_VERTEX_SHADER = `
 const ENERGY_LINE_FRAGMENT_SHADER = `
   ${GRAPH_RADIANCE_SHADER}
   ${FOCUSED_SIGNAL_SHADER}
+  ${FOCUSED_SIGNAL_HISTORY_SHADER}
   ${SIGNAL_BIRTH_COLOR_SHADER}
   uniform float lineCoreEmissionByStrength;
   uniform float lineCoreEmissionIntensity;
@@ -618,14 +623,19 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
     if (lineSignalTravel >= 0.0) {
       // Select a whole packet at crossings: its head, wake and birth color
       // stay together instead of mixing two unrelated particle identities.
-      vec2 firstPacket = focusedSignal(energyLineSignalDistance.x);
-      vec2 secondPacket = focusedSignal(energyLineSignalDistance.y);
-      float secondWins = step(firstPacket.x * 7.0 + firstPacket.y * 1.7 + 0.00001,
-        secondPacket.x * 7.0 + secondPacket.y * 1.7);
-      vec2 packet = mix(firstPacket, secondPacket, secondWins);
-      packetColor = signalBirthColor(
-        mix(energyLineSignalDistance.x, energyLineSignalDistance.y, secondWins),
-        mix(lineSignalOrigins.x, lineSignalOrigins.y, secondWins));
+      vec2 packet;
+      if (lineSignalHistoryEnabled > 0.5) {
+        packet = focusedHistoryPacket(packetColor);
+      } else {
+        vec2 firstPacket = focusedSignal(energyLineSignalDistance.x);
+        vec2 secondPacket = focusedSignal(energyLineSignalDistance.y);
+        float secondWins = step(firstPacket.x * 7.0 + firstPacket.y * 1.7 + 0.00001,
+          secondPacket.x * 7.0 + secondPacket.y * 1.7);
+        packet = mix(firstPacket, secondPacket, secondWins);
+        packetColor = signalBirthColor(
+          mix(energyLineSignalDistance.x, energyLineSignalDistance.y, secondWins),
+          mix(lineSignalOrigins.x, lineSignalOrigins.y, secondWins));
+      }
       float signalBoundary = energyLineCoreBoundary * energyLineSignalSize;
       float signalCore = 1.0 - smoothstep(max(0.0, signalBoundary - coreFeather),
         min(1.0, signalBoundary + coreFeather), lineDistance);
@@ -1324,19 +1334,20 @@ export function GraphScene({
     () => new InstancedBufferAttribute(new Float32Array(edgeCapacity * edgeSegments), 1).setUsage(DynamicDrawUsage),
     [edgeCapacity, edgeSegments],
   );
+  const focusedSignals = useMemo(() => createFocusedSignalState(edgeCapacity, edgeSegments),
+    [renderEdges, edgeCapacity, edgeSegments]);
   const edgeSignalDistanceAttribute = useMemo(
-    () => new InstancedBufferAttribute(new Float32Array(edgeCapacity * edgeSegments * 4).fill(-1), 4).setUsage(DynamicDrawUsage),
-    [edgeCapacity, edgeSegments],
+    () => new InstancedBufferAttribute(focusedSignals.distances, 4).setUsage(DynamicDrawUsage),
+    [focusedSignals],
   );
-  const focusedSignalTravelRef = useRef(0);
-  const focusedSignalCycleBaseRef = useRef(0);
-  const focusedContactColor = useCallback((contact, pulse) => sampleFocusedSignalColor(
-    signalPalette, contact.origin, pulse + focusedSignalCycleBaseRef.current,
-  ), [signalPalette]);
+  useEffect(() => () => focusedSignals.texture.dispose(), [focusedSignals]);
+  useLayoutEffect(() => {
+    if (presentationTarget === 1) syncFocusedSignalOrigins(focusedSignals, focusedRoutePlan);
+    else endFocusedSignalSession(focusedSignals);
+    invalidate();
+  }, [focusedSignals, focusedRoutePlan, presentationTarget, invalidate]);
   const focusedSignalAppearance = useMemo(() => new Float32Array(edgeCapacity * edgeSegments * 4).fill(1),
     [edgeCapacity, edgeSegments]);
-  const focusedSignalMaximumRef = useRef(0);
-  const focusedSignalContacts = useMemo(() => [], [focusedRoutePlan]);
   const filamentActivation = useMemo(() => createFilamentActivationState(edgeCapacity * edgeSegments),
     [model.nodes, renderEdges, edgeCapacity, edgeSegments]);
   const filamentActivationAttribute = useMemo(
@@ -1498,17 +1509,9 @@ export function GraphScene({
     [edgeCapacity, edgeSegments],
   );
   const updateFocusedSignals = useCallback(() => {
-    focusedSignalMaximumRef.current = writeFocusedSignalDistances(edgeSignalDistanceAttribute.array, focusedRoutePlan,
-      edgeSegments, energyLineStarts, energyLineEnds, focusedSignalContacts);
-    writeFilamentActivationContacts(filamentActivation, edgeSignalDistanceAttribute.array);
+    updateFocusedSignalGeometry(focusedSignals, energyLineStarts, energyLineEnds);
     edgeSignalDistanceAttribute.needsUpdate = true;
-  }, [edgeSignalDistanceAttribute, focusedRoutePlan, focusedSignalContacts, edgeSegments, energyLineStarts, energyLineEnds, filamentActivation]);
-  useLayoutEffect(() => {
-    updateFocusedSignals();
-    focusedSignalTravelRef.current = 0;
-    focusedSignalCycleBaseRef.current = 0;
-    invalidate();
-  }, [updateFocusedSignals, presentationTarget, reducedMotion, invalidate, profile3d.edge.signal.spacing]);
+  }, [edgeSignalDistanceAttribute, focusedSignals, energyLineStarts, energyLineEnds]);
   const energyLineTangentStarts = useMemo(
     () => new Float32Array(edgeCapacity * edgeSegments * 3),
     [edgeCapacity, edgeSegments],
@@ -1682,6 +1685,9 @@ export function GraphScene({
       lineSignalColorRange: { value: new Vector2(0, 1) },
       lineSignalOrigins: { value: new Vector2(1, 2) },
       lineSignalCycleBase: { value: 0 },
+      lineSignalHistoryEnabled: { value: 1 },
+      lineSignalHistory: { value: null },
+      lineSignalHistorySize: { value: new Vector2(256, 1) },
       lineActivationEnabled: { value: 0 },
       lineActivationStrength: { value: 1 },
       lineRestingBrightness: { value: 0.55 },
@@ -1699,17 +1705,15 @@ export function GraphScene({
     energyLineUniforms.lineSignalOrange.value.fromArray(signalPalette.orange);
     energyLineUniforms.lineSignalPale.value.fromArray(signalPalette.pale);
     energyLineUniforms.lineSignalColorRange.value.set(signalPalette.start, signalPalette.end);
-    energyLineUniforms.lineSignalOrigins.value.set(
-      (focusedRoutePlan.trees[0]?.origin ?? 0) + 1,
-      (focusedRoutePlan.trees[1]?.origin ?? 1) + 1);
     invalidate();
-  }, [energyLineUniforms, signalPalette, focusedRoutePlan, invalidate]);
+  }, [energyLineUniforms, signalPalette, invalidate]);
   const sphereLineMaterial = useMemo(() => {
     const material = energyLineMaterial.clone();
     material.uniforms = {
       ...energyLineMaterial.uniforms,
       lineMasterOpacity: { value: 0 }, lineSegmented: { value: 1 }, lineHaloVisibility: { value: 0 },
       lineSignalTravel: { value: -1 }, lineSignalPeriod: { value: 0 }, lineFocusGain: { value: 1 },
+      lineSignalHistoryEnabled: { value: 0 },
     };
     return material;
   }, [energyLineMaterial]);
@@ -2008,7 +2012,7 @@ export function GraphScene({
     });
     writeNeuronRibbonTangents(energyLineStarts, energyLineEnds, edgeSegments,
       energyLineTangentStarts, energyLineTangentEnds);
-    if (focusedRouteEdges.size > 0) updateFocusedSignals();
+    if (focusedSignals.emitters.size > 0 || focusedSignals.packets.length > 0) updateFocusedSignals();
     if (energyLineTangentStartAttributeRef.current) energyLineTangentStartAttributeRef.current.needsUpdate = true;
     if (energyLineTangentEndAttributeRef.current) energyLineTangentEndAttributeRef.current.needsUpdate = true;
     if (edgePositionAttributeRef.current) edgePositionAttributeRef.current.needsUpdate = true;
@@ -2038,7 +2042,7 @@ export function GraphScene({
     planarMorphModel.shellEdgePairs,
     renderEdges,
     scenePlan.layout.weave,
-    focusedRouteEdges,
+    focusedSignals,
     updateFocusedSignals,
   ]);
 
@@ -2891,37 +2895,31 @@ export function GraphScene({
       applyPresentationPositionsRef.current(morphProgressRef.current, elapsed);
     }
 
-    const focusedFilamentActive = neuronMode && presentationTarget === 1 && focusedRouteEdges.size > 0
+    const routeFilamentVisible = neuronMode && presentationTarget === 1
       && fx3d.edge.core.enabled && fx3d.edge.core.opacity > 0
       && fx3d.edge.core.emissionIntensity > 0
       && fx3d.edge.master.opacity > 0 && scenePlan.edges.opacity > 0;
+    const focusedFilamentActive = routeFilamentVisible && focusedRouteEdges.size > 0;
     energyLineUniforms.lineFocusGain.value = getFocusedFilamentGain(elapsed, reducedMotion, fx3d.edge.focus);
     energyLineUniforms.lineSignalPeriod.value = FOCUSED_SIGNAL_SPACING * fx3d.edge.signal.spacing;
     energyLineUniforms.lineSignalHeadLength.value = fx3d.edge.signal.headLength;
     energyLineUniforms.lineSignalWakeLength.value = fx3d.edge.signal.wakeLength;
-    const routeSignalActive = focusedFilamentActive && !reducedMotion && documentVisibleRef.current
+    const routeSignalActive = routeFilamentVisible && !reducedMotion && documentVisibleRef.current
+      && (focusedSignals.emitters.size > 0 || focusedSignals.packets.length > 0)
       && fx3d.edge.signal.enabled && fx3d.edge.signal.emissionIntensity > 0
       && morphProgressRef.current >= 0.999 && !dimensionChanged;
     if (routeSignalActive) {
-      const previous = focusedSignalTravelRef.current;
-      if (activationAnimating) chargeSignalContacts(nodeActivation, focusedSignalContacts, previous,
-        previous + frameDelta * FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed,
-        FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed, energyLineUniforms.lineSignalPeriod.value, activationOptions,
-        focusedContactColor);
-      if (activationAnimating) chargeSignalContacts(filamentActivation, filamentActivation.contacts, previous,
-        previous + frameDelta * FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed,
-        FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed, energyLineUniforms.lineSignalPeriod.value, activationOptions);
-      focusedSignalTravelRef.current = advanceFocusedSignalTravel(
-        previous, frameDelta, focusedSignalMaximumRef.current, fx3d.edge.signal.speed,
-        energyLineUniforms.lineSignalPeriod.value,
-      );
-      focusedSignalCycleBaseRef.current = advanceSignalCycleBase(focusedSignalCycleBaseRef.current,
-        previous, focusedSignalTravelRef.current, frameDelta, fx3d.edge.signal.speed,
-        energyLineUniforms.lineSignalPeriod.value);
+      advanceFocusedSignals(focusedSignals, frameDelta, { ...fx3d.edge.signal, palette: signalPalette },
+        activationAnimating ? (packet, previous, next, speed) => {
+          chargeSignalContacts(nodeActivation, packet.route.contacts, previous, next, speed, 0,
+            activationOptions, () => packet.color);
+          chargeSignalContacts(filamentActivation, packet.route.filamentContacts, previous, next, speed, 0, activationOptions);
+        } : undefined);
     }
-    energyLineUniforms.lineSignalTravel.value = routeSignalActive ? focusedSignalTravelRef.current : -1;
+    energyLineUniforms.lineSignalTravel.value = routeSignalActive ? 0 : -1;
     energyLineUniforms.lineSignalGain.value = fx3d.edge.signal.emissionIntensity;
-    energyLineUniforms.lineSignalCycleBase.value = focusedSignalCycleBaseRef.current;
+    energyLineUniforms.lineSignalHistory.value = focusedSignals.texture;
+    energyLineUniforms.lineSignalHistorySize.value.set(focusedSignals.texture.image.width, focusedSignals.texture.image.height);
     const idleSignalActive = idleSignals && presentationTarget === 0 && dimension === 3
       && fx3d.orb.signals.enabled && fx3d.orb.signals.count > 0
       && morphProgressRef.current <= 0.001 && !dimensionChanged
@@ -3064,6 +3062,7 @@ export function GraphScene({
       dimensionChanged,
       documentVisible: documentVisibleRef.current,
       focusedFilamentActive,
+      routeSignalActive,
       nodeActivationActive: nodeActivationActive || filamentActivationActive || idleFilamentActivationActive,
       idlePresentation: presentationTarget === 0,
       presentationChanged,

@@ -25,16 +25,21 @@ export const FOCUSED_SIGNAL_SHADER = `
   varying vec2 energyLineSignalDistance;
   varying float energyLineSignalSize;
 
-  vec2 focusedSignal(float distanceFromOrigin) {
-    if (distanceFromOrigin < 0.0 || lineSignalTravel < distanceFromOrigin) return vec2(0.0);
-    float age = lineSignalTravel - distanceFromOrigin;
-    if (lineSignalPeriod > 0.0) age = mod(age, lineSignalPeriod);
+  vec2 focusedSignalAge(float age) {
+    if (age < 0.0) return vec2(0.0);
     float headAge = age / (lineSignalHeadLength * energyLineSignalSize);
     float wakeAge = age / max(0.001, lineSignalWakeLength * energyLineSignalSize);
     float head = smoothstep(0.0, 2.0, headAge) * (1.0 - smoothstep(3.0, 9.0, headAge));
     float wake = smoothstep(0.0, 5.0, wakeAge) * pow(1.0 - smoothstep(5.0, 42.0, wakeAge), 2.0)
       * step(0.001, lineSignalWakeLength);
     return vec2(head, wake);
+  }
+
+  vec2 focusedSignal(float distanceFromOrigin) {
+    if (distanceFromOrigin < 0.0 || lineSignalTravel < distanceFromOrigin) return vec2(0.0);
+    float age = lineSignalTravel - distanceFromOrigin;
+    if (lineSignalPeriod > 0.0) age = mod(age, lineSignalPeriod);
+    return focusedSignalAge(age);
   }
 `;
 
