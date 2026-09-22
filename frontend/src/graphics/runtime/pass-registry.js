@@ -14,6 +14,8 @@ export function createGraphicsPassRegistry({
   bloomRadius,
   bloomSmoothing = 0.22,
   bloomThreshold = 0.82,
+  bloomFalloff = 2,
+  bloomColorPreservation = 0.8,
   runtime = null,
 } = {}) {
   const qualityProfile = runtime?.qualityProfile;
@@ -37,6 +39,8 @@ export function createGraphicsPassRegistry({
       luminanceThreshold: clamp(bloomThreshold, 0, 1),
       levels: bloomLevels,
       radius: resolvedBloomRadius,
+      falloff: clamp(bloomFalloff, 1, 3),
+      colorPreservation: clamp(bloomColorPreservation, 0, 1),
     }),
     Object.freeze({
       ...PASS_DEFINITIONS.toneMapping,

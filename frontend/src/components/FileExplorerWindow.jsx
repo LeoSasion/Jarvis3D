@@ -1629,8 +1629,6 @@ export function FileExplorerWindow({
     deferredSearch,
   );
   const searchSummaryLabel = getLocalizedSearchSummary(searchSummary, t);
-  const sortColumnLabel = t(EXPLORER_SORT_COLUMNS.find((column) =>
-    column.id === sortKey)?.labelKey ?? "explorer.column.name");
   const sortDirectionLabel = t(sortDirection === "ascending"
     ? "explorer.sort.ascending"
     : "explorer.sort.descending");
@@ -1833,14 +1831,12 @@ export function FileExplorerWindow({
           </aside>
 
           <section className={`explorer-files is-${viewMode}`} aria-label={t("explorer.folderContents.aria")}>
-            <header className="explorer-workspace-heading">
-              <span>{t("explorer.workspace.currentNode")}</span>
+            <header className="explorer-folder-heading">
               <h1>{currentNodeLabel}</h1>
-              <small>{t("explorer.workspace.summary", {
-                items: searchSummaryLabel,
-                sort: sortColumnLabel,
-                direction: sortDirectionLabel,
-              })}</small>
+              <span>{searchSummaryLabel}</span>
+              {selectedEntries.length > 0 ? <small>{t("explorer.selection.itemsSelected", {
+                count: selectedEntries.length,
+              })}</small> : null}
             </header>
             {viewMode === "list" ? (
               <div className="explorer-list-heading" aria-label={t("explorer.columns.aria")}>

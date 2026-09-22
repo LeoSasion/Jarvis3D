@@ -35,8 +35,10 @@ import { GRAPH_CELL_SHADER } from "./graph-cell-shader.js";
 import { createGraphCellRoles, createGraphCellVariations, writeGraphCellHighlights, usesGraphCellMaterial } from "./graph-cell-state.js";
 import {
   createRestingRouteIndex, createFocusedRestingRoutePlan, getFocusedFilamentGain,
-  writeFocusedRouteMask, writeFocusedSignalDistances, FOCUSED_SIGNAL_SHADER, advanceFocusedSignalTravel,
+  writeFocusedRouteMask, writeFocusedSignalDistances, FOCUSED_SIGNAL_SHADER, advanceFocusedSignalTravel, FOCUSED_SIGNAL_SPACING, FOCUSED_SIGNAL_SPEED,
 } from "./graph-focus-filament.js";
+import { createNodeActivationState, chargeSignalContacts, touchNodeActivation, updateNodeActivation } from "./graph-node-activation.js";
+import { createFilamentActivationState, writeFilamentActivationContacts, chargeBackgroundFilament } from "./graph-filament-activation.js";
 import { GraphCameraNavigation } from "./GraphCameraNavigation.jsx";
 import {
   createNeuronEdgeView,
@@ -55,6 +57,8 @@ import {
 } from "./graph-label-atlas.js";
 import { GRAPH_LABEL_LAYER } from "./graph-label-rendering.js";
 import { createNeuronSphereModel, createNeuronSphereCurves } from "./graph-neuron-sphere-model.js";
+import { createIdleSignalState, advanceIdleSignals, writeNextIdleSignalRoutes } from "./graph-idle-signals.js";
+import { createSignalColorPalette, sampleFocusedSignalColor, advanceSignalCycleBase, SIGNAL_BIRTH_COLOR_SHADER } from "./graph-signal-color.js";
 import {
   createGraphPointerQueue,
   createGraphScreenIndex,
@@ -105,6 +109,8 @@ const ENERGY_POINT_VERTEX_SHADER = `
   attribute vec2 pointCellRoles;
   attribute vec4 pointCellVariation;
   attribute float pointHighlight;
+  attribute float pointActivation;
+  attribute vec3 pointActivationColor;
   uniform float pointLayering;
   uniform float pointCellStyle;
   uniform float pointAbsoluteLayer;
@@ -128,6 +134,8 @@ const ENERGY_POINT_VERTEX_SHADER = `
   varying float pointCellRotation;
   varying float pointCellPrimary;
   varying float pointCellHighlight;
+  varying float pointCellActivation;
+  varying vec3 pointCellActivationColor;
   varying vec3 pointCellColor;
 
   void main() {
@@ -144,6 +152,8 @@ const ENERGY_POINT_VERTEX_SHADER = `
     pointCellRotation = pointPhase * 0.71;
     pointCellPrimary = mix(pointCellRoles.x, pointCellRoles.y, pointAbsoluteLayer);
     pointCellHighlight = pointHighlight;
+    pointCellActivation = pointActivation;
+    pointCellActivationColor = pointActivationColor;
     pointCellColor = pointCellVariation.rgb;
     pointEnergyHierarchy = pointHierarchy;
     pointEnergyHierarchy = mix(pointEnergyHierarchy, clamp(pointLayerScale / 2.5, 0.1, 1.0), pointAbsoluteLayer);
@@ -321,7 +331,9 @@ const ENERGY_LINE_VERTEX_SHADER = `
   attribute float edgeWidth;
   attribute float edgeEnergy;
   attribute float edgeFocus;
+  attribute vec2 edgeActivation;
   attribute vec4 edgeSignalDistances;
+  attribute vec4 edgeSignalAppearance;
   uniform vec2 viewportSize;
   uniform float lineHaloRadiusScale;
   uniform float lineHaloVisibility;
@@ -342,7 +354,10 @@ const ENERGY_LINE_VERTEX_SHADER = `
   varying float energyLineGlint;
   varying float energyLineWorldWidth;
   varying float energyLineFocus;
+  varying float energyLineActivation;
   varying vec2 energyLineSignalDistance;
+  varying float energyLineSignalSize;
+  varying vec3 energyLineSignalColor;
 
   void main() {
     vec4 startView = modelViewMatrix * vec4(edgeStart, 1.0);
@@ -414,7 +429,8 @@ const ENERGY_LINE_VERTEX_SHADER = `
         * perspectiveWidth, lineFilamentEnabled);
     // Rasterize enough area for one-pixel coverage even without a local halo.
     // This padding carries no glow; it prevents subpixel ribbons dropping out.
-    float expandedWidthPixels = coreWidthPixels + max(haloPixels, lineFilamentEnabled * 0.9);
+    float signalPadding = coreWidthPixels * max(0.0, edgeSignalAppearance.w - 1.0);
+    float expandedWidthPixels = coreWidthPixels + max(haloPixels, lineFilamentEnabled * 0.9 + signalPadding);
     vec2 offsetNdc = screenNormal
       * side
       * expandedWidthPixels
@@ -432,13 +448,17 @@ const ENERGY_LINE_VERTEX_SHADER = `
     energyLineProgress = along;
     energyLineStrength = edgeEnergy;
     energyLineFocus = edgeFocus;
+    energyLineActivation = mix(edgeActivation.x, edgeActivation.y, along);
     energyLineSignalDistance = mix(edgeSignalDistances.xz, edgeSignalDistances.yw, along);
+    energyLineSignalSize = max(0.1, edgeSignalAppearance.w);
+    energyLineSignalColor = edgeSignalAppearance.rgb;
   }
 `;
 
 const ENERGY_LINE_FRAGMENT_SHADER = `
   ${GRAPH_RADIANCE_SHADER}
   ${FOCUSED_SIGNAL_SHADER}
+  ${SIGNAL_BIRTH_COLOR_SHADER}
   uniform float lineCoreEmissionByStrength;
   uniform float lineCoreEmissionIntensity;
   uniform float lineCoreOpacity;
@@ -457,6 +477,9 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
   uniform float lineTranslucency;
   uniform float lineFocusGain;
   uniform float lineSignalGain;
+  uniform float lineActivationEnabled;
+  uniform float lineActivationStrength;
+  uniform float lineRestingBrightness;
   uniform vec3 lineHotColor;
   varying vec3 energyLineColor;
   varying float energyLineCoreBoundary;
@@ -468,6 +491,7 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
   varying float energyLineGlint;
   varying float energyLineWorldWidth;
   varying float energyLineFocus;
+  varying float energyLineActivation;
 
   void main() {
     float lineDistance = abs(energyLineDistance);
@@ -550,12 +574,16 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
       * coreColorGain
       * lineCoreEmissionIntensity
       * coreEmissionGain;
+    float activationWeight = lineActivationEnabled * lineFilamentEnabled;
+    float charge = energyLineActivation * lineActivationStrength;
+    float response = clamp(charge, 0.0, 1.0);
+    float localHeat = mix(1.0, response, activationWeight);
     // A warm translucent body and narrow off-center glint suggest a round
     // section without tube geometry, lights or an additional render pass.
     vec3 roundedColor = mix(
       energyLineColor * (0.42 + 0.58 * sectionHeight),
       lineHotColor,
-      hotSpine * (0.38 + energyLineBranchPresence * 0.5) * energyLineGlint
+      hotSpine * (0.38 + energyLineBranchPresence * 0.5) * energyLineGlint * localHeat
     ) * lineCoreEmissionIntensity * coreEmissionGain;
     coreColor = mix(coreColor, roundedColor, lineRoundness * lineFilamentEnabled);
     // Each connection follows its own transparency gradient. Total arc length,
@@ -565,6 +593,8 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
     float gradientEnergy = 0.2 + 0.7 * densityResponse + 0.08 * thicknessHeat;
     float heat = mix(0.68, gradientEnergy, radianceTransmissionLink)
       * clamp(lineCoreEmissionIntensity * coreEmissionGain / 1.8, 0.0, 1.25);
+    // Density still shapes the gradient, but only a passing signal can heat it.
+    heat = mix(min(heat, 0.68), heat, localHeat);
     vec3 luminousCore = graphRadianceColor(energyLineColor, heat)
       * lineCoreEmissionIntensity * coreEmissionGain
       * mix(1.0, 0.58 + 0.7 * densityResponse, radianceTransmissionLink)
@@ -575,21 +605,48 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
       graphRadianceColor(lineHaloColor, heat * 0.28)
         * haloColorGain * lineHaloEmissionIntensity,
       radianceTemperature);
+    // Dim the formerly hot root regions at rest without losing the fine orange
+    // axons. The original peak returns only on the actual travelled segments.
+    float rootActivation = mix(1.0, mix(lineRestingBrightness, 1.0, response)
+      + max(0.0, charge - 1.0), activationWeight * smoothstep(0.35, 0.9, densityResponse));
+    coreColor *= rootActivation;
     float coreMix = coreAlpha / max(0.0001, coreAlpha + haloAlpha);
     vec3 signalLight = vec3(0.0);
-    if (energyLineFocus > 0.0 && lineSignalTravel >= 0.0) {
-      // Use the brighter packet at crossings instead of doubling shared light.
-      vec2 packet = max(focusedSignal(energyLineSignalDistance.x), focusedSignal(energyLineSignalDistance.y));
-      signalLight = (
-        graphRadianceColor(energyLineColor, 1.1) * packet.x * 7.0
-        + graphRadianceColor(energyLineColor, 0.74) * packet.y * 1.7
-      ) * lineCoreEmissionIntensity * coreEmissionGain * coreMix * lineSignalGain;
+    float signalAlpha = 0.0;
+    float packetCoverage = 0.0;
+    vec3 packetColor = vec3(0.0);
+    if (lineSignalTravel >= 0.0) {
+      // Select a whole packet at crossings: its head, wake and birth color
+      // stay together instead of mixing two unrelated particle identities.
+      vec2 firstPacket = focusedSignal(energyLineSignalDistance.x);
+      vec2 secondPacket = focusedSignal(energyLineSignalDistance.y);
+      float secondWins = step(firstPacket.x * 7.0 + firstPacket.y * 1.7 + 0.00001,
+        secondPacket.x * 7.0 + secondPacket.y * 1.7);
+      vec2 packet = mix(firstPacket, secondPacket, secondWins);
+      packetColor = signalBirthColor(
+        mix(energyLineSignalDistance.x, energyLineSignalDistance.y, secondWins),
+        mix(lineSignalOrigins.x, lineSignalOrigins.y, secondWins));
+      float signalBoundary = energyLineCoreBoundary * energyLineSignalSize;
+      float signalCore = 1.0 - smoothstep(max(0.0, signalBoundary - coreFeather),
+        min(1.0, signalBoundary + coreFeather), lineDistance);
+      signalAlpha = lineMasterOpacity * endpointFade
+        * mix(1.0, mix(0.12, 1.0, energyLineDepthPresence), lineDepthContrast)
+        * min(1.0, signalCore * coreStrengthAlpha * lineCoreOpacity * lineCoreVisibility * transmission);
+      packetCoverage = max(packet.x, packet.y);
+      signalLight = packetColor * (packet.x * 7.0 + packet.y * 1.7)
+        * lineCoreEmissionIntensity * coreEmissionGain * lineSignalGain;
     }
+    float combinedAlpha = max(alpha, signalAlpha * packetCoverage);
+    vec3 restingLight = mix(haloColor, coreColor, coreMix) * mix(1.0, lineFocusGain, energyLineFocus) * alpha;
+    // A charged filament must not show a separate white spine through a colored
+    // head. Tint only the part covered by the packet; retain the resting gradient.
+    float restingPeak = max(restingLight.r, max(restingLight.g, restingLight.b));
+    restingLight = mix(restingLight, packetColor * restingPeak, packetCoverage);
     gl_FragColor = vec4(
       // Boost the completed resting gradient, without raising its heat input
       // or flattening the orange body into a uniformly yellow/white stroke.
-      mix(haloColor, coreColor, coreMix) * mix(1.0, lineFocusGain, energyLineFocus) + signalLight,
-      alpha
+      (restingLight + signalLight * signalAlpha) / max(0.0001, combinedAlpha),
+      combinedAlpha
     );
   }
 `;
@@ -1008,6 +1065,9 @@ function createEnergyPointMaterial(color, pointSize, pointOpacity, whiteCore = 1
       energyTime: { value: 0 },
       orbStyle: { value: 0 },
       pointCellStyle: { value: 0 },
+      pointActivationEnabled: { value: 0 },
+      pointActivationStrength: { value: 1 },
+      pointRestingBrightness: { value: 0.55 },
       pointAbsoluteLayer: { value: 0 },
       pointColorVariation: { value: 0 },
       pointDepthContrast: { value: 0 },
@@ -1133,6 +1193,9 @@ export function GraphScene({
   }), [dimension, scenePlan.profiles]);
   const profile3dRef = useRef(profile3d);
   profile3dRef.current = profile3d;
+  const signalPalette = useMemo(() => createSignalColorPalette(scenePlan.edges.color,
+    profile3d.edge.signal.colorStart, profile3d.edge.signal.colorEnd),
+  [scenePlan.edges.color, profile3d.edge.signal.colorStart, profile3d.edge.signal.colorEnd]);
   const fxRevisionKey = JSON.stringify(profile3d);
   const edgeBudget = scenePlan.edges.count;
   const neuronMode = scenePlan.layout.mode === "neuron";
@@ -1187,6 +1250,36 @@ export function GraphScene({
   const sphereCurves = useMemo(() => neuronSphere ? createNeuronSphereCurves(orbMorphModel, 24, profile3d.orb.network.weave) : null,
     [neuronSphere, orbMorphModel, profile3d.orb.network.weave]);
   const sphereLineRef = useRef(null);
+  const idleSignals = useMemo(() => sphereCurves
+    ? createIdleSignalState(orbMorphModel, sphereCurves, morphSeed) : null,
+  [orbMorphModel, sphereCurves, morphSeed]);
+  const idleSignalDistanceAttribute = useMemo(() => idleSignals
+    ? new InstancedBufferAttribute(idleSignals.distances, 4).setUsage(DynamicDrawUsage) : null,
+  [idleSignals]);
+  const idleSignalAppearanceAttribute = useMemo(() => idleSignals
+    ? new InstancedBufferAttribute(idleSignals.appearances, 4).setUsage(DynamicDrawUsage) : null,
+  [idleSignals]);
+  useLayoutEffect(() => {
+    // Palette edits apply to new births; existing idle walks retain their RGB.
+    if (idleSignals) idleSignals.palette = signalPalette;
+  }, [idleSignals, signalPalette]);
+  useLayoutEffect(() => {
+    if (!idleSignals) return;
+    idleSignals.options = {
+      count: profile3d.orb.signals.count, hops: profile3d.orb.signals.hops,
+      batchInterval: profile3d.orb.signals.batchInterval,
+      sizeVariation: profile3d.orb.signals.sizeVariation,
+      launchSpread: profile3d.orb.signals.launchSpread, speed: profile3d.edge.signal.speed,
+      headLength: profile3d.edge.signal.headLength, wakeLength: profile3d.edge.signal.wakeLength,
+    };
+    writeNextIdleSignalRoutes(idleSignals);
+    idleSignalDistanceAttribute.needsUpdate = true;
+    idleSignalAppearanceAttribute.needsUpdate = true;
+    invalidate();
+  }, [idleSignals, idleSignalDistanceAttribute, idleSignalAppearanceAttribute, invalidate, profile3d.orb.signals.count,
+    profile3d.orb.signals.hops, profile3d.orb.signals.batchInterval,
+    profile3d.edge.signal.headLength, profile3d.edge.signal.wakeLength, profile3d.orb.signals.sizeVariation,
+    profile3d.orb.signals.launchSpread, profile3d.edge.signal.speed]);
   const planarMorphModel = useMemo(
     () => createGraphPlanarMorphModel(model.nodes, edgeCapacity, {
       radius: 220,
@@ -1236,7 +1329,27 @@ export function GraphScene({
     [edgeCapacity, edgeSegments],
   );
   const focusedSignalTravelRef = useRef(0);
+  const focusedSignalCycleBaseRef = useRef(0);
+  const focusedContactColor = useCallback((contact, pulse) => sampleFocusedSignalColor(
+    signalPalette, contact.origin, pulse + focusedSignalCycleBaseRef.current,
+  ), [signalPalette]);
+  const focusedSignalAppearance = useMemo(() => new Float32Array(edgeCapacity * edgeSegments * 4).fill(1),
+    [edgeCapacity, edgeSegments]);
   const focusedSignalMaximumRef = useRef(0);
+  const focusedSignalContacts = useMemo(() => [], [focusedRoutePlan]);
+  const filamentActivation = useMemo(() => createFilamentActivationState(edgeCapacity * edgeSegments),
+    [model.nodes, renderEdges, edgeCapacity, edgeSegments]);
+  const filamentActivationAttribute = useMemo(
+    () => new InstancedBufferAttribute(filamentActivation.levels, 2).setUsage(DynamicDrawUsage), [filamentActivation]);
+  const idleFilamentActivation = useMemo(() => createFilamentActivationState(sphereCurves?.strengths.length ?? 0),
+    [sphereCurves]);
+  const idleFilamentActivationAttribute = useMemo(
+    () => new InstancedBufferAttribute(idleFilamentActivation.levels, 2).setUsage(DynamicDrawUsage), [idleFilamentActivation]);
+  useLayoutEffect(() => {
+    if (idleSignals) writeFilamentActivationContacts(idleFilamentActivation, idleSignals.distances);
+  }, [idleFilamentActivation, idleSignals, profile3d.orb.signals.count, profile3d.orb.signals.hops,
+    profile3d.orb.signals.batchInterval, profile3d.edge.signal.headLength, profile3d.edge.signal.wakeLength,
+    profile3d.orb.signals.sizeVariation, profile3d.orb.signals.launchSpread, profile3d.edge.signal.speed]);
   useLayoutEffect(() => {
     writeFocusedRouteMask(edgeFocusAttribute.array, focusedRouteEdges, edgeSegments,
       neuronMode && presentationTarget === 1);
@@ -1386,14 +1499,16 @@ export function GraphScene({
   );
   const updateFocusedSignals = useCallback(() => {
     focusedSignalMaximumRef.current = writeFocusedSignalDistances(edgeSignalDistanceAttribute.array, focusedRoutePlan,
-      edgeSegments, energyLineStarts, energyLineEnds);
+      edgeSegments, energyLineStarts, energyLineEnds, focusedSignalContacts);
+    writeFilamentActivationContacts(filamentActivation, edgeSignalDistanceAttribute.array);
     edgeSignalDistanceAttribute.needsUpdate = true;
-  }, [edgeSignalDistanceAttribute, focusedRoutePlan, edgeSegments, energyLineStarts, energyLineEnds]);
+  }, [edgeSignalDistanceAttribute, focusedRoutePlan, focusedSignalContacts, edgeSegments, energyLineStarts, energyLineEnds, filamentActivation]);
   useLayoutEffect(() => {
     updateFocusedSignals();
     focusedSignalTravelRef.current = 0;
+    focusedSignalCycleBaseRef.current = 0;
     invalidate();
-  }, [updateFocusedSignals, presentationTarget, reducedMotion, invalidate]);
+  }, [updateFocusedSignals, presentationTarget, reducedMotion, invalidate, profile3d.edge.signal.spacing]);
   const energyLineTangentStarts = useMemo(
     () => new Float32Array(edgeCapacity * edgeSegments * 3),
     [edgeCapacity, edgeSegments],
@@ -1473,18 +1588,33 @@ export function GraphScene({
     [model, orbMorphModel.rootMask],
   );
   const nodeCellVariations = useMemo(
-    () => createGraphCellVariations(model, scenePlan.nodes.activeColor),
-    [model, scenePlan.nodes.activeColor],
+    () => createGraphCellVariations(model, scenePlan.nodes.activeColor, {
+      size: profile3d.node.size.variation, hue: profile3d.node.color.groupVariation,
+    }),
+    [model, scenePlan.nodes.activeColor, profile3d.node.size.variation, profile3d.node.color.groupVariation],
   );
   const nodeHighlightAttribute = useMemo(
     () => new BufferAttribute(new Float32Array(model.nodes.length), 1).setUsage(DynamicDrawUsage),
     [model.nodes.length],
   );
+  const nodeActivation = useMemo(() => createNodeActivationState(model.nodes.length, true), [model.nodes]);
+  const nodeActivationAttribute = useMemo(
+    () => new BufferAttribute(nodeActivation.levels, 1).setUsage(DynamicDrawUsage), [nodeActivation],
+  );
+  const nodeActivationColorAttribute = useMemo(
+    () => new BufferAttribute(nodeActivation.colors, 3).setUsage(DynamicDrawUsage), [nodeActivation],
+  );
+  const backgroundSignalProgress = useMemo(() => new Float64Array(12).fill(-1), [model.nodes]);
   useLayoutEffect(() => {
-    writeGraphCellHighlights(nodeHighlightAttribute.array, model.nodes, adjacentNodeIds, presentationTarget === 1);
+    backgroundSignalProgress.fill(-1);
+  }, [backgroundSignalProgress, presentationTarget, dimension, documentVisible, reducedMotion,
+    profile3d.signal.speed, profile3d.signal.count]);
+  useLayoutEffect(() => {
+    writeGraphCellHighlights(nodeHighlightAttribute.array, model.nodes, adjacentNodeIds, presentationTarget === 1,
+      new Set([selectedNodeId, hoveredNodeId]));
     nodeHighlightAttribute.needsUpdate = true;
     invalidate();
-  }, [adjacentNodeIds, invalidate, model.nodes, nodeHighlightAttribute, presentationTarget]);
+  }, [adjacentNodeIds, invalidate, model.nodes, nodeHighlightAttribute, presentationTarget, selectedNodeId, hoveredNodeId]);
   const edgeEnergyStyle = useMemo(
     () => {
       const style = createEdgeEnergyStyle(model, renderEdges, palette);
@@ -1543,7 +1673,18 @@ export function GraphScene({
       lineTranslucency: { value: 0 },
       lineFocusGain: { value: 1 },
       lineSignalTravel: { value: -1 },
+      lineSignalPeriod: { value: FOCUSED_SIGNAL_SPACING },
+      lineSignalHeadLength: { value: 1 },
+      lineSignalWakeLength: { value: 1 },
       lineSignalGain: { value: 1 },
+      lineSignalOrange: { value: new Color() },
+      lineSignalPale: { value: new Color() },
+      lineSignalColorRange: { value: new Vector2(0, 1) },
+      lineSignalOrigins: { value: new Vector2(1, 2) },
+      lineSignalCycleBase: { value: 0 },
+      lineActivationEnabled: { value: 0 },
+      lineActivationStrength: { value: 1 },
+      lineRestingBrightness: { value: 0.55 },
       linePerspective: { value: 0 },
       lineHotColor: { value: new Color(scenePlan.nodes.hubColor) },
       lineOrbRadius: { value: 188 },
@@ -1554,11 +1695,21 @@ export function GraphScene({
     vertexShader: ENERGY_LINE_VERTEX_SHADER,
   }), [scenePlan.nodes.activeColor, scenePlan.nodes.hubColor]);
   const energyLineUniforms = energyLineMaterial.uniforms;
+  useLayoutEffect(() => {
+    energyLineUniforms.lineSignalOrange.value.fromArray(signalPalette.orange);
+    energyLineUniforms.lineSignalPale.value.fromArray(signalPalette.pale);
+    energyLineUniforms.lineSignalColorRange.value.set(signalPalette.start, signalPalette.end);
+    energyLineUniforms.lineSignalOrigins.value.set(
+      (focusedRoutePlan.trees[0]?.origin ?? 0) + 1,
+      (focusedRoutePlan.trees[1]?.origin ?? 1) + 1);
+    invalidate();
+  }, [energyLineUniforms, signalPalette, focusedRoutePlan, invalidate]);
   const sphereLineMaterial = useMemo(() => {
     const material = energyLineMaterial.clone();
     material.uniforms = {
       ...energyLineMaterial.uniforms,
       lineMasterOpacity: { value: 0 }, lineSegmented: { value: 1 }, lineHaloVisibility: { value: 0 },
+      lineSignalTravel: { value: -1 }, lineSignalPeriod: { value: 0 }, lineFocusGain: { value: 1 },
     };
     return material;
   }, [energyLineMaterial]);
@@ -2239,6 +2390,9 @@ export function GraphScene({
     energyLineUniforms.lineRootWidth.value = filament.rootWidth;
     energyLineUniforms.lineRoundness.value = filament.roundness;
     energyLineUniforms.lineTranslucency.value = filament.translucency;
+    energyLineUniforms.lineActivationEnabled.value = Number(fx3d.node.activation.enabled);
+    energyLineUniforms.lineActivationStrength.value = fx3d.node.activation.strength;
+    energyLineUniforms.lineRestingBrightness.value = fx3d.node.activation.restingBrightness;
     energyLineUniforms.linePerspective.value = neuronSphere
       ? idleWeight + Number(dimension === 3) * progress : Number(dimension === 3);
     energyLineUniforms.lineHotColor.value.copy(palette.hub);
@@ -2297,6 +2451,9 @@ export function GraphScene({
     }
     nodeEnergyMaterial.uniforms.pointCoreSizeScale.value = fx3d.node.core.sizeScale;
     nodeEnergyMaterial.uniforms.pointCellStyle.value = Number(neuronMaterials);
+    nodeEnergyMaterial.uniforms.pointActivationEnabled.value = Number(fx3d.node.activation.enabled);
+    nodeEnergyMaterial.uniforms.pointActivationStrength.value = fx3d.node.activation.strength;
+    nodeEnergyMaterial.uniforms.pointRestingBrightness.value = fx3d.node.activation.restingBrightness;
     nodeEnergyMaterial.blending = neuronMaterials ? NormalBlending : AdditiveBlending;
     nodeEnergyMaterial.uniforms.pointPerspectiveFloor.value = spatialNeuron ? 0.68 - progress * 0.38 : 0.68;
     nodeEnergyMaterial.uniforms.pointHaloRadiusScale.value = fx3d.node.halo.radiusScale;
@@ -2683,6 +2840,13 @@ export function GraphScene({
     const fx3d = profile3dRef.current;
     const elapsed = state.clock.elapsedTime;
     const frameDelta = Math.min(0.05, Math.max(0, delta));
+    const activationOptions = fx3d.node.activation;
+    const activationEnabled = activationOptions.enabled
+      && usesGraphCellMaterial(neuronMode, neuronSphere, morphProgressRef.current);
+    const activationAnimating = activationEnabled && !reducedMotion && documentVisibleRef.current;
+    if (activationAnimating) nodeActivation.time += frameDelta;
+    filamentActivation.time = nodeActivation.time;
+    idleFilamentActivation.time = nodeActivation.time;
     lastElapsedRef.current = elapsed;
     let presentationChanged = false;
     let dimensionChanged = false;
@@ -2731,28 +2895,104 @@ export function GraphScene({
       && fx3d.edge.core.enabled && fx3d.edge.core.opacity > 0
       && fx3d.edge.core.emissionIntensity > 0
       && fx3d.edge.master.opacity > 0 && scenePlan.edges.opacity > 0;
-    energyLineUniforms.lineFocusGain.value = getFocusedFilamentGain(elapsed, reducedMotion);
+    energyLineUniforms.lineFocusGain.value = getFocusedFilamentGain(elapsed, reducedMotion, fx3d.edge.focus);
+    energyLineUniforms.lineSignalPeriod.value = FOCUSED_SIGNAL_SPACING * fx3d.edge.signal.spacing;
+    energyLineUniforms.lineSignalHeadLength.value = fx3d.edge.signal.headLength;
+    energyLineUniforms.lineSignalWakeLength.value = fx3d.edge.signal.wakeLength;
     const routeSignalActive = focusedFilamentActive && !reducedMotion && documentVisibleRef.current
       && fx3d.edge.signal.enabled && fx3d.edge.signal.emissionIntensity > 0
       && morphProgressRef.current >= 0.999 && !dimensionChanged;
-    if (routeSignalActive) focusedSignalTravelRef.current = advanceFocusedSignalTravel(
-      focusedSignalTravelRef.current, frameDelta, focusedSignalMaximumRef.current, fx3d.edge.signal.speed,
-    );
+    if (routeSignalActive) {
+      const previous = focusedSignalTravelRef.current;
+      if (activationAnimating) chargeSignalContacts(nodeActivation, focusedSignalContacts, previous,
+        previous + frameDelta * FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed,
+        FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed, energyLineUniforms.lineSignalPeriod.value, activationOptions,
+        focusedContactColor);
+      if (activationAnimating) chargeSignalContacts(filamentActivation, filamentActivation.contacts, previous,
+        previous + frameDelta * FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed,
+        FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed, energyLineUniforms.lineSignalPeriod.value, activationOptions);
+      focusedSignalTravelRef.current = advanceFocusedSignalTravel(
+        previous, frameDelta, focusedSignalMaximumRef.current, fx3d.edge.signal.speed,
+        energyLineUniforms.lineSignalPeriod.value,
+      );
+      focusedSignalCycleBaseRef.current = advanceSignalCycleBase(focusedSignalCycleBaseRef.current,
+        previous, focusedSignalTravelRef.current, frameDelta, fx3d.edge.signal.speed,
+        energyLineUniforms.lineSignalPeriod.value);
+    }
     energyLineUniforms.lineSignalTravel.value = routeSignalActive ? focusedSignalTravelRef.current : -1;
     energyLineUniforms.lineSignalGain.value = fx3d.edge.signal.emissionIntensity;
+    energyLineUniforms.lineSignalCycleBase.value = focusedSignalCycleBaseRef.current;
+    const idleSignalActive = idleSignals && presentationTarget === 0 && dimension === 3
+      && fx3d.orb.signals.enabled && fx3d.orb.signals.count > 0
+      && morphProgressRef.current <= 0.001 && !dimensionChanged
+      && !reducedMotion && documentVisibleRef.current
+      && fx3d.edge.signal.enabled && fx3d.edge.signal.emissionIntensity > 0
+      && fx3d.edge.core.enabled && fx3d.edge.core.opacity > 0 && fx3d.edge.core.emissionIntensity > 0
+      && fx3d.edge.master.opacity > 0 && scenePlan.edges.opacity > 0;
+    if (idleSignalActive) {
+      const previous = idleSignals.travel;
+      const next = previous + frameDelta * FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed;
+      if (activationAnimating) chargeSignalContacts(nodeActivation, idleSignals.contacts, idleSignals.travel,
+        idleSignals.travel + frameDelta * FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed,
+        FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed, 0, activationOptions);
+      if (activationAnimating) chargeSignalContacts(idleFilamentActivation, idleFilamentActivation.contacts, idleSignals.travel,
+        idleSignals.travel + frameDelta * FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed,
+        FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed, 0, activationOptions);
+      if (advanceIdleSignals(idleSignals, frameDelta, fx3d.edge.signal.speed)) {
+        idleSignalDistanceAttribute.needsUpdate = true;
+        idleSignalAppearanceAttribute.needsUpdate = true;
+        writeFilamentActivationContacts(idleFilamentActivation, idleSignals.distances);
+        // Include a batch born in this frame (especially synchronized launches).
+        // Older contacts are idempotent; a clock rebase shifts both bounds.
+        if (activationAnimating) {
+          const shift = next - idleSignals.travel;
+          chargeSignalContacts(nodeActivation, idleSignals.contacts, previous - shift, idleSignals.travel,
+            FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed, 0, activationOptions);
+          chargeSignalContacts(idleFilamentActivation, idleFilamentActivation.contacts, previous - shift, idleSignals.travel,
+            FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed, 0, activationOptions);
+        }
+      }
+    }
+    sphereLineMaterial.uniforms.lineSignalTravel.value = idleSignalActive ? idleSignals.travel : -1;
     const signalLayerActive = isGraphSignalLayerActive({
       dimension,
       signalCount: fx3d.signal.count,
       signalEnabled: fx3d.signal.enabled,
       signalPositionLength: signalPositions.length,
     });
-    if (!reducedMotion && signalLayerActive) {
+    if (!reducedMotion && documentVisibleRef.current && signalLayerActive) {
       const visibleSignalCount = Math.min(fx3d.signal.count, orbMorphModel.signalEdgeIndices.length);
       orbMorphModel.signalEdgeIndices.forEach((edgeIndex, signalIndex) => {
         if (signalIndex >= visibleSignalCount) return;
         const positionOffset = signalIndex * 3;
         const signalSpeed = fx3d.signal.speed;
         const rawProgress = (elapsed * 0.18 * signalSpeed + signalIndex * 0.173) % 1;
+        const previousProgress = backgroundSignalProgress[signalIndex];
+        const canCharge = activationAnimating && fx3d.signal.opacity > 0 && fx3d.signal.emissionIntensity > 0
+          && !dimensionChanged && (morphProgressRef.current < 0.001 || morphProgressRef.current >= 0.999);
+        backgroundSignalProgress[signalIndex] = canCharge ? rawProgress : -1;
+        if (canCharge && previousProgress >= 0) {
+          if (sphereCurves && morphProgressRef.current < 0.001) {
+            const curveIndex = Math.floor((signalIndex + 0.35) / Math.max(1, visibleSignalCount) * orbMorphModel.edges.length);
+            chargeBackgroundFilament(idleFilamentActivation, curveIndex, sphereCurves.segments,
+              previousProgress, rawProgress, 0.18 * signalSpeed, activationOptions);
+          } else if (morphProgressRef.current >= 0.999 && renderEdges[edgeIndex]) {
+            chargeBackgroundFilament(filamentActivation, edgeIndex, edgeSegments,
+              previousProgress, rawProgress, 0.18 * signalSpeed, activationOptions);
+          }
+        }
+        if (canCharge && previousProgress >= 0 && rawProgress < previousProgress) {
+          const sphereIdle = sphereCurves && morphProgressRef.current < 0.001;
+          const activeEdge = sphereIdle
+            ? orbMorphModel.edges[Math.floor((signalIndex + 0.35) / Math.max(1, visibleSignalCount) * orbMorphModel.edges.length)]
+            : morphProgressRef.current >= 0.999 ? renderEdges[edgeIndex] : null;
+          if (activeEdge) {
+            const contactTime = nodeActivation.time - rawProgress / (0.18 * signalSpeed);
+            const contactColor = signalPointColors.subarray(positionOffset, positionOffset + 3);
+            touchNodeActivation(nodeActivation, activeEdge.targetIndex, contactTime, activationOptions, contactColor);
+            touchNodeActivation(nodeActivation, activeEdge.sourceIndex, contactTime, activationOptions, contactColor);
+          }
+        }
         const curveTravel = rawProgress * rawProgress * (3 - 2 * rawProgress) * edgeSegments;
         const segment = Math.min(edgeSegments - 1, Math.floor(curveTravel));
         const edgeOffset = (edgeIndex * edgeSegments + segment) * 6;
@@ -2777,7 +3017,19 @@ export function GraphScene({
       if (signalPositionAttributeRef.current) {
         signalPositionAttributeRef.current.needsUpdate = true;
       }
+    } else {
+      backgroundSignalProgress.fill(-1);
     }
+
+    const nodeActivationActive = updateNodeActivation(nodeActivation, activationOptions, activationEnabled && !reducedMotion);
+    if (nodeActivation.changed) {
+      nodeActivationAttribute.needsUpdate = true;
+      nodeActivationColorAttribute.needsUpdate = true;
+    }
+    const filamentActivationActive = updateNodeActivation(filamentActivation, activationOptions, activationEnabled && !reducedMotion);
+    const idleFilamentActivationActive = updateNodeActivation(idleFilamentActivation, activationOptions, activationEnabled && !reducedMotion);
+    if (filamentActivation.changed) filamentActivationAttribute.needsUpdate = true;
+    if (idleFilamentActivation.changed) idleFilamentActivationAttribute.needsUpdate = true;
 
     const pointerQueue = pointerQueueRef.current;
     if (pointerQueue.hasPending()) {
@@ -2812,6 +3064,7 @@ export function GraphScene({
       dimensionChanged,
       documentVisible: documentVisibleRef.current,
       focusedFilamentActive,
+      nodeActivationActive: nodeActivationActive || filamentActivationActive || idleFilamentActivationActive,
       idlePresentation: presentationTarget === 0,
       presentationChanged,
       reducedMotion,
@@ -3076,7 +3329,7 @@ export function GraphScene({
   return (
     <group>
       {sphereCurves ? (
-        <mesh ref={sphereLineRef} frustumCulled={false} raycast={() => null} renderOrder={1.25}>
+        <mesh name="graph-idle-filaments" ref={sphereLineRef} frustumCulled={false} raycast={() => null} renderOrder={1.25}>
           <instancedBufferGeometry key={sphereCurves.strengths.length} instanceCount={sphereCurves.strengths.length}>
             <bufferAttribute attach="attributes-position" args={[ENERGY_LINE_QUAD_POSITIONS, 3]} />
             <instancedBufferAttribute attach="attributes-edgeStart" args={[sphereCurves.starts, 3]} />
@@ -3088,6 +3341,9 @@ export function GraphScene({
             <instancedBufferAttribute attach="attributes-edgeColorEnd" args={[sphereLineColors, 3]} />
             <instancedBufferAttribute attach="attributes-edgeWidth" args={[sphereCurves.widths, 1]} />
             <instancedBufferAttribute attach="attributes-edgeEnergy" args={[sphereCurves.strengths, 1]} />
+            <primitive attach="attributes-edgeSignalDistances" object={idleSignalDistanceAttribute} />
+            <primitive attach="attributes-edgeSignalAppearance" object={idleSignalAppearanceAttribute} />
+            <primitive attach="attributes-edgeActivation" object={idleFilamentActivationAttribute} />
           </instancedBufferGeometry>
           <primitive attach="material" object={sphereLineMaterial} />
         </mesh>
@@ -3288,6 +3544,8 @@ export function GraphScene({
             />
             <primitive attach="attributes-edgeFocus" object={edgeFocusAttribute} />
             <primitive attach="attributes-edgeSignalDistances" object={edgeSignalDistanceAttribute} />
+            <instancedBufferAttribute attach="attributes-edgeSignalAppearance" args={[focusedSignalAppearance, 4]} />
+            <primitive attach="attributes-edgeActivation" object={filamentActivationAttribute} />
           </instancedBufferGeometry>
           <primitive attach="material" object={energyLineMaterial} />
         </mesh>
@@ -3320,6 +3578,7 @@ export function GraphScene({
         frustumCulled={false}
         raycast={() => null}
         renderOrder={1.7}
+        name="graph-cell-nodes"
       >
         <bufferGeometry>
           <bufferAttribute
@@ -3344,6 +3603,8 @@ export function GraphScene({
             args={[nodeCellVariations, 4]}
           />
           <primitive attach="attributes-pointHighlight" object={nodeHighlightAttribute} />
+          <primitive attach="attributes-pointActivation" object={nodeActivationAttribute} />
+          <primitive attach="attributes-pointActivationColor" object={nodeActivationColorAttribute} />
           <bufferAttribute
             attach="attributes-pointScale"
             args={[nodeEnergyStyle.scales, 1]}

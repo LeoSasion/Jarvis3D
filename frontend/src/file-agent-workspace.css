@@ -1,0 +1,337 @@
+/* File and conversation surfaces only; the graph and shared palette stay owned
+ * by their existing renderers and theme definitions. */
+
+.jarvis-explorer .explorer-folder-heading {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 22px 28px 18px;
+  border-bottom: 1px solid var(--shell-border);
+}
+
+.explorer-folder-heading h1 {
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  color: var(--shell-text-strong);
+  font: 500 24px/1.3 var(--shell-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-folder-heading > span,
+.explorer-folder-heading > small {
+  flex-shrink: 0;
+  color: var(--shell-muted);
+  font: 12px/1.5 var(--shell-font);
+}
+
+.explorer-folder-heading > small {
+  margin-left: auto;
+  color: var(--shell-accent);
+}
+
+.jarvis-explorer .explorer-files,
+.workspace-window.is-layout-explorer-focus .explorer-files {
+  grid-template-rows: auto 40px minmax(0, 1fr) 80px;
+}
+
+.jarvis-explorer .explorer-files.is-grid,
+.workspace-window.is-layout-explorer-focus .explorer-files.is-grid {
+  grid-template-rows: auto minmax(0, 1fr) 80px;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-files {
+  grid-template-rows: auto 40px minmax(0, 1fr);
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-files.is-grid {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.jarvis-explorer .explorer-commandbar {
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.jarvis-explorer .explorer-commandbar > button {
+  min-width: 38px;
+  gap: 8px;
+  border-right: 0;
+  padding-inline: 12px;
+  font-family: var(--shell-font);
+}
+
+.jarvis-explorer .explorer-commandbar > button:first-child {
+  margin-right: 8px;
+  border-right: 1px solid var(--shell-border);
+  padding-right: 20px;
+}
+
+.jarvis-explorer .explorer-commandbar > button span {
+  display: inline;
+}
+
+.jarvis-explorer .explorer-entry-name strong {
+  color: var(--shell-text-strong);
+  font: 400 14px/1.4 var(--shell-font);
+  letter-spacing: 0;
+}
+
+.jarvis-explorer .explorer-files.is-grid .explorer-entry {
+  height: 128px;
+  contain-intrinsic-size: 128px;
+  grid-template-rows: minmax(0, 1fr);
+  border: 1px solid transparent !important;
+}
+
+.jarvis-explorer .explorer-files.is-grid .explorer-entry-name {
+  align-content: start;
+  gap: 8px;
+}
+
+.jarvis-explorer .explorer-entry > span:not(.explorer-entry-name) {
+  color: var(--shell-muted);
+  font: 12px/1.4 var(--shell-font);
+  font-variant-numeric: tabular-nums;
+}
+
+.jarvis-shell .jarvis-explorer .explorer-entry.is-selected > span {
+  color: var(--shell-text-strong);
+}
+
+.jarvis-explorer .explorer-list-heading > button {
+  color: var(--shell-muted);
+  font-family: var(--shell-font);
+  letter-spacing: 0;
+}
+
+.jarvis-explorer .explorer-inspector-heading {
+  margin-bottom: 24px;
+}
+
+.jarvis-explorer .explorer-inspector-heading span {
+  color: var(--shell-muted);
+  font: 12px/1.4 var(--shell-font);
+  letter-spacing: 0;
+}
+
+.jarvis-explorer .explorer-preview-icon {
+  width: 52px;
+  height: 52px;
+  margin-bottom: 16px;
+}
+
+.jarvis-explorer .explorer-preview-icon svg {
+  width: 48px;
+  height: 48px;
+}
+
+.jarvis-explorer .explorer-inspector > h2 {
+  font-size: 20px;
+  margin-block: 0 8px;
+}
+
+.jarvis-explorer .explorer-inspector :where(dt, dd) {
+  font-family: var(--shell-font);
+  font-variant-numeric: tabular-nums;
+}
+
+.jarvis-explorer .explorer-inspector-actions button:first-child:not(:disabled) {
+  min-height: 42px;
+  margin-bottom: 12px;
+  padding-inline: 14px;
+  border: 1px solid var(--shell-accent);
+  color: var(--shell-text-strong);
+}
+
+.jarvis-explorer .explorer-inspector-actions button:first-child svg {
+  color: var(--shell-accent);
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-selection-summary {
+  gap: 16px;
+  border-top-color: var(--shell-border);
+}
+
+.explorer-selection-summary__identity strong {
+  font-size: 14px;
+}
+
+.explorer-selection-summary__identity small,
+.explorer-selection-summary dt {
+  color: var(--shell-muted);
+}
+
+.jarvis-explorer .explorer-link-agent-action {
+  align-self: center;
+  padding: 10px 14px;
+  border: 1px solid var(--shell-border-strong);
+}
+
+.jarvis-explorer .explorer-link-agent-action:not(:disabled):hover {
+  border-color: var(--shell-accent);
+}
+
+.agent-workbench .agent-empty-state {
+  width: min(100%, 480px) !important;
+  padding: 52px 12px 24px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.agent-workbench .agent-empty-state__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px !important;
+}
+
+.agent-empty-state__icon {
+  width: 28px;
+  height: 28px;
+  margin-bottom: 8px;
+  color: var(--shell-muted);
+}
+
+.agent-workbench .agent-empty-state__copy > strong {
+  font: 500 24px/1.4 var(--shell-font) !important;
+}
+
+.agent-workbench .agent-empty-state__copy > p {
+  margin: 0;
+  font: 14px/1.8 var(--shell-font) !important;
+}
+
+.agent-starters {
+  display: grid;
+  border-top: 1px solid var(--shell-border);
+}
+
+.agent-starters > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 76px;
+  padding: 14px 0;
+  border: 0;
+  border-bottom: 1px solid var(--shell-border);
+  border-radius: 0;
+  text-align: left;
+  background: transparent;
+  color: var(--shell-text);
+  cursor: pointer;
+}
+
+.agent-starters > button > span {
+  display: grid;
+  gap: 6px;
+}
+
+.agent-workbench .agent-starters strong {
+  font: 500 14px/1.4 var(--shell-font) !important;
+}
+
+.agent-workbench .agent-starters small {
+  font: 12px/1.5 var(--shell-font) !important;
+  letter-spacing: 0 !important;
+}
+
+.agent-starters > button > svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--shell-muted);
+}
+
+.agent-starters > button:hover,
+.agent-starters > button:focus-visible {
+  background: var(--shell-hover);
+}
+
+.agent-starters > button:hover > svg,
+.agent-starters > button:focus-visible > svg {
+  color: var(--shell-accent);
+}
+
+.agent-workbench .agent-composer__attachments {
+  padding: 0;
+}
+
+.agent-workbench .agent-linked-context,
+.agent-workbench .agent-link-cue {
+  padding: 14px 16px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--shell-border) !important;
+}
+
+.agent-workbench .agent-linked-context__identity strong {
+  font: 500 13px/1.5 var(--shell-font) !important;
+}
+
+.agent-workbench .agent-linked-context__state {
+  font-family: var(--shell-font);
+}
+
+.agent-workbench .agent-footer > small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-composer__hint {
+  padding: 0 12px 10px;
+  color: var(--shell-muted);
+  font: 11px/1.4 var(--shell-font);
+}
+
+@media (max-width: 1365px), (max-height: 800px) {
+  .jarvis-explorer .explorer-folder-heading {
+    gap: 10px;
+    padding: 14px 20px;
+  }
+
+  .explorer-folder-heading h1 {
+    font-size: 20px;
+  }
+
+  .agent-workbench .agent-empty-state {
+    padding-top: 12px !important;
+    gap: 20px;
+  }
+
+  .agent-workbench .agent-empty-state__copy > strong {
+    font-size: 20px !important;
+  }
+
+  .agent-starters > button {
+    min-height: 64px;
+  }
+}
+
+@media (min-width: 1500px) {
+  .workspace-window.is-layout-explorer-focus .explorer-files {
+    grid-template-rows: auto 40px minmax(0, 1fr) 96px;
+  }
+
+  .workspace-window.is-layout-explorer-focus .explorer-files.is-grid {
+    grid-template-rows: auto minmax(0, 1fr) 96px;
+  }
+}
+
+@media (max-height: 800px) {
+  .agent-workbench .agent-empty-state__icon {
+    display: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .agent-starters > button,
+  .jarvis-explorer .explorer-link-agent-action {
+    border-color: ButtonText;
+  }
+}

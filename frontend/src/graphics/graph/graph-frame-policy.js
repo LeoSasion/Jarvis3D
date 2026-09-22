@@ -12,6 +12,7 @@ export function shouldContinueGraphFrame({
   dimensionChanged = false,
   documentVisible = true,
   focusedFilamentActive = false,
+  nodeActivationActive = false,
   idlePresentation = false,
   presentationChanged = false,
   reducedMotion = false,
@@ -21,6 +22,7 @@ export function shouldContinueGraphFrame({
   return Boolean(
     signalLayerActive
       || focusedFilamentActive
+      || nodeActivationActive
       || presentationChanged
       || dimensionChanged
       || idlePresentation,

@@ -5,7 +5,7 @@ import { createNeuronStructure, createNeuronPositions } from "../src/graphics/gr
 import { createSpatialNeuronPositions, createSpatialNeuronEdgeView, writeSpatialNeuronCurve } from "../src/graphics/graph/graph-neuron-spatial-model.js";
 import {
   getGraphVisualPresetId, getGraphVisualSettingsSnapshot, normalizeGraphVisualSettings,
-  resetGraphVisualSettings, setGraphVisualPreset, setGraphVisualSetting,
+  resetGraphVisualSettings, setGraphVisualPreset, setGraphVisualSetting, setGraphSharedNeuronStyle,
 } from "../src/graphics/graph/graph-visual-settings.js";
 
 function fixture() {
@@ -103,8 +103,9 @@ test("empty, isolated, coincident and long-chain inputs stay finite and bounded"
   }
 });
 
-test("3D neuron settings persist independently with local emission and restrained bloom", () => {
+test("3D neuron settings persist independently with the approved radiance and glow", () => {
   resetGraphVisualSettings();
+  setGraphSharedNeuronStyle(false);
   setGraphVisualSetting("view", "dimension", 2);
   setGraphVisualPreset("neuron");
   const before = getGraphVisualSettingsSnapshot();
@@ -117,9 +118,13 @@ test("3D neuron settings persist independently with local emission and restraine
   assert.equal(spatial.layout.mode, "neuron");
   assert.deepEqual(spatial.dimensions["2d"], before.dimensions["2d"]);
   assert.deepEqual(spatial.profiles["2d"], before.profiles["2d"]);
-  assert.equal(spatial.profiles["3d"].postFx.radiance.temperature, 1);
-  assert.ok(spatial.profiles["3d"].postFx.bloom.threshold > orb.postFx.bloom.threshold);
-  assert.ok(spatial.profiles["3d"].postFx.bloom.intensity < orb.postFx.bloom.intensity);
+  assert.deepEqual(spatial.profiles["3d"].postFx.radiance, {
+    temperature: 0.35, focus: 0.35, transmissionLink: 1,
+  });
+  assert.deepEqual(spatial.profiles["3d"].postFx.bloom, {
+    enabled: true, intensity: 1.95, threshold: 0.06, softKnee: 0.35,
+    radius: 0.38, falloff: 2.45, colorPreservation: 0.93,
+  });
   assert.equal(spatial.layout.depthContrast, 0);
   assert.equal(spatial.profiles["3d"].orb.network.depthContrast, 0);
   assert.deepEqual(spatial.profiles["3d"].orb.sparks, orb.orb.sparks);

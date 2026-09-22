@@ -4,6 +4,7 @@ const COMMON_BOOLEAN_PATHS = Object.freeze([
   "node.core.enabled",
   "node.halo.enabled",
   "node.pulse.enabled",
+  "node.activation.enabled",
   "edge.core.enabled",
   "edge.halo.enabled",
   "edge.signal.enabled",
@@ -12,6 +13,7 @@ const COMMON_BOOLEAN_PATHS = Object.freeze([
 ]);
 
 const THREE_D_BOOLEAN_PATHS = Object.freeze([
+  "orb.signals.enabled",
   "orb.innerNetwork.enabled",
   "orb.rim.enabled",
   "orb.sparks.enabled",
@@ -21,6 +23,13 @@ export const graphFxSettingRanges = Object.freeze({
   "node.master.scale": Object.freeze({ min: 0.6, max: 1.8, step: 0.01 }),
   "node.master.opacity": Object.freeze({ min: 0, max: 1, step: 0.01 }),
   "node.size.byImportance": Object.freeze({ min: 0, max: 1, step: 0.01 }),
+  "node.size.variation": Object.freeze({ min: 0, max: 0.5, step: 0.01 }),
+  "node.color.groupVariation": Object.freeze({ min: 0, max: 2, step: 0.05 }),
+  "node.activation.strength": Object.freeze({ min: 0.2, max: 2, step: 0.05 }),
+  "node.activation.restingBrightness": Object.freeze({ min: 0.15, max: 1, step: 0.05 }),
+  "node.activation.chargeTime": Object.freeze({ min: 0.02, max: 0.6, step: 0.01 }),
+  "node.activation.holdTime": Object.freeze({ min: 0, max: 2, step: 0.01 }),
+  "node.activation.decayTime": Object.freeze({ min: 0.2, max: 6, step: 0.1 }),
   "node.core.sizeScale": Object.freeze({ min: 0.6, max: 1.8, step: 0.01 }),
   "node.core.opacity": Object.freeze({ min: 0, max: 1, step: 0.01 }),
   "node.core.emissionIntensity": Object.freeze({ min: 0, max: 3, step: 0.05 }),
@@ -32,6 +41,14 @@ export const graphFxSettingRanges = Object.freeze({
   "edge.master.opacity": Object.freeze({ min: 0, max: 1, step: 0.01 }),
   "edge.signal.speed": Object.freeze({ min: 0.1, max: 3, step: 0.05 }),
   "edge.signal.emissionIntensity": Object.freeze({ min: 0, max: 3, step: 0.05 }),
+  "edge.signal.headLength": Object.freeze({ min: 0.4, max: 3, step: 0.05 }),
+  "edge.signal.wakeLength": Object.freeze({ min: 0, max: 3, step: 0.05 }),
+  "edge.signal.spacing": Object.freeze({ min: 0.5, max: 3, step: 0.05 }),
+  "edge.signal.colorStart": Object.freeze({ min: 0, max: 1, step: 0.01 }),
+  "edge.signal.colorEnd": Object.freeze({ min: 0, max: 1, step: 0.01 }),
+  "edge.focus.boost": Object.freeze({ min: 0.05, max: 1.5, step: 0.05 }),
+  "edge.focus.amplitude": Object.freeze({ min: 0, max: 1.5, step: 0.05 }),
+  "edge.focus.period": Object.freeze({ min: 0.5, max: 8, step: 0.1 }),
   "edge.filament.taper": Object.freeze({ min: 0, max: 1, step: 0.01 }),
   "edge.filament.rootWidth": Object.freeze({ min: 1, max: 6, step: 0.05 }),
   "edge.filament.roundness": Object.freeze({ min: 0, max: 1, step: 0.01 }),
@@ -55,6 +72,11 @@ export const graphFxSettingRanges = Object.freeze({
   "motion.breathingAmount": Object.freeze({ min: 0, max: 2.5, step: 0.05 }),
   "motion.breathingRate": Object.freeze({ min: 0.25, max: 2.5, step: 0.05 }),
   "orb.network.density": Object.freeze({ min: 0.75, max: 4, step: 0.05 }),
+  "orb.signals.count": Object.freeze({ min: 0, max: 48, step: 1, integer: true }),
+  "orb.signals.sizeVariation": Object.freeze({ min: 0, max: 0.5, step: 0.01 }),
+  "orb.signals.launchSpread": Object.freeze({ min: 0, max: 1, step: 0.01 }),
+  "orb.signals.batchInterval": Object.freeze({ min: 0.5, max: 12, step: 0.1 }),
+  "orb.signals.hops": Object.freeze({ min: 2, max: 16, step: 1, integer: true }),
   "orb.network.shellRatio": Object.freeze({ min: 0.1, max: 1, step: 0.01 }),
   "orb.network.depthContrast": Object.freeze({ min: 0, max: 1, step: 0.01 }),
   "orb.network.sizeScale": Object.freeze({ min: 0.65, max: 1.2, step: 0.01 }),
@@ -75,20 +97,25 @@ export const graphFxSettingRanges = Object.freeze({
   "postFx.bloom.threshold": Object.freeze({ min: 0, max: 1, step: 0.01 }),
   "postFx.bloom.softKnee": Object.freeze({ min: 0, max: 1, step: 0.01 }),
   "postFx.bloom.radius": Object.freeze({ min: 0, max: 1, step: 0.01 }),
+  "postFx.bloom.falloff": Object.freeze({ min: 1, max: 3, step: 0.05 }),
+  "postFx.bloom.colorPreservation": Object.freeze({ min: 0, max: 1, step: 0.01 }),
 });
 
 const RAW_DEFAULT_PROFILES = {
   "2d": {
     node: {
       master: { scale: 1, opacity: 1 },
-      size: { byImportance: 0.82 },
+      size: { byImportance: 0.82, variation: 0.25 },
+      color: { groupVariation: 1 },
+      activation: { enabled: true, strength: 1, restingBrightness: 0.55, chargeTime: 0.08, holdTime: 0.12, decayTime: 1.6 },
       core: { enabled: true, sizeScale: 1, opacity: 0.84, emissionIntensity: 0.84 },
       halo: { enabled: true, radiusScale: 0.82, opacity: 0.08, emissionIntensity: 0.72 },
       pulse: { enabled: true, amount: 0.45, rate: 0.8 },
     },
     edge: {
       master: { opacity: 1 },
-      signal: { enabled: true, speed: 1, emissionIntensity: 1 },
+      signal: { enabled: true, speed: 1, emissionIntensity: 1, headLength: 1, wakeLength: 1, spacing: 1, colorStart: 0, colorEnd: 1 },
+      focus: { boost: 0.3, amplitude: 0.55, period: 2.8 },
       filament: { taper: 0, rootWidth: 4.2, roundness: 0, translucency: 0 },
       core: {
         enabled: true,
@@ -118,20 +145,23 @@ const RAW_DEFAULT_PROFILES = {
     motion: { idleRotationSpeed: 0.35, breathingAmount: 0.35, breathingRate: 0.8 },
     postFx: {
       radiance: { temperature: 0, focus: 0, transmissionLink: 1 },
-      bloom: { enabled: false, intensity: 1.02, threshold: 0.28, softKnee: 0.38, radius: 0.72 },
+      bloom: { enabled: false, intensity: 1.02, threshold: 0.28, softKnee: 0.38, radius: 0.72, falloff: 2, colorPreservation: 0.8 },
     },
   },
   "3d": {
     node: {
       master: { scale: 1, opacity: 1 },
-      size: { byImportance: 1 },
+      size: { byImportance: 1, variation: 0.25 },
+      color: { groupVariation: 1 },
+      activation: { enabled: true, strength: 1, restingBrightness: 0.55, chargeTime: 0.08, holdTime: 0.12, decayTime: 1.6 },
       core: { enabled: true, sizeScale: 1, opacity: 0.9, emissionIntensity: 1 },
       halo: { enabled: true, radiusScale: 1, opacity: 0.14, emissionIntensity: 1 },
       pulse: { enabled: true, amount: 1, rate: 1 },
     },
     edge: {
       master: { opacity: 1 },
-      signal: { enabled: true, speed: 1, emissionIntensity: 1 },
+      signal: { enabled: true, speed: 1, emissionIntensity: 1, headLength: 1, wakeLength: 1, spacing: 1, colorStart: 0, colorEnd: 1 },
+      focus: { boost: 0.3, amplitude: 0.55, period: 2.8 },
       filament: { taper: 0, rootWidth: 4.2, roundness: 0, translucency: 0 },
       core: {
         enabled: true,
@@ -159,6 +189,7 @@ const RAW_DEFAULT_PROFILES = {
       emissionIntensity: 1,
     },
     orb: {
+      signals: { enabled: true, count: 48, sizeVariation: 0.3, launchSpread: 0.5, batchInterval: 3, hops: 10 },
       network: { density: 2.4, shellRatio: 1, depthContrast: 0, sizeScale: 1, branchSpread: 1, weave: 0.8 },
       innerNetwork: { enabled: true, scale: 0.73, opacity: 0.2, rotationSpeed: 1 },
       rim: { enabled: true, intensity: 1, fresnelPower: 5.2 },
@@ -167,7 +198,7 @@ const RAW_DEFAULT_PROFILES = {
     motion: { idleRotationSpeed: 1, breathingAmount: 1, breathingRate: 1 },
     postFx: {
       radiance: { temperature: 0, focus: 0, transmissionLink: 1 },
-      bloom: { enabled: true, intensity: 1.85, threshold: 0.18, softKnee: 0.42, radius: 0.92 },
+      bloom: { enabled: true, intensity: 1.85, threshold: 0.18, softKnee: 0.42, radius: 0.92, falloff: 2, colorPreservation: 0.8 },
     },
   },
 };

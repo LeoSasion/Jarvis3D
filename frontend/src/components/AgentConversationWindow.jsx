@@ -540,15 +540,39 @@ export function AgentConversationWindow({
                 </div>
               </article>
             );
-          }) : !linkedContext?.items?.length && !explorerSelection?.length ? (
+          }) : (
             <div className={`agent-empty-state${channelReady && !errorView ? " is-ready" : ""}`}>
               <span className="agent-empty-state__copy">
-                <small>{emptyCopy.eyebrow}</small>
-                <strong>{emptyCopy.heading}</strong>
-                <p>{emptyCopy.detail}</p>
+                <BotRegular className="agent-empty-state__icon" aria-hidden="true" />
+                <strong>{channelReady && !errorView && linkedContext?.items?.length
+                  ? t("agent.start.linked.heading")
+                  : emptyCopy.heading}</strong>
+                <p>{channelReady && !errorView && linkedContext?.items?.length
+                  ? t("agent.start.linked.detail")
+                  : emptyCopy.detail}</p>
               </span>
+              {channelReady && !errorView ? (
+                <div className="agent-starters" aria-label={t("agent.start.aria")}>
+                  {["plan", "questions"].map((intent) => (
+                    <button
+                      key={intent}
+                      type="button"
+                      onClick={() => {
+                        onDraftChange(t(`agent.start.${linkedContext?.items?.length ? "linked" : "general"}.${intent}.prompt`));
+                        composerRef.current?.focus();
+                      }}
+                    >
+                      <span>
+                        <strong>{t(`agent.start.${intent}.label`)}</strong>
+                        <small>{t(`agent.start.${intent}.detail`)}</small>
+                      </span>
+                      <ArrowRightRegular aria-hidden="true" />
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          )}
         </div>
         <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
           {transcriptAnnouncement ? (
@@ -633,7 +657,7 @@ export function AgentConversationWindow({
             )}
           </div>
           <footer className="agent-footer">
-            <small>{connectionCopy}</small>
+            <small title={connectionCopy}>{connectionCopy}</small>
             <span className="agent-footer__status">
               {draft.length >= 12000 ? <code>{draft.length} / 16,000</code> : null}
               <code>
@@ -643,6 +667,7 @@ export function AgentConversationWindow({
               </code>
             </span>
           </footer>
+          <div className="agent-composer__hint">{t("agent.start.keyboardHint")}</div>
         </form>
       </section>
     </div>

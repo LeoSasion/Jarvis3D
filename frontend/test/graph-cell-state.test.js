@@ -32,9 +32,16 @@ test("cell variation stays within 25 percent and survives source reordering and 
   assert.equal(colors[0], colors[3]);
   for (let index = 0; index < 3; index += 1) {
     const hsl = new Color().fromArray(variations, index * 4).getHSL({}, SRGBColorSpace);
-    assert.ok(Math.abs(hsl.s - 1) < 0.001);
-    assert.ok(Math.abs(hsl.l - 0.5) < 0.001);
+    const themeHue = new Color("#ff5a00").getHSL({}, SRGBColorSpace).h;
+    const spread = Math.abs(hsl.h - themeHue) * 360;
+    assert.ok(spread <= 5.41);
+    if (index > 0) assert.ok(spread > 5.39); // Distinct groups, between the former 1.8° and 9° extremes.
+    assert.ok(hsl.s >= 0.919 && hsl.s <= 1.001);
+    assert.ok(hsl.l >= 0.474 && hsl.l <= 0.526);
   }
+  const flat = createGraphCellVariations({ nodes }, "#ff5a00", { hue: 0 });
+  assert.deepEqual(flat.slice(0, 3), flat.slice(4, 7));
+  assert.deepEqual(flat.slice(0, 3), flat.slice(8, 11));
 });
 
 test("cell colors follow source-backed neuron clusters instead of an umbrella folder", () => {
@@ -69,6 +76,11 @@ test("cell highlights follow active one-hop relations and clear without losing s
   assert.deepEqual(update("a", null, false), []);
   assert.deepEqual(update("a", null), ["a", "b"]);
   assert.deepEqual(update(null, null), []);
+
+  writeGraphCellHighlights(values, model.nodes, createGraphAdjacentNodeSet(model, "a", null), true, new Set(["a"]));
+  assert.equal(values[model.nodes.findIndex((node) => node.id === "a")], 1);
+  assert.ok(values[model.nodes.findIndex((node) => node.id === "b")] > 0);
+  assert.ok(values[model.nodes.findIndex((node) => node.id === "b")] < 1);
 
   const roles = createGraphCellRoles({ nodes: [{ id: "hub" }, { id: "leaf" }], hubMask: [1, 0] }, [0, 1]);
   assert.deepEqual([...roles], [1, 0, 0, 1]);
