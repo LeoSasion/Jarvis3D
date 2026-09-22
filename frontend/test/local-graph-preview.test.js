@@ -1,8 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isLocalGraphRequest } from "../scripts/local-graph-preview.mjs";
+import { isLocalGraphRequest, readVisualSettingsRequest } from "../scripts/local-graph-preview.mjs";
+import { Readable } from "node:stream";
 import { createLocalGraphPreview } from "../src/platform/local-graph-preview.js";
 import { loadDefaultKnowledgeGraph } from "../src/graph/default-knowledge-graph-loader.js";
+
+test("local visual writes require bounded JSON and never accept filesystem paths", async () => {
+  const request = (body, type = "application/json") => Object.assign(Readable.from([body]), { headers: { "content-type": type } });
+  const valid = JSON.stringify({ revision: null, settings: { version: 7 } });
+  assert.equal((await readVisualSettingsRequest(request(valid))).method, "visual.write");
+  await assert.rejects(readVisualSettingsRequest(request(valid, "text/plain")));
+  await assert.rejects(readVisualSettingsRequest(request(JSON.stringify({ revision: null, settings: {}, path: "elsewhere" }))));
+  await assert.rejects(readVisualSettingsRequest(request("x".repeat(65 * 1024))));
+});
 
 test("local graph bridge rejects remote connections, foreign hosts, and cross-origin reads", () => {
   const request = (remoteAddress, host = "127.0.0.1:8888", origin) => ({

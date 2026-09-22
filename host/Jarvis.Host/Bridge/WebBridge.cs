@@ -29,6 +29,7 @@ internal sealed class WebBridge : IDisposable
     private readonly ShellService _shellService;
     private readonly FileExplorerService _fileExplorerService;
     private readonly ObsidianGraphService _obsidianGraphService = new();
+    private readonly GraphVisualSettingsStore _graphVisualSettings = new();
     private readonly FileTransferCoordinator _fileTransferCoordinator = new();
     private readonly TerminalSessionService _terminalSessionService;
     private readonly WindowTaskbarService _taskbarService;
@@ -299,6 +300,9 @@ internal sealed class WebBridge : IDisposable
 
         return method switch
         {
+            "graphVisual.read" => await Task.Run(() => (object)_graphVisualSettings.Read(), cancellationToken),
+            "graphVisual.write" => await Task.Run(() => (object)_graphVisualSettings.Write(
+                parameters.GetProperty("settings"), parameters.GetProperty("revision").GetString()), cancellationToken),
             "system.getSnapshot" => await Task.Run(
                 () => (object)_snapshotFeed.GetSystemSnapshot(),
                 cancellationToken),

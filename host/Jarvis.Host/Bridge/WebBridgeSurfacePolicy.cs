@@ -36,6 +36,8 @@ internal static class WebBridgeSurfacePolicy
         "feed.getSnapshot",
         "feed.markAllRead",
         "feed.reportFault",
+        "graphVisual.read",
+        "graphVisual.write",
         "knowledgeGraph.chooseVault",
         "knowledgeGraph.getDefaultChunk",
         "knowledgeGraph.getDefaultManifest",

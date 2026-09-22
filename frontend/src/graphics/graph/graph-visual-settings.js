@@ -4,6 +4,7 @@ import {
   withGraphFxProfileSetting,
 } from "./graph-fx-profile.js";
 import { NEURON_SPATIAL_DEFAULTS } from "./graph-neuron-spatial-model.js";
+import { createGraphSettingsFileSync } from "./graph-settings-file-sync.js";
 
 const STORAGE_KEY = "jarvis.graph-visual-settings.v7";
 const VERSION_6_STORAGE_KEY = "jarvis.graph-visual-settings.v6";
@@ -27,6 +28,9 @@ let historyKey = null;
 let historyTimer = null;
 let persistTimer = null;
 let persistenceError = null;
+let fileSync = null;
+let fileSyncCleanup = null;
+let persistenceState = "browser";
 
 const sectionFields = Object.freeze({
   view: Object.freeze(["enabled", "dimension"]),
@@ -864,6 +868,7 @@ function notifyListeners() {
 
 function persistSettings() {
   persistTimer = null;
+  if (fileSync) return fileSync.flush();
   try {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
@@ -921,6 +926,7 @@ function commitSettings(nextValue, {
   if (!force && !changed) return settings;
   if (changed && record) recordHistory(settings, nextHistoryKey);
   settings = next;
+  if (persist) fileSync?.edit(next);
   if (persist) schedulePersistSettings({ immediate });
   applyMetadata();
   notifyListeners();
@@ -928,6 +934,7 @@ function commitSettings(nextValue, {
 }
 
 function handleStorage(event) {
+  if (fileSync) return;
   if (event.key !== STORAGE_KEY) return;
   cancelPendingPersistence();
   closeHistoryGroup();
@@ -947,6 +954,69 @@ export function initializeGraphVisualSettings() {
   window.addEventListener("storage", handleStorage);
   window.addEventListener("pagehide", flushGraphVisualSettingsPersistence);
 }
+
+export function createGraphVisualSettingsFileSync(options) {
+  return createGraphSettingsFileSync({
+    ...options,
+    // These top-level sections only project the active dimension. Rebasing them
+    // as independent edits would copy old 3D values into a newly selected 2D view.
+    select: (value) => Object.fromEntries(Object.entries(value).filter(([key]) => !DIMENSION_SECTIONS.includes(key))),
+    normalize: (value) => normalizeGraphVisualSettings({
+      ...value.dimensions?.[`${value.view.dimension}d`], ...value,
+    }),
+  });
+}
+
+export async function connectGraphVisualSettingsFile(api) {
+  if (!api || fileSync || typeof window === "undefined") return;
+  initializeGraphVisualSettings();
+  cancelPendingPersistence();
+  persistenceState = "loading";
+  fileSync = createGraphVisualSettingsFileSync({
+    api,
+    initial: settings,
+    onValue(value, remote) {
+      if (remote) { closeHistoryGroup(); history.length = 0; }
+      commitSettings(value, { persist: false, record: false });
+    },
+    onStatus(state, error) {
+      persistenceState = state;
+      persistenceError = error;
+      notifyListeners();
+    },
+  });
+  const refresh = () => {
+    if (document.visibilityState !== "hidden") void fileSync?.refresh();
+  };
+  const visibility = () => {
+    if (document.visibilityState === "hidden") flushGraphVisualSettingsPersistence();
+    else refresh();
+  };
+  const timer = window.setInterval(refresh, 1500);
+  window.addEventListener("focus", refresh);
+  document.addEventListener("visibilitychange", visibility);
+  fileSyncCleanup = () => {
+    window.clearInterval(timer);
+    window.removeEventListener("focus", refresh);
+    document.removeEventListener("visibilitychange", visibility);
+    fileSync?.dispose();
+    fileSync = null;
+  };
+  notifyListeners();
+  await fileSync.refresh();
+}
+
+export function getGraphVisualSettingsPersistenceState() { return persistenceState; }
+
+export function retryGraphVisualSettingsPersistence() { return fileSync?.refresh(); }
+
+if (import.meta.hot) import.meta.hot.dispose(() => {
+  fileSyncCleanup?.();
+  cancelPendingPersistence();
+  closeHistoryGroup();
+  window.removeEventListener("storage", handleStorage);
+  window.removeEventListener("pagehide", flushGraphVisualSettingsPersistence);
+});
 
 export function getGraphVisualSettingsSnapshot() {
   return settings;

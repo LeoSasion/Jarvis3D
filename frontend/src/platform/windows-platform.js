@@ -86,6 +86,10 @@ export function createWindowsPlatform(webview) {
     kind: "windows",
     isNative: true,
     events: { subscribe },
+    graphVisualSettings: {
+      read: () => request("graphVisual.read"),
+      write: (params) => request("graphVisual.write", params),
+    },
     agent: {
       getState: () => request("agent.getState"),
       getMessages: () => request("agent.getMessages"),

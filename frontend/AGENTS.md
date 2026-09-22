@@ -8,6 +8,8 @@ When implementing from a selected generated mock, treat that image as the source
 
 ## Approved JARVIS visual decisions
 
+- September 22, 2026 local configuration ownership: browser-specific localStorage must no longer be the authority for active graph effects. Persist the full graph visual configuration in `%LOCALAPPDATA%\JARVIS\Settings\graph-visual-settings.json`, shared by loopback previews and the native Host. Import browser settings only when the file is absent; existing files always win on startup. Synchronize visible clients and focus changes, rebase only edited fields on version conflicts, preserve failed edits without claiming they were saved, and keep a previous-file backup. Preserve the approved visuals and numerical defaults while changing persistence.
+
 - September 22, 2026 user-tuned defaults: save the current browser's complete visual configuration as the startup/reset default. Its only differences from the preceding defaults are shared post-FX settings: radiance temperature 0.35, focus 0.35, transmission link 1; bloom intensity 1.95, threshold 0.06, soft knee 0.35, radius 0.38, falloff 2.45 and color preservation 0.93. Use these for both shared dimensions and idle, preserving all other saved parameters. The user requested a 1920×1080 MP4 of the actual browser-composited result.
 
 - September 22, 2026 glow-energy adjustment: the user approved the midpoint hue palette and requested slightly brighter exposure or stronger optical glow. Raise the neuron preset's overall glow intensity from 1.10 to 1.35 while preserving the approved hue range, color preservation, threshold, radius and activation dynamics. Keep the existing overall-glow control and persisted manual profiles.

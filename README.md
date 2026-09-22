@@ -18,6 +18,21 @@ The idle neuron sphere and 3D graph share translucent polygon cells with bright 
 
 See the [shared filament implementation and controls](docs/design/concepts/neuron-filament-notes.md) for details.
 
+### Local graph visual settings
+
+The active graph configuration is saved in `%LOCALAPPDATA%\JARVIS\Settings\graph-visual-settings.json`.
+The Windows Host and the loopback Vite development/preview server use the same file. Visible browser
+pages check for changes every 1.5 seconds and refresh on focus, so different browsers share current
+node, connection, signal, glow, layout and view parameters. Saved preset-library entries and unrelated
+shell preferences remain separate.
+
+On first use, an absent file imports the opening browser's existing visual configuration. Once the file
+exists, it takes precedence over browser storage. Saves use atomic replacement, keep the previous file
+as `.json.bak`, and merge locally edited fields after a revision conflict instead of replacing newer
+settings with a stale browser snapshot. The visual menu reports pending saves and failures; a malformed
+file is preserved for recovery. Browser previews require the local Vite server and .NET 8 SDK; static
+web hosting alone cannot write this file.
+
 ## Current scope
 
 - Windows 10 and Windows 11 Home/Pro desktop environments

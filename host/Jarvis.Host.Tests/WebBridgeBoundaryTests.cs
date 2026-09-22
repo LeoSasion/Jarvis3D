@@ -67,6 +67,8 @@ public sealed class WebBridgeBoundaryTests
     [InlineData("knowledgeGraph.getDefaultChunk")]
     [InlineData("knowledgeGraph.getDefaultManifest")]
     [InlineData("knowledgeGraph.getDefaultSource")]
+    [InlineData("graphVisual.read")]
+    [InlineData("graphVisual.write")]
     [InlineData("lifecycle.exitToWindows")]
     [InlineData("session.prepare")]
     [InlineData("taskbarMode.setMode")]

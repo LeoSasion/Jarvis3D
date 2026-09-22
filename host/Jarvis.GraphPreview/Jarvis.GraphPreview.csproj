@@ -7,6 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Jarvis.Host/Services/GraphVisualSettingsStore.cs" Link="GraphVisualSettingsStore.cs" />
     <Compile Include="../Jarvis.Host/Services/ObsidianGraphService.cs" Link="ObsidianGraphService.cs" />
     <Compile Include="../Jarvis.Host/Services/ObsidianVaultWatcher.cs" Link="ObsidianVaultWatcher.cs" />
   </ItemGroup>

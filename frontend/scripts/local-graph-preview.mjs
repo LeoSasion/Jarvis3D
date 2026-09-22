@@ -4,6 +4,7 @@ import { fileURLToPath, URL } from "node:url";
 import { promisify } from "node:util";
 import { setTimeout, clearTimeout } from "node:timers";
 import process from "node:process";
+import { Buffer } from "node:buffer";
 
 const run = promisify(execFile);
 const project = fileURLToPath(new URL("../../host/Jarvis.GraphPreview/Jarvis.GraphPreview.csproj", import.meta.url));
@@ -19,6 +20,23 @@ export function isLocalGraphRequest(request) {
   } catch {
     return false;
   }
+}
+
+export async function readVisualSettingsRequest(request) {
+  if (request.headers["content-type"]?.split(";")[0].trim() !== "application/json") throw new Error("INVALID_PARAMS");
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of request) {
+    size += Buffer.byteLength(chunk);
+    if (size > 64 * 1024) throw new Error("INVALID_PARAMS");
+    chunks.push(Buffer.from(chunk));
+  }
+  const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).some((key) => !["revision", "settings"].includes(key))
+    || !(value.revision === null || typeof value.revision === "string" && /^[A-Fa-f0-9]{64}$/u.test(value.revision))
+    || !value.settings || typeof value.settings !== "object") throw new Error("INVALID_PARAMS");
+  return { method: "visual.write", revision: value.revision, settings: value.settings };
 }
 
 export function localGraphPreview(vault) {
@@ -79,16 +97,30 @@ export function localGraphPreview(vault) {
     });
   };
 
-  return {
-    name: "jarvis-local-graph-preview",
-    apply: "serve",
-    configureServer(server) {
-      if (!vault) return;
+  const configureServer = (server) => {
       server.httpServer?.once("close", () => {
         closed = true;
         worker?.kill();
         failPending();
       });
+      server.middlewares.use("/__jarvis/visual-settings", async (request, response) => {
+        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        if (!isLocalGraphRequest(request) || request.headers["sec-fetch-site"] === "cross-site"
+          || !["GET", "PUT"].includes(request.method)) {
+          response.statusCode = 403;
+          response.end(JSON.stringify({ code: "LOCAL_SETTINGS_FORBIDDEN" }));
+          return;
+        }
+        try {
+          const params = request.method === "GET" ? { method: "visual.read" } : await readVisualSettingsRequest(request);
+          response.end(JSON.stringify(await requestGraph(params)));
+        } catch {
+          response.statusCode = 503;
+          response.end(JSON.stringify({ code: "LOCAL_SETTINGS_UNAVAILABLE" }));
+        }
+      });
+      if (!vault) return;
       server.middlewares.use("/__jarvis/graph", async (request, response) => {
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -120,6 +152,11 @@ export function localGraphPreview(vault) {
           response.end(JSON.stringify({ code: response.statusCode === 409 ? "GRAPH_REVISION_STALE" : "LOCAL_GRAPH_UNAVAILABLE" }));
         }
       });
-    },
+  };
+  return {
+    name: "jarvis-local-graph-preview",
+    apply: "serve",
+    configureServer,
+    configurePreviewServer: configureServer,
   };
 }

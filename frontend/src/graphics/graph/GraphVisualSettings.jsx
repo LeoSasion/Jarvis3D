@@ -41,6 +41,8 @@ import {
 import {
   getGraphVisualPresetId,
   getGraphVisualSettingsSnapshot,
+  getGraphVisualSettingsPersistenceState,
+  retryGraphVisualSettingsPersistence,
   graphVisualPresets,
   graphVisualSettingRanges,
   initializeGraphVisualSettings,
@@ -1020,7 +1022,7 @@ export function GraphVisualSettings({
       </details> : null}
       </div>
       <footer className="graph-visual-settings__footer">
-        <span>{t("graphVisualSettings.editor.live")}</span>
+        <GraphPersistenceStatus />
         <span>{t("graphVisualSettings.editor.editing", { dimension: settings.view.dimension })}</span>
       </footer>
     </section>
@@ -1032,6 +1034,17 @@ export function GraphVisualSettings({
   }
 
   return panel;
+}
+
+function GraphPersistenceStatus() {
+  const { t } = useLanguage();
+  const state = useSyncExternalStore(subscribeGraphVisualSettings, getGraphVisualSettingsPersistenceState);
+  return <span role="status">
+    {t(`graphVisualSettings.storage.${state}`)}
+    {state === "error" ? <button type="button" onClick={retryGraphVisualSettingsPersistence}>
+      {t("graphVisualSettings.storage.retry")}
+    </button> : null}
+  </span>;
 }
 
 function GraphLayoutSettings({ settings, t, open = true }) {
