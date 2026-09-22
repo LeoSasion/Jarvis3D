@@ -256,7 +256,12 @@ function EnabledCoreVisualCanvas({
           bloomRadius={activeBloom.radius}
           bloomSmoothing={activeBloom.softKnee}
           bloomThreshold={activeBloom.threshold}
+          bloomFalloff={activeBloom.falloff}
+          bloomColorPreservation={activeBloom.colorPreservation}
+          graphGlow
           hdr={resolvedDimension === 3 || settings.sharedStyle}
+          transmission={settings.sharedStyle || scenePlan.layout.mode === "neuron"
+            || (!interactive && settings.idleShape === "neuronSphere")}
           labels
         />
       </GraphicsRuntime>

@@ -5,13 +5,21 @@ import {
 } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo } from "react";
 import { HalfFloatType, UnsignedByteType } from "three";
 import {
   createGraphicsPassRegistry,
 } from "./runtime/pass-registry.js";
 import { useGraphicsRuntimeContext } from "./runtime/runtime-context.js";
 import { renderGraphLabels } from "./graph/graph-label-rendering.js";
+import { GraphGlowEffect } from "./graph/graph-glow-effect.js";
+
+function GraphGlowPass({ pass, transmission }) {
+  const effect = useMemo(() => new GraphGlowEffect(pass.levels), [pass.levels]);
+  useLayoutEffect(() => effect.configure(pass, transmission), [effect, pass, transmission]);
+  useEffect(() => () => effect.dispose(), [effect]);
+  return <primitive object={effect} dispose={null} />;
+}
 
 function GraphLabelPass() {
   // Composer runs at priority 1; draw crisp information afterward on the same canvas.
@@ -45,8 +53,12 @@ export function RenderPipeline({
   bloomRadius,
   bloomSmoothing = 0.22,
   bloomThreshold = 0.82,
+  bloomFalloff = 2,
+  bloomColorPreservation = 0.8,
   hdr = false,
   labels = false,
+  transmission = false,
+  graphGlow = false,
 }) {
   const runtime = useGraphicsRuntimeContext();
   const gl = useThree((state) => state.gl);
@@ -65,8 +77,11 @@ export function RenderPipeline({
     bloomRadius,
     bloomSmoothing,
     bloomThreshold,
+    bloomFalloff,
+    bloomColorPreservation,
     runtime,
-  }), [bloom, bloomIntensity, bloomRadius, bloomSmoothing, bloomThreshold, runtime]);
+  }), [bloom, bloomIntensity, bloomRadius, bloomSmoothing, bloomThreshold, bloomFalloff, bloomColorPreservation, runtime]);
+  const glowPass = registry.passes.find((pass) => pass.id === "bloom");
 
   // The WebGL context can briefly leave the ready state during StrictMode
   // setup or context restoration. Mounting EffectComposer in that interval
@@ -81,7 +96,9 @@ export function RenderPipeline({
         frameBufferType={frameBufferType}
         multisampling={0}
       >
-        {registry.passes.map((pass) => <RegisteredPass key={pass.id} pass={pass} />)}
+        {registry.passes.map((pass) => graphGlow && pass.id === "bloom"
+          ? null : <RegisteredPass key={pass.id} pass={pass} />)}
+        {graphGlow ? <GraphGlowPass pass={glowPass} transmission={transmission} /> : null}
       </EffectComposer>
       {labels ? <GraphLabelPass /> : null}
     </>

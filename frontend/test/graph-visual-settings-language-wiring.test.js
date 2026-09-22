@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { TRANSLATION_DICTIONARIES } from "../src/i18n/translations.js";
 
 const panelSource = await readFile(
   new URL("../src/graphics/graph/GraphVisualSettings.jsx", import.meta.url),
@@ -19,10 +20,9 @@ test("graph visual settings subscribes to the shared language runtime", () => {
 });
 
 test("panel sections, controls, layer switches, feedback, and explanations use semantic keys", () => {
-  assert.match(panelSource, /t\(settings\.sharedStyle \? "graphVisualSettings\.shared\.layers" : "graphVisualSettings\.scope\.layers", \{/u);
+  assert.match(panelSource, /t\(settings\.sharedStyle \? "graphVisualSettings\.editor\.shared" : "graphVisualSettings\.editor\.independent"\)/u);
   assert.match(panelSource, /t\("graphVisualSettings\.category\.relationFx"\)/u);
   assert.match(panelSource, /t\("graphVisualSettings\.section\.viewHelp"\)/u);
-  assert.match(panelSource, /t\("graphVisualSettings\.control\.technicalLabel", \{ label \}\)/u);
   assert.match(panelSource, /t\("graphVisualSettings\.control\.nodeHaloEmission\.detail"\)/u);
   assert.match(panelSource, /t\("graphVisualSettings\.layer\.toggleAria", \{/u);
   assert.match(panelSource, /t\("graphVisualSettings\.toast\.presetSelected", \{/u);
@@ -30,6 +30,18 @@ test("panel sections, controls, layer switches, feedback, and explanations use s
   assert.match(panelSource, /t\("graphVisualSettings\.footer\.activeConstraints", \{/u);
   assert.doesNotMatch(panelSource, /aria-label="Close graph visual settings"/u);
   assert.doesNotMatch(panelSource, /Graph visuals restored to Nebula defaults/u);
+});
+
+test("every technical control has a localized display label in each supported language", () => {
+  const labels = [...panelSource.matchAll(/technicalLabel\(t, "([^"]+)"\)/gu)].map((match) => match[1]);
+  assert.ok(labels.length > 0);
+  for (const [locale, dictionary] of Object.entries(TRANSLATION_DICTIONARIES)) {
+    for (const label of labels) {
+      const key = `graphVisualSettings.label.${label.toLowerCase().replaceAll(" ", "_")}`;
+      assert.ok(dictionary[key], `${locale} is missing ${key}`);
+      assert.notEqual(dictionary[key], label, `${locale} still exposes the raw control identifier`);
+    }
+  }
 });
 
 test("technical identifiers, profile names, dimensions, paths, and units stay raw", () => {

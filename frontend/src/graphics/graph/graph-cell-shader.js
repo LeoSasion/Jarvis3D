@@ -4,7 +4,12 @@ export const GRAPH_CELL_SHADER = `
   varying float pointCellRotation;
   varying float pointCellPrimary;
   varying float pointCellHighlight;
+  varying float pointCellActivation;
+  varying vec3 pointCellActivationColor;
   varying vec3 pointCellColor;
+  uniform float pointActivationEnabled;
+  uniform float pointActivationStrength;
+  uniform float pointRestingBrightness;
 
   float cellHexDistance(vec2 p) {
     vec2 q = abs(p);
@@ -27,16 +32,28 @@ export const GRAPH_CELL_SHADER = `
     float nucleus = 1.0 - smoothstep(-nucleusAa, nucleusAa, nucleusEdge);
 
     float interior = clamp(1.0 - length(p + vec2(0.18, 0.12)) / 0.95, 0.0, 1.0);
-    // Ordinary cells use one of three theme-derived group hues. Pale light identifies a soma or
-    // an active hover/selection/one-hop relation, never projected node size.
+    // With activation enabled, soma identity affects size, not permanent heat.
+    // Direct hover/selection stays legible; related cells heat only on arrival.
     float primary = clamp(pointCellPrimary, 0.0, 1.0);
-    float highlight = clamp(pointCellHighlight, 0.0, 1.0);
-    float pale = max(primary, highlight);
+    float highlight = step(0.001, pointCellHighlight);
+    float directHighlight = step(0.99, pointCellHighlight);
+    float charge = max(pointCellActivation * pointActivationStrength, directHighlight);
+    float response = clamp(charge, 0.0, 1.0);
+    float pale = mix(max(primary, highlight), directHighlight, pointActivationEnabled);
+    float signalResponse = clamp(pointCellActivation * pointActivationStrength, 0.0, 1.0) * pointActivationEnabled;
     vec3 baseColor = mix(pointCellColor, sourceColor, primary);
-    float emission = pointCoreEmissionIntensity * pointPulse * mix(1.0, 1.35, highlight);
-    vec3 cytoplasm = baseColor * mix(0.22, 0.46, interior) * emission;
-    vec3 membraneColor = mix(baseColor, graphRadianceColor(baseColor, 1.065), pale) * emission * 0.38;
-    vec3 nucleusColor = mix(baseColor, graphRadianceColor(baseColor, 1.08), pale) * emission * 0.65;
+    float interactionGain = mix(highlight, directHighlight, pointActivationEnabled);
+    float activationGain = mix(1.0, mix(pointRestingBrightness, 1.0, response)
+      + max(0.0, charge - 1.0), pointActivationEnabled);
+    float emission = pointCoreEmissionIntensity * pointPulse * mix(1.0, 1.35, interactionGain) * activationGain;
+    // All parts of a charged cell inherit the arriving signal, including the
+    // nucleus. Its stored hue stays fixed while energy fades back to rest.
+    vec3 cytoplasm = mix(baseColor, pointCellActivationColor, signalResponse)
+      * mix(0.22, 0.46, interior) * emission;
+    vec3 membraneColor = mix(mix(baseColor, graphRadianceColor(baseColor, 1.065), pale),
+      pointCellActivationColor, signalResponse) * emission * 0.38;
+    vec3 nucleusColor = mix(mix(baseColor, graphRadianceColor(baseColor, 1.08), pale),
+      pointCellActivationColor, signalResponse) * emission * 0.65;
     vec3 color = mix(cytoplasm, membraneColor, membrane);
     color = mix(color, nucleusColor, nucleus);
     float alpha = mix(0.20, 0.42, interior);

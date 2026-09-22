@@ -15,13 +15,16 @@ import {
   setGraphVisualPreset,
   setGraphVisualProfileSetting,
   setGraphVisualSetting,
+  setGraphSharedNeuronStyle,
   subscribeGraphVisualSettings,
   undoGraphVisualSettings,
   updateGraphVisualSettingsSection,
 } from "../src/graphics/graph/graph-visual-settings.js";
 
-test("graph visual settings fail closed to a versioned Nebula default", () => {
-  assert.equal(getGraphVisualPresetId(DEFAULT_GRAPH_VISUAL_SETTINGS), "nebula");
+test("graph visual settings fail closed to the approved shared neuron default", () => {
+  assert.equal(DEFAULT_GRAPH_VISUAL_SETTINGS.sharedStyle, true);
+  assert.equal(DEFAULT_GRAPH_VISUAL_SETTINGS.idleShape, "neuronSphere");
+  assert.equal(DEFAULT_GRAPH_VISUAL_SETTINGS.layout.mode, "neuron");
   assert.equal(DEFAULT_GRAPH_VISUAL_SETTINGS.version, 7);
   assert.equal(DEFAULT_GRAPH_VISUAL_SETTINGS.profiles["3d"].edge.halo.enabled, true);
   assert.equal(Object.isFrozen(DEFAULT_GRAPH_VISUAL_SETTINGS.profiles), true);
@@ -137,6 +140,8 @@ test("v5 Orb controls migrate to canonical 3D FX paths and restore Relation Halo
   const migrated = normalizeGraphVisualSettings({
     ...DEFAULT_GRAPH_VISUAL_SETTINGS,
     version: 5,
+    sharedStyle: false,
+    profiles: undefined,
     orb: {
       bloomIntensity: 2.4,
       bloomThreshold: 0.24,
@@ -162,6 +167,8 @@ test("v5 Orb controls migrate to canonical 3D FX paths and restore Relation Halo
     threshold: 0.24,
     softKnee: 0.36,
     radius: 0.84,
+    falloff: 2,
+    colorPreservation: 0.8,
   });
   assert.equal(profile.edge.core.opacity, 0.68);
   assert.equal(profile.edge.core.widthScale, 1.42);
@@ -232,6 +239,7 @@ test("2D and 3D view intent persists through the versioned settings store", () =
 
 test("editing a 3D FX layer does not mutate the independent 2D profile", () => {
   resetGraphVisualSettings();
+  setGraphSharedNeuronStyle(false);
   const twoDimensionalBefore = structuredClone(
     getGraphVisualSettingsSnapshot().profiles["2d"],
   );
@@ -274,7 +282,7 @@ test("theme palettes stay semantic until a user edits a color", () => {
     hubColor: "#C8B9AA",
     activeColor: "#FF5500",
     groupColor: "#999999",
-    edgeColor: "#666666",
+    edgeColor: "#FF5500",
   });
 
   setGraphVisualSetting("node", "hubColor", "#123456");

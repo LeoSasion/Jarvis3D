@@ -4,6 +4,7 @@ import "./styles.css";
 import "./vector-shell.css";
 import "./operator-workspace.css";
 import "./shell-aesthetic.css";
+import "./file-agent-workspace.css";
 import "./desktop-tool-rail.css";
 import "./motion.css";
 import { installUiAudioBridge } from "./audio-system.js";

@@ -11,6 +11,7 @@ import {
   getGraphVisualSettingsSnapshot,
   normalizeGraphVisualSettings,
   resetGraphVisualSettings,
+  setGraphSharedNeuronStyle,
   setGraphVisualPreset,
   setGraphVisualSetting,
 } from "../src/graphics/graph/graph-visual-settings.js";
@@ -75,8 +76,10 @@ test("empty, isolated and long-chain sources stay bounded without inventing edge
   }
 });
 
-test("neuron is an opt-in 2D template that survives persistence and dimension changes", () => {
+test("the independent 2D neuron template survives persistence and dimension changes", () => {
   resetGraphVisualSettings();
+  setGraphSharedNeuronStyle(false);
+  setGraphVisualPreset("nebula");
   const original = getGraphVisualSettingsSnapshot();
   setGraphVisualPreset("neuron");
   assert.equal(getGraphVisualSettingsSnapshot(), original);

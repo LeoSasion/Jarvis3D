@@ -741,3 +741,392 @@
     color: CanvasText;
   }
 }
+
+/* Categorized editor: the chrome stays fixed while one settings page scrolls. */
+.graph-visual-settings {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  color: var(--shell-text);
+  background: var(--shell-bg);
+  font-family: var(--shell-font);
+}
+
+.graph-visual-settings.is-overlay {
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.graph-visual-settings.is-embedded {
+  height: min(800px, 75dvh);
+  min-height: 420px;
+}
+
+.graph-visual-settings__header {
+  position: static;
+  flex-shrink: 0;
+  min-height: 62px;
+  padding: 14px 18px;
+  background: var(--shell-bg);
+  border-bottom-color: var(--shell-border);
+}
+
+.graph-visual-settings__header strong {
+  font: 500 19px/1.3 var(--shell-font);
+  letter-spacing: 0;
+}
+
+.graph-visual-settings__header > .graph-visual-settings__preset-link {
+  width: auto;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--shell-border);
+  color: var(--shell-muted);
+  font: 11px/1 var(--shell-font);
+}
+
+.graph-visual-settings__mode {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 0;
+}
+
+.graph-visual-settings__mode .graph-visual-settings__choices {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.graph-visual-settings__mode .graph-visual-settings__choices > div {
+  min-width: 104px;
+}
+
+.graph-visual-settings__mode .graph-visual-settings__choices button {
+  min-height: 30px;
+}
+
+.graph-visual-settings__scope {
+  color: var(--shell-muted);
+  font: 11px/1.5 var(--shell-font);
+  text-align: right;
+}
+
+.graph-visual-settings__tabs {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--shell-border);
+}
+
+.graph-visual-settings__tabs > button {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--shell-muted);
+  background: transparent;
+  font: 13px/1.4 var(--shell-font);
+  cursor: pointer;
+}
+
+.graph-visual-settings__tabs > button[aria-selected="true"] {
+  border-bottom-color: var(--shell-accent);
+  color: var(--shell-text-strong);
+}
+
+.graph-visual-settings__tabs > button:hover {
+  color: var(--shell-text-strong);
+  background: var(--shell-hover);
+}
+
+.graph-visual-settings__content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 18px 16px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--shell-border-strong) transparent;
+}
+
+.graph-visual-settings__category-help {
+  margin: 18px 0;
+  color: var(--shell-muted);
+  font: 12px/1.7 var(--shell-font);
+}
+
+.graph-visual-settings__layer-grid {
+  gap: 8px;
+  margin-bottom: 18px;
+  background: transparent;
+}
+
+.graph-visual-settings__layer-grid:empty {
+  display: none;
+}
+
+.graph-visual-settings__layer-grid > button {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--shell-border);
+  background: transparent;
+  color: var(--shell-muted);
+}
+
+.graph-visual-settings__layer-grid > button.is-enabled {
+  color: var(--shell-text);
+  background: transparent;
+  box-shadow: none;
+}
+
+.graph-visual-settings__layer-grid > button.is-enabled > span {
+  color: var(--shell-accent);
+}
+
+.graph-visual-settings__layer-grid > button:hover {
+  border-color: var(--shell-border-strong);
+  background: var(--shell-hover);
+}
+
+.graph-visual-settings__layer-grid > button :where(strong, code) {
+  font: 12px/1.4 var(--shell-font);
+  letter-spacing: 0;
+}
+
+.graph-visual-settings__group,
+.graph-visual-settings__fx-category {
+  border-top: 1px solid var(--shell-border);
+}
+
+.graph-visual-settings :is(.graph-visual-settings__group, .graph-visual-settings__fx-category) > summary {
+  min-height: 46px;
+  padding: 0;
+  gap: 8px;
+}
+
+.graph-visual-settings :is(.graph-visual-settings__group, .graph-visual-settings__fx-category) > summary strong {
+  font: 500 13px/1.4 var(--shell-font);
+  letter-spacing: 0;
+}
+
+.graph-visual-settings :is(.graph-visual-settings__group, .graph-visual-settings__fx-category) > summary code {
+  max-width: 170px;
+  overflow: hidden;
+  color: var(--shell-muted);
+  font: 11px/1.4 var(--shell-font);
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-visual-settings__group > div {
+  padding: 0 0 14px;
+}
+
+.graph-visual-settings__control-grid {
+  gap: 4px;
+}
+
+.graph-visual-settings__range {
+  align-items: start;
+  padding: 10px 0 12px;
+  gap: 5px 12px;
+  border: 0;
+}
+
+.graph-visual-settings__range strong,
+.graph-visual-settings__color strong {
+  font: 400 13px/1.45 var(--shell-font);
+  letter-spacing: 0;
+  color: var(--shell-text);
+}
+
+.graph-visual-settings__range small,
+.graph-visual-settings__color small {
+  color: var(--shell-muted);
+  font: 11px/1.6 var(--shell-font);
+  letter-spacing: 0;
+}
+
+.graph-visual-settings__range output {
+  padding: 3px 7px;
+  border: 1px solid var(--shell-border);
+  color: var(--shell-text);
+  font: 12px/1.4 var(--shell-code-font);
+}
+
+.graph-visual-settings__value {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 72px;
+  min-height: 28px;
+  padding-right: 6px;
+  border: 1px solid var(--shell-border);
+  color: var(--shell-muted);
+  font: 12px/1.4 var(--shell-code-font);
+}
+
+.graph-visual-settings__value:focus-within {
+  border-color: var(--shell-accent);
+}
+
+.graph-visual-settings__value input {
+  width: 60px;
+  min-width: 0;
+  padding: 3px 5px;
+  border: 0;
+  color: var(--shell-text);
+  background: transparent;
+  font: inherit;
+  text-align: right;
+  appearance: textfield;
+}
+
+.graph-visual-settings__value input::-webkit-inner-spin-button,
+.graph-visual-settings__value input::-webkit-outer-spin-button {
+  appearance: none;
+}
+
+.graph-visual-settings__range input[type="range"] {
+  height: 24px;
+  appearance: none;
+  background: transparent;
+}
+
+.graph-visual-settings__range input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  background: linear-gradient(to right, var(--shell-accent) var(--range-progress), var(--shell-border-strong) var(--range-progress));
+}
+
+.graph-visual-settings__range input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  border: 2px solid var(--shell-bg);
+  border-radius: 50%;
+  background: var(--shell-accent);
+}
+
+.graph-visual-settings__sharing {
+  margin-block: 8px 20px;
+}
+
+.graph-visual-settings__choices legend,
+.graph-visual-settings__choices button {
+  font: 12px/1.4 var(--shell-font);
+  letter-spacing: 0;
+}
+
+.graph-visual-settings__choices > div {
+  gap: 0;
+  border: 1px solid var(--shell-border);
+  background: transparent;
+}
+
+.graph-visual-settings__choices button.is-selected {
+  background: var(--shell-selection);
+  color: var(--shell-text-strong);
+  box-shadow: 0 -1px var(--shell-accent) inset;
+}
+
+.graph-visual-settings__presets {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+  gap: 0;
+  background: transparent;
+}
+
+.graph-visual-settings__presets > button {
+  min-height: 68px;
+  gap: 6px;
+  padding: 14px 12px;
+  border: 1px solid transparent;
+  border-bottom-color: var(--shell-border);
+  background: transparent;
+}
+
+.graph-visual-settings__presets > button.is-selected {
+  border: 1px solid var(--shell-accent);
+  background: transparent;
+}
+
+.graph-visual-settings__presets > button strong {
+  font: 500 13px/1.3 var(--shell-font);
+  letter-spacing: 0;
+}
+
+.graph-visual-settings__presets > button small {
+  font: 12px/1.5 var(--shell-font);
+  letter-spacing: 0;
+}
+
+.graph-visual-settings__reset-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.graph-visual-settings__reset-actions > button {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--shell-border);
+  color: var(--shell-muted);
+  background: transparent;
+  font: 12px/1.4 var(--shell-font);
+}
+
+.graph-visual-settings__reset-actions svg {
+  width: 16px;
+  height: 16px;
+}
+
+.graph-visual-settings__diagnostics {
+  border-top: 1px solid var(--shell-border);
+  padding: 14px 0;
+  color: var(--shell-muted);
+  font: 12px/1.7 var(--shell-font);
+}
+
+.graph-visual-settings__diagnostics summary {
+  cursor: pointer;
+}
+
+.graph-visual-settings__footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--shell-border);
+  color: var(--shell-muted);
+  font: 11px/1.4 var(--shell-font);
+}
+
+@media (forced-colors: active) {
+  .graph-visual-settings,
+  .graph-visual-settings__header {
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .graph-visual-settings__tabs > button[aria-selected="true"] {
+    border-color: Highlight;
+    color: Highlight;
+  }
+
+  .graph-visual-settings__range input[type="range"] {
+    appearance: auto;
+  }
+}

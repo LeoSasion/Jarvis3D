@@ -1,31 +1,39 @@
-export function getFocusedFilamentGain(elapsed, reducedMotion = false) {
-  const wave = reducedMotion ? 0 : 0.5 - 0.5 * Math.cos(elapsed * Math.PI * 2 / 2.8);
-  return 1.3 + 0.55 * wave;
+export function getFocusedFilamentGain(elapsed, reducedMotion = false, { boost = 0.3, amplitude = 0.55, period = 2.8 } = {}) {
+  const wave = reducedMotion ? 0 : 0.5 - 0.5 * Math.cos(elapsed * Math.PI * 2 / period);
+  return 1 + boost + amplitude * wave;
 }
 
 export const FOCUSED_SIGNAL_SPEED = 240;
 export const FOCUSED_SIGNAL_SPACING = 430;
 
-export function advanceFocusedSignalTravel(current, delta, maximumDistance, speed = 1) {
+export function advanceFocusedSignalTravel(current, delta, maximumDistance, speed = 1, spacing = FOCUSED_SIGNAL_SPACING) {
   const next = current + Math.min(0.05, Math.max(0, delta)) * FOCUSED_SIGNAL_SPEED * speed;
   // Keep GPU float precision after hours of selection. Only wrap behind the
   // furthest destination, by full packet intervals, preserving the initial front.
-  const loopBase = Math.ceil(maximumDistance / FOCUSED_SIGNAL_SPACING) * FOCUSED_SIGNAL_SPACING;
-  return next >= loopBase + FOCUSED_SIGNAL_SPACING
-    ? loopBase + (next - loopBase) % FOCUSED_SIGNAL_SPACING : next;
+  const loopBase = Math.ceil(maximumDistance / spacing) * spacing;
+  return next >= loopBase + spacing
+    ? loopBase + (next - loopBase) % spacing : next;
 }
 
 // A compact bright head and an orange wake, measured along the model-space
 // route. The initial front must arrive before periodic signals can appear.
 export const FOCUSED_SIGNAL_SHADER = `
   uniform float lineSignalTravel;
+  uniform float lineSignalPeriod;
+  uniform float lineSignalHeadLength;
+  uniform float lineSignalWakeLength;
   varying vec2 energyLineSignalDistance;
+  varying float energyLineSignalSize;
 
   vec2 focusedSignal(float distanceFromOrigin) {
     if (distanceFromOrigin < 0.0 || lineSignalTravel < distanceFromOrigin) return vec2(0.0);
-    float age = mod(lineSignalTravel - distanceFromOrigin, ${FOCUSED_SIGNAL_SPACING.toFixed(1)});
-    float head = smoothstep(0.0, 2.0, age) * (1.0 - smoothstep(3.0, 9.0, age));
-    float wake = smoothstep(0.0, 5.0, age) * pow(1.0 - smoothstep(5.0, 42.0, age), 2.0);
+    float age = lineSignalTravel - distanceFromOrigin;
+    if (lineSignalPeriod > 0.0) age = mod(age, lineSignalPeriod);
+    float headAge = age / (lineSignalHeadLength * energyLineSignalSize);
+    float wakeAge = age / max(0.001, lineSignalWakeLength * energyLineSignalSize);
+    float head = smoothstep(0.0, 2.0, headAge) * (1.0 - smoothstep(3.0, 9.0, headAge));
+    float wake = smoothstep(0.0, 5.0, wakeAge) * pow(1.0 - smoothstep(5.0, 42.0, wakeAge), 2.0)
+      * step(0.001, lineSignalWakeLength);
     return vec2(head, wake);
   }
 `;
@@ -110,8 +118,9 @@ export function findFocusedRestingRoutes(index, relations, activeNodeIds) {
 
 // Two channels support simultaneous selected and hovered origins, including
 // opposite travel on a shared edge. Geometry is the same resting ribbon buffer.
-export function writeFocusedSignalDistances(target, plan, segments, starts, ends) {
+export function writeFocusedSignalDistances(target, plan, segments, starts, ends, contacts = []) {
   target.fill(-1);
+  contacts.length = 0;
   let maximumDistance = 0;
   const lengths = new Map();
   for (const edge of plan.edges) {
@@ -128,11 +137,13 @@ export function writeFocusedSignalDistances(target, plan, segments, starts, ends
   }
   plan.trees.slice(0, 2).forEach((tree, channel) => {
     const distances = new Map([[tree.origin, 0]]);
+    contacts.push({ node: tree.origin, distance: 0, origin: tree.origin });
     for (const step of tree.steps) {
       const cumulative = lengths.get(step.edge);
       const total = cumulative[segments];
       const originDistance = distances.get(step.parent);
       distances.set(step.node, originDistance + total);
+      contacts.push({ node: step.node, distance: originDistance + total, origin: tree.origin });
       maximumDistance = Math.max(maximumDistance, originDistance + total);
       for (let segment = 0; segment < segments; segment += 1) {
         const offset = (step.edge * segments + segment) * 4 + channel * 2;

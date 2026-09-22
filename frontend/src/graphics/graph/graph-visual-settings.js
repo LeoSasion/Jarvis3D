@@ -345,8 +345,8 @@ const presetConfigurations = Object.freeze({
           network: { ...spatialNeuronBase.profiles["3d"].orb.network, depthContrast: 0 },
         },
         postFx: {
-          radiance: { temperature: 1, focus: 0.6, transmissionLink: 1 },
-          bloom: { enabled: true, intensity: 1.1, threshold: 0.8, softKnee: 0.18, radius: 0.2 },
+          radiance: { temperature: 0.35, focus: 0.35, transmissionLink: 1 },
+          bloom: { enabled: true, intensity: 1.95, threshold: 0.06, softKnee: 0.35, radius: 0.38, falloff: 2.45, colorPreservation: 0.93 },
         },
         node: {
           ...spatialNeuronBase.profiles["3d"].node,
@@ -363,13 +363,32 @@ const presetConfigurations = Object.freeze({
   }),
 });
 
-export const DEFAULT_GRAPH_VISUAL_SETTINGS = freezeSettings({
-  ...presetConfigurations.nebula,
+function sharedNeuronSettings(value) {
+  const source = value.dimensions["3d"];
+  const dimensions = { ...value.dimensions };
+  for (const id of ["2d", "3d"]) {
+    dimensions[id] = { ...dimensions[id], node: source.node, edge: source.edge,
+      layout: { ...dimensions[id].layout, mode: "neuron" } };
+  }
+  const profile = value.profiles["3d"];
+  return {
+    ...value, sharedStyle: true, idleShape: "neuronSphere", dimensions,
+    ...dimensions[`${value.view.dimension}d`],
+    profiles: { "2d": profile, "3d": { ...profile, orb: { ...profile.orb,
+      network: { ...profile.orb.network, shellRatio: 0.92, density: 1.2 },
+      innerNetwork: { ...profile.orb.innerNetwork, enabled: false },
+      rim: { ...profile.orb.rim, enabled: false }, sparks: { ...profile.orb.sparks, enabled: false },
+    } } },
+  };
+}
+
+export const DEFAULT_GRAPH_VISUAL_SETTINGS = freezeSettings(sharedNeuronSettings({
+  ...presetConfigurations.neuron3d,
   dimensions: {
-    "2d": dimensionSettings(presetConfigurations.obsidian),
-    "3d": dimensionSettings(presetConfigurations.nebula),
+    "2d": dimensionSettings(presetConfigurations.neuron),
+    "3d": dimensionSettings(presetConfigurations.neuron3d),
   },
-});
+}));
 
 export const graphVisualPresets = Object.freeze([
   Object.freeze({ id: "neuron3d", label: "NEURON · 3D", labelKey: "graphVisualSettings.preset.neuron3d.label", detail: "Spatial dendrites and interwoven axons", dimensions: Object.freeze([3]) }),
@@ -950,22 +969,7 @@ export function subscribeGraphVisualSettings(listener) {
 export function setGraphSharedNeuronStyle(enabled) {
   if (enabled && settings.sharedStyle) return settings;
   if (!enabled) return commitSettings({ ...settings, sharedStyle: false }, { historyKey: "style-link", immediate: true });
-  const source = settings.dimensions["3d"];
-  const dimensions = { ...settings.dimensions };
-  for (const id of ["2d", "3d"]) {
-    dimensions[id] = { ...dimensions[id], node: source.node, edge: source.edge,
-      layout: { ...dimensions[id].layout, mode: "neuron" } };
-  }
-  const profile = settings.profiles["3d"];
-  return commitSettings({
-    ...settings, sharedStyle: true, idleShape: "neuronSphere", dimensions,
-    ...dimensions[`${settings.view.dimension}d`],
-    profiles: { "2d": profile, "3d": { ...profile, orb: { ...profile.orb,
-      network: { ...profile.orb.network, shellRatio: 0.92, density: 1.2 },
-      innerNetwork: { ...profile.orb.innerNetwork, enabled: false },
-      rim: { ...profile.orb.rim, enabled: false }, sparks: { ...profile.orb.sparks, enabled: false },
-    } } },
-  }, { historyKey: "style-link", immediate: true });
+  return commitSettings(sharedNeuronSettings(settings), { historyKey: "style-link", immediate: true });
 }
 
 export function setGraphVisualPreset(presetId) {
@@ -1081,7 +1085,7 @@ export function resetActiveGraphVisualSettings() {
   return commitSettings({
     ...settings,
     ...DEFAULT_GRAPH_VISUAL_SETTINGS.dimensions[id],
-    profiles: { ...settings.profiles, [id]: DEFAULT_GRAPH_FX_PROFILES[id] },
+    profiles: { ...settings.profiles, [id]: DEFAULT_GRAPH_VISUAL_SETTINGS.profiles[id] },
   }, { historyKey: `reset:${id}`, immediate: true });
 }
 

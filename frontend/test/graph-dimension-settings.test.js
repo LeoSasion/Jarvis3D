@@ -23,6 +23,7 @@ import {
 
 test("shared neuron style links visual changes from either view while preserving layout and labels", () => {
   resetGraphVisualSettings();
+  setGraphSharedNeuronStyle(false);
   setGraphVisualPreset("neuron3d");
   const before = getGraphVisualSettingsSnapshot();
   setGraphSharedNeuronStyle(true);
@@ -87,6 +88,7 @@ test("shared reset uses the same neuron FX from either view and preserves sphere
 
 test("dimension switching restores independent sizes, spacing, colors, quality and FX", () => {
   resetGraphVisualSettings();
+  setGraphSharedNeuronStyle(false);
   setGraphVisualSetting("node", "scale", 2);
   setGraphVisualSetting("layout", "linkDistance", 1.7);
   setGraphVisualSetting("edge", "color", "#123456");
@@ -110,6 +112,7 @@ test("dimension switching restores independent sizes, spacing, colors, quality a
 
 test("presets, active reset and undo cannot overwrite the other dimension", () => {
   resetGraphVisualSettings();
+  setGraphSharedNeuronStyle(false);
   setGraphVisualSetting("node", "scale", 2.2);
   setGraphVisualProfileSetting("3d", "edge.halo.opacity", 0.8);
   const before = getGraphVisualSettingsSnapshot();
@@ -122,7 +125,8 @@ test("presets, active reset and undo cannot overwrite the other dimension", () =
   const reset = getGraphVisualSettingsSnapshot();
   assert.deepEqual(reset.dimensions["3d"], before.dimensions["3d"]);
   assert.deepEqual(reset.profiles["3d"], before.profiles["3d"]);
-  assert.equal(getGraphVisualPresetId(reset), "obsidian");
+  assert.deepEqual(reset.dimensions["2d"], DEFAULT_GRAPH_VISUAL_SETTINGS.dimensions["2d"]);
+  assert.deepEqual(reset.profiles["2d"], DEFAULT_GRAPH_VISUAL_SETTINGS.profiles["2d"]);
   assert.equal(undoGraphVisualSettings(), true);
   assert.deepEqual(getGraphVisualSettingsSnapshot(), customized);
 });
@@ -146,6 +150,7 @@ test("v6 shared intent migrates into both dimensions without losing either FX pr
 
 test("saved JSON and named profile exports round trip both dimension settings", () => {
   resetGraphVisualSettings();
+  setGraphSharedNeuronStyle(false);
   setGraphVisualSetting("node", "scale", 2);
   setGraphVisualSetting("view", "dimension", 2);
   setGraphVisualSetting("node", "scale", 0.8);
@@ -163,6 +168,7 @@ test("saved JSON and named profile exports round trip both dimension settings", 
 
 test("the reference orb preset is opt-in, preserves 2D and retains the note budget", () => {
   resetGraphVisualSettings();
+  setGraphSharedNeuronStyle(false);
   const original = getGraphVisualSettingsSnapshot();
   setGraphVisualPreset("neural");
   const reference = getGraphVisualSettingsSnapshot();

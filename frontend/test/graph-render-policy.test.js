@@ -5,7 +5,7 @@ import {
   createGraphNodeBudgetView,
   createGraphRenderPlan,
 } from "../src/graphics/graph/graph-render-policy.js";
-import { withGraphFxProfileSetting } from "../src/graphics/graph/graph-fx-profile.js";
+import { DEFAULT_GRAPH_FX_PROFILES, withGraphFxProfileSetting } from "../src/graphics/graph/graph-fx-profile.js";
 import { DEFAULT_GRAPH_VISUAL_SETTINGS } from "../src/graphics/graph/graph-visual-settings.js";
 import { graphicsQualityProfiles } from "../src/graphics/graphics-runtime-policy.js";
 
@@ -15,8 +15,13 @@ const graph = {
 };
 
 test("graph render plan caps requested detail without mutating visual intent", () => {
+  const settings = {
+    ...DEFAULT_GRAPH_VISUAL_SETTINGS,
+    labels: { ...DEFAULT_GRAPH_VISUAL_SETTINGS.labels, count: 24 },
+    scene: { ...DEFAULT_GRAPH_VISUAL_SETTINGS.scene, stars: 100 },
+  };
   const plan = createGraphRenderPlan(
-    DEFAULT_GRAPH_VISUAL_SETTINGS,
+    settings,
     graphicsQualityProfiles.low,
     {},
     graph,
@@ -33,13 +38,13 @@ test("graph render plan caps requested detail without mutating visual intent", (
   assert.equal(plan.profiles["3d"].edge.halo.enabled, true);
   assert.equal(Object.isFrozen(plan.profiles["3d"].edge.halo), true);
   assert.ok(plan.constraints.includes("LABELS 24→12"));
-  assert.equal(DEFAULT_GRAPH_VISUAL_SETTINGS.labels.count, 24);
+  assert.equal(settings.labels.count, 24);
 });
 
 test("render plans retain independent 2D and 3D FX profiles", () => {
   const profiles = withGraphFxProfileSetting(
     withGraphFxProfileSetting(
-      DEFAULT_GRAPH_VISUAL_SETTINGS.profiles,
+      DEFAULT_GRAPH_FX_PROFILES,
       "2d",
       "edge.halo.opacity",
       0.12,
@@ -49,7 +54,7 @@ test("render plans retain independent 2D and 3D FX profiles", () => {
     0.72,
   );
   const plan = createGraphRenderPlan(
-    { ...DEFAULT_GRAPH_VISUAL_SETTINGS, profiles },
+    { ...DEFAULT_GRAPH_VISUAL_SETTINGS, sharedStyle: false, profiles },
     graphicsQualityProfiles.high,
     {},
     graph,

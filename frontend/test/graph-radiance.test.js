@@ -40,10 +40,10 @@ test("thermal color reuses translucency without edge length or camera inputs", (
 
 test("route signal controls migrate, persist and link without changing background signals", () => {
   assert.deepEqual(normalizeGraphFxProfile("2d", {}).edge.signal,
-    { enabled: true, speed: 1, emissionIntensity: 1 });
+    { enabled: true, speed: 1, emissionIntensity: 1, headLength: 1, wakeLength: 1, spacing: 1, colorStart: 0, colorEnd: 1 });
   assert.deepEqual(normalizeGraphFxProfile("3d", { edge: { signal: {
     enabled: false, speed: Infinity, emissionIntensity: -1,
-  } } }).edge.signal, { enabled: false, speed: 1, emissionIntensity: 0 });
+  } } }).edge.signal, { enabled: false, speed: 1, emissionIntensity: 0, headLength: 1, wakeLength: 1, spacing: 1, colorStart: 0, colorEnd: 1 });
   resetGraphVisualSettings();
   setGraphSharedNeuronStyle(true);
   const background = getGraphVisualSettingsSnapshot().profiles["3d"].signal;
@@ -51,7 +51,7 @@ test("route signal controls migrate, persist and link without changing backgroun
   setGraphVisualProfileSetting("3d", "edge.signal.speed", 2);
   setGraphVisualProfileSetting("3d", "edge.signal.emissionIntensity", 0.5);
   const saved = getGraphVisualSettingsSnapshot();
-  assert.deepEqual(saved.profiles["2d"].edge.signal, { enabled: false, speed: 2, emissionIntensity: 0.5 });
+  assert.deepEqual(saved.profiles["2d"].edge.signal, { enabled: false, speed: 2, emissionIntensity: 0.5, headLength: 1, wakeLength: 1, spacing: 1, colorStart: 0, colorEnd: 1 });
   assert.deepEqual(saved.profiles["2d"].edge.signal, saved.profiles["3d"].edge.signal);
   assert.deepEqual(saved.profiles["3d"].signal, background);
   assert.deepEqual(normalizeGraphVisualSettings(JSON.parse(JSON.stringify(saved))), saved);

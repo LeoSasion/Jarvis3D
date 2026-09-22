@@ -5,6 +5,8 @@ import {
   EyeRegular,
 } from "@fluentui/react-icons";
 import {
+  createContext,
+  useContext,
   useEffect,
   useId,
   useMemo,
@@ -31,6 +33,7 @@ import {
   subscribeGraphicsDiagnostics,
 } from "../runtime/graphics-diagnostics-store.js";
 import { getGraphLabelContrastReport } from "./graph-theme-palette.js";
+import { normalizeGraphRangeInput } from "./graph-settings-input.js";
 import {
   getGraphFxSettingRange,
   getGraphFxSettingValue,
@@ -42,6 +45,7 @@ import {
   graphVisualSettingRanges,
   initializeGraphVisualSettings,
   resetActiveGraphVisualSettings,
+  resetGraphVisualSettings,
   resetGraphVisualProfile,
   resolveGraphVisualColors,
   setGraphVisualPreset,
@@ -51,6 +55,9 @@ import {
   subscribeGraphVisualSettings,
 } from "./graph-visual-settings.js";
 import "./graph-visual-settings.css";
+
+const SettingsCategoryContext = createContext("nodes");
+const settingsCategories = ["nodes", "edges", "glow", "layout", "scene", "presets"];
 
 const qualityOptions = Object.freeze([
   Object.freeze({ id: "auto", labelKey: "graphVisualSettings.option.auto" }),
@@ -95,11 +102,48 @@ function formatValue(value, format) {
   if (format === "count") return String(Math.round(value));
   if (format === "pixels") return `${Math.round(value)} PX`;
   if (format === "strength") return `${Number(value).toFixed(2)}×`;
+  if (format === "seconds") return `${Number(Number(value).toFixed(2))} s`;
   return Number(value).toFixed(2);
 }
 
 function technicalLabel(t, label) {
-  return t("graphVisualSettings.control.technicalLabel", { label });
+  return t(`graphVisualSettings.label.${label.toLowerCase().replaceAll(" ", "_")}`);
+}
+
+function RangeValue({ value, range, format, label, disabled, onCommit }) {
+  const { t } = useLanguage();
+  const multiplier = format === "percent" ? 100 : 1;
+  const displayValue = Number((value * multiplier).toFixed(4));
+  const [draft, setDraft] = useState(String(displayValue));
+  return (
+    <div className="graph-visual-settings__value">
+      <input
+        type="number"
+        aria-label={t("graphVisualSettings.editor.precise", { label })}
+        value={draft}
+        min={range.min * multiplier}
+        max={range.max * multiplier}
+        step={Number((range.step * multiplier).toFixed(8))}
+        disabled={disabled}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => {
+          const next = normalizeGraphRangeInput(draft, range, format, value);
+          setDraft(String(Number((next * multiplier).toFixed(4))));
+          if (next !== value) onCommit(next);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            event.currentTarget.blur();
+          } else if (event.key === "Escape") {
+            event.stopPropagation();
+            setDraft(String(displayValue));
+          }
+        }}
+      />
+      <span aria-hidden="true">{format === "percent" ? "%" : format === "strength" ? "×" : format === "pixels" ? "px" : format === "seconds" ? "s" : ""}</span>
+    </div>
+  );
 }
 
 function RangeControl({
@@ -118,13 +162,18 @@ function RangeControl({
   const detailId = `${inputId}-detail`;
   const outputId = `${inputId}-output`;
   const formattedValue = formatValue(value, format);
+  const commit = (nextValue) => {
+    if (onValueChange) onValueChange(nextValue);
+    else setGraphVisualSetting(section, setting, nextValue);
+  };
   return (
     <div className={`graph-visual-settings__range ${disabled ? "is-disabled" : ""}`}>
       <span>
         <label htmlFor={inputId}><strong>{label}</strong></label>
         <small id={detailId}>{detail}</small>
       </span>
-      <output id={outputId} htmlFor={inputId} aria-hidden="true">{formattedValue}</output>
+      <output id={outputId} htmlFor={inputId} aria-hidden="true" className="sr-only">{formattedValue}</output>
+      <RangeValue key={value} value={value} range={range} format={format} label={label} disabled={disabled} onCommit={commit} />
       <input
         id={inputId}
         type="range"
@@ -132,13 +181,12 @@ function RangeControl({
         max={range.max}
         step={range.step}
         value={value}
+        style={{ "--range-progress": `${(value - range.min) / (range.max - range.min) * 100}%` }}
         aria-describedby={detailId}
         aria-valuetext={formattedValue}
         disabled={disabled}
         onChange={(event) => {
-          const nextValue = Number(event.currentTarget.value);
-          if (onValueChange) onValueChange(nextValue);
-          else setGraphVisualSetting(section, setting, nextValue);
+          commit(Number(event.currentTarget.value));
         }}
       />
     </div>
@@ -244,7 +292,9 @@ function ChoiceGroup({ label, value, options, onChange, t }) {
   );
 }
 
-function SettingsGroup({ title, meta, children, open = false }) {
+function SettingsGroup({ category, title, meta, children, open = false }) {
+  const activeCategory = useContext(SettingsCategoryContext);
+  if (category && category !== activeCategory) return null;
   return (
     <details className="graph-visual-settings__group" open={open}>
       <summary><strong>{title}</strong><code>{meta}</code></summary>
@@ -253,7 +303,9 @@ function SettingsGroup({ title, meta, children, open = false }) {
   );
 }
 
-function FxCategory({ title, meta, children, open = false }) {
+function FxCategory({ category, title, meta, children, open = true }) {
+  const activeCategory = useContext(SettingsCategoryContext);
+  if (category !== activeCategory) return null;
   return (
     <details className="graph-visual-settings__fx-category" open={open}>
       <summary><strong>{title}</strong><code>{meta}</code></summary>
@@ -263,6 +315,12 @@ function FxCategory({ title, meta, children, open = false }) {
 }
 
 function FxLayerToggle({ profileId, path, label, enabled, t }) {
+  const activeCategory = useContext(SettingsCategoryContext);
+  const category = path.startsWith("node.") ? "nodes"
+    : path.startsWith("edge.") || path.startsWith("orb.signals.") ? "edges"
+      : path.startsWith("postFx.") ? "glow"
+        : path.startsWith("orb.") ? "layout" : "scene";
+  if (category !== activeCategory) return null;
   const stateLabel = t(enabled ? "common.state.on" : "common.state.off");
   return (
     <button
@@ -292,6 +350,9 @@ export function GraphVisualSettings({
 }) {
   const { t } = useLanguage();
   const panelRef = useRef(null);
+  const contentRef = useRef(null);
+  const categoryId = useId();
+  const [category, setCategory] = useState("nodes");
   const closeButtonRef = useRef(null);
   const settings = useSyncExternalStore(
     subscribeGraphVisualSettings,
@@ -316,6 +377,8 @@ export function GraphVisualSettings({
   const activeProfile = settings.profiles[profileId];
   // An idle sphere must not hide controls used by the independent Explore view.
   const neuronMaterials = settings.layout.mode === "neuron";
+  const idleSphere = settings.idleShape === "neuronSphere" && settings.view.dimension === 3;
+  const routeSignalsAvailable = neuronMaterials || idleSphere;
   const visiblePresets = graphVisualPresets.filter((preset) => !preset.dimensions || preset.dimensions.includes(settings.view.dimension));
   const environment = useMemo(
     () => readGraphicsEnvironment(reducedMotion),
@@ -396,7 +459,9 @@ export function GraphVisualSettings({
       if (!mobileDrawer || event.key !== "Tab") return;
       const focusable = [...(panelRef.current?.querySelectorAll(
         'button:not([disabled]), input:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
-      ) ?? [])];
+      ) ?? [])].filter((element) => element.tabIndex >= 0
+        && element.getClientRects().length > 0
+        && (element.checkVisibility?.() ?? true));
       if (focusable.length === 0) return;
       const first = focusable[0];
       const last = focusable.at(-1);
@@ -443,7 +508,23 @@ export function GraphVisualSettings({
     onToast?.(t(settings.sharedStyle ? "graphVisualSettings.shared.reset" : "graphVisualSettings.scope.reset", { dimension: settings.view.dimension }));
   };
 
+  const applyDefaultStyle = () => {
+    saveGraphVisualProfile(t("graphVisualSettings.defaults.backup"), settings);
+    if (getGraphVisualProfileLibrarySnapshot().error) {
+      onToast?.(t("graphVisualSettings.defaults.backupFailed"));
+      return;
+    }
+    resetGraphVisualSettings();
+    onToast?.(t("graphVisualSettings.defaults.applied"));
+  };
+
+  const chooseCategory = (nextCategory) => {
+    setCategory(nextCategory);
+    contentRef.current?.scrollTo({ top: 0 });
+  };
+
   const panel = (
+    <SettingsCategoryContext.Provider value={category}>
     <section
       ref={panelRef}
       id={embedded ? "graph-visual-settings-embedded" : "graph-visual-settings-panel"}
@@ -455,12 +536,13 @@ export function GraphVisualSettings({
     >
       <header className="graph-visual-settings__header">
         <span>
-          <small>{t("graphVisualSettings.header.runtimeSummary")}</small>
           <strong id={embedded ? "graph-visual-settings-title-embedded" : "graph-visual-settings-title"}>
             {t("graphVisualSettings.title")}
           </strong>
         </span>
-        <code>{presetId.toUpperCase()} · {quality.id.toUpperCase()}</code>
+        <button type="button" className="graph-visual-settings__preset-link" onClick={() => chooseCategory("presets")}>
+          {presetId === "custom" ? t("graphVisualSettings.editor.custom") : presetId.toUpperCase()}
+        </button>
         {onClose ? (
           <button
             ref={closeButtonRef}
@@ -481,7 +563,43 @@ export function GraphVisualSettings({
           onChange={(value) => setGraphVisualSetting("view", "dimension", value)}
           t={t}
         />
-        <p>{t(settings.sharedStyle ? "graphVisualSettings.shared.detail" : "graphVisualSettings.scope.detail", { dimension: settings.view.dimension })}</p>
+        <span className="graph-visual-settings__scope" title={t(settings.sharedStyle ? "graphVisualSettings.shared.detail" : "graphVisualSettings.scope.detail", { dimension: settings.view.dimension })}>
+          {t(settings.sharedStyle ? "graphVisualSettings.editor.shared" : "graphVisualSettings.editor.independent")}
+        </span>
+      </div>
+      <div className="graph-visual-settings__tabs" role="tablist" aria-label={t("graphVisualSettings.editor.categories")}>
+        {settingsCategories.map((id, index) => (
+          <button
+            key={id}
+            id={`${categoryId}-${id}`}
+            type="button"
+            role="tab"
+            aria-selected={category === id}
+            aria-controls={`${categoryId}-panel`}
+            tabIndex={category === id ? 0 : -1}
+            onClick={() => chooseCategory(id)}
+            onKeyDown={(event) => {
+              let next;
+              if (event.key === "ArrowRight") next = (index + 1) % settingsCategories.length;
+              else if (event.key === "ArrowLeft") next = (index + settingsCategories.length - 1) % settingsCategories.length;
+              else if (event.key === "Home") next = 0;
+              else if (event.key === "End") next = settingsCategories.length - 1;
+              else return;
+              event.preventDefault();
+              event.currentTarget.parentElement.querySelectorAll('[role="tab"]')[next]?.focus();
+              chooseCategory(settingsCategories[next]);
+            }}
+          >{t(`graphVisualSettings.editor.tab.${id}`)}</button>
+        ))}
+      </div>
+      <div ref={contentRef} id={`${categoryId}-panel`} className="graph-visual-settings__content" role="tabpanel" aria-labelledby={`${categoryId}-${category}`} tabIndex={0}>
+        <p className="graph-visual-settings__category-help">{t(`graphVisualSettings.editor.help.${category}`)}</p>
+      {category === "presets" ? <>
+      <div className="graph-visual-settings__reset-actions">
+        <button type="button" onClick={applyDefaultStyle}><ArrowResetRegular />{t("graphVisualSettings.defaults.apply")}</button>
+      </div>
+      <p className="graph-visual-settings__view-help">{t("graphVisualSettings.defaults.detail")}</p>
+      <div className="graph-visual-settings__sharing">
         <ChoiceGroup
           label={t("graphVisualSettings.shared.title")}
           value={settings.sharedStyle}
@@ -520,27 +638,15 @@ export function GraphVisualSettings({
           </button>
         ))}
       </div>
+      <div className="graph-visual-settings__reset-actions">
+        <button type="button" onClick={resetActiveProfile}><ArrowResetRegular />{t(settings.sharedStyle ? "graphVisualSettings.shared.resetButton" : "graphVisualSettings.scope.resetButton", { dimension: settings.view.dimension })}</button>
+        <button type="button" onClick={reset}><ArrowResetRegular />{t("graphVisualSettings.scope.resetAllButton", { dimension: settings.view.dimension })}</button>
+      </div>
+      </> : null}
 
       {settings.layout.mode === "neuron" && settings.view.dimension === 3 ? <GraphLayoutSettings settings={settings} t={t} open /> : null}
 
-      <SettingsGroup
-        title={t(settings.sharedStyle ? "graphVisualSettings.shared.layers" : "graphVisualSettings.scope.layers", { dimension: settings.view.dimension })}
-        meta={t(neuronMaterials ? "graphVisualSettings.profile.sceneLayerSummary" : "graphVisualSettings.profile.layerSummary", {
-          count: (settings.view.dimension === 3 ? (settings.idleShape === "neuronSphere" ? 9 : 10) : 7) - (neuronMaterials ? 1 : 0),
-          state: t((neuronMaterials ? activeProfile.postFx.bloom.enabled : activeProfile.edge.halo.enabled) ? "common.state.on" : "common.state.off"),
-        })}
-        open
-      >
-        <div className="graph-visual-settings__profile-intro">
-          <span>
-            <strong>{t("graphVisualSettings.profile.layerStack")}</strong>
-            <small>{t(settings.sharedStyle ? "graphVisualSettings.shared.detail" : "graphVisualSettings.profile.layerStackDetail")}</small>
-          </span>
-          <button type="button" onClick={resetActiveProfile}>
-            <ArrowResetRegular />{t(settings.sharedStyle ? "graphVisualSettings.shared.resetButton" : "graphVisualSettings.scope.resetButton", { dimension: settings.view.dimension })}
-          </button>
-        </div>
-
+      <div className="graph-visual-settings__effects">
         <div
           className="graph-visual-settings__layer-grid"
           role="group"
@@ -549,9 +655,11 @@ export function GraphVisualSettings({
           <FxLayerToggle profileId={profileId} path="node.core.enabled" label={t("graphVisualSettings.layer.nodeCore")} enabled={activeProfile.node.core.enabled} t={t} />
           {!neuronMaterials && <FxLayerToggle profileId={profileId} path="node.halo.enabled" label={t("graphVisualSettings.layer.nodeHalo")} enabled={activeProfile.node.halo.enabled} t={t} />}
           <FxLayerToggle profileId={profileId} path="node.pulse.enabled" label={t("graphVisualSettings.layer.nodePulse")} enabled={activeProfile.node.pulse.enabled} t={t} />
+          {routeSignalsAvailable && <FxLayerToggle profileId={profileId} path="node.activation.enabled" label={t("graphVisualSettings.activation.title")} enabled={activeProfile.node.activation.enabled} t={t} />}
           <FxLayerToggle profileId={profileId} path="edge.core.enabled" label={t("graphVisualSettings.layer.relationCore")} enabled={activeProfile.edge.core.enabled} t={t} />
           {!neuronMaterials && <FxLayerToggle profileId={profileId} path="edge.halo.enabled" label={t("graphVisualSettings.layer.relationHalo")} enabled={activeProfile.edge.halo.enabled} t={t} />}
-          {neuronMaterials && <FxLayerToggle profileId={profileId} path="edge.signal.enabled" label={t("graphVisualSettings.routeSignals.title")} enabled={activeProfile.edge.signal.enabled} t={t} />}
+          {routeSignalsAvailable && <FxLayerToggle profileId={profileId} path="edge.signal.enabled" label={t("graphVisualSettings.routeSignals.title")} enabled={activeProfile.edge.signal.enabled} t={t} />}
+          {idleSphere && <FxLayerToggle profileId={profileId} path="orb.signals.enabled" label={t("graphVisualSettings.idleSignals.title")} enabled={activeProfile.orb.signals.enabled} t={t} />}
           <FxLayerToggle profileId={profileId} path="signal.enabled" label={t(neuronMaterials ? "graphVisualSettings.routeSignals.background" : "graphVisualSettings.layer.relationSignals")} enabled={activeProfile.signal.enabled} t={t} />
           {settings.view.dimension === 3 ? <>
           {settings.idleShape !== "neuronSphere" ? <FxLayerToggle profileId={profileId} path="orb.innerNetwork.enabled" label={t("graphVisualSettings.layer.innerNetwork")} enabled={activeProfile.orb.innerNetwork.enabled} t={t} /> : null}
@@ -562,6 +670,7 @@ export function GraphVisualSettings({
         </div>
 
         <FxCategory
+          category="nodes"
           title={t("graphVisualSettings.category.nodeFx")}
           meta={t(neuronMaterials ? "graphVisualSettings.category.sceneGlowSummary" : "graphVisualSettings.category.coreHaloSummary", {
             coreState: t(activeProfile.node.core.enabled ? "common.state.on" : "common.state.off"),
@@ -572,6 +681,10 @@ export function GraphVisualSettings({
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.master.scale" label={technicalLabel(t, "NODE MASTER SCALE")} detail={t("graphVisualSettings.control.nodeMasterScale.detail")} format="strength" disabled={!activeProfile.node.core.enabled && (neuronMaterials || !activeProfile.node.halo.enabled)} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.master.opacity" label={technicalLabel(t, "NODE MASTER OPACITY")} detail={t("graphVisualSettings.control.nodeMasterOpacity.detail")} format="percent" disabled={!activeProfile.node.core.enabled && (neuronMaterials || !activeProfile.node.halo.enabled)} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.size.byImportance" label={technicalLabel(t, "NODE SIZE BY IMPORTANCE")} detail={t("graphVisualSettings.control.nodeSizeByImportance.detail")} format="percent" disabled={!activeProfile.node.core.enabled && (neuronMaterials || !activeProfile.node.halo.enabled)} />
+            {routeSignalsAvailable && <>
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.size.variation" label={t("graphVisualSettings.cellVariation.size")} detail={t("graphVisualSettings.cellVariation.sizeDetail")} format="percent" />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.color.groupVariation" label={t("graphVisualSettings.cellVariation.hue")} detail={t("graphVisualSettings.cellVariation.hueDetail")} format="strength" />
+            </>}
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.core.sizeScale" label={technicalLabel(t, "NODE CORE SIZE SCALE")} detail={t("graphVisualSettings.control.nodeCoreSizeScale.detail")} format="strength" disabled={!activeProfile.node.core.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.core.opacity" label={technicalLabel(t, "NODE CORE OPACITY")} detail={t("graphVisualSettings.control.nodeCoreOpacity.detail")} format="percent" disabled={!activeProfile.node.core.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.core.emissionIntensity" label={technicalLabel(t, "NODE CORE EMISSION INTENSITY")} detail={t("graphVisualSettings.control.nodeCoreEmission.detail")} format="strength" disabled={!activeProfile.node.core.enabled} />
@@ -585,7 +698,18 @@ export function GraphVisualSettings({
           </div>
         </FxCategory>
 
+        {routeSignalsAvailable && <FxCategory category="nodes" title={t("graphVisualSettings.activation.title")} meta={t("graphVisualSettings.activation.summary")}>
+          <div className="graph-visual-settings__control-grid">
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.activation.strength" label={t("graphVisualSettings.activation.strength")} detail={t("graphVisualSettings.activation.strengthDetail")} format="strength" disabled={!activeProfile.node.activation.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.activation.restingBrightness" label={t("graphVisualSettings.activation.resting")} detail={t("graphVisualSettings.activation.restingDetail")} format="percent" disabled={!activeProfile.node.activation.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.activation.chargeTime" label={t("graphVisualSettings.activation.charge")} detail={t("graphVisualSettings.activation.chargeDetail")} format="seconds" disabled={!activeProfile.node.activation.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.activation.holdTime" label={t("graphVisualSettings.activation.hold")} detail={t("graphVisualSettings.activation.holdDetail")} format="seconds" disabled={!activeProfile.node.activation.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="node.activation.decayTime" label={t("graphVisualSettings.activation.decay")} detail={t("graphVisualSettings.activation.decayDetail")} format="seconds" disabled={!activeProfile.node.activation.enabled} />
+          </div>
+        </FxCategory>}
+
         <FxCategory
+          category="edges"
           title={t("graphVisualSettings.category.relationFx")}
           meta={t(neuronMaterials ? "graphVisualSettings.category.sceneGlowSummary" : "graphVisualSettings.category.coreHaloSummary", {
             coreState: t(activeProfile.edge.core.enabled ? "common.state.on" : "common.state.off"),
@@ -616,14 +740,38 @@ export function GraphVisualSettings({
           </div>
         </FxCategory>
 
-        {neuronMaterials && <FxCategory title={t("graphVisualSettings.routeSignals.title")} meta={t(activeProfile.edge.signal.enabled ? "common.state.on" : "common.state.off")}>
+        {routeSignalsAvailable && <FxCategory category="edges" title={t("graphVisualSettings.routeSignals.title")} meta={t(activeProfile.edge.signal.enabled ? "common.state.on" : "common.state.off")}>
           <div className="graph-visual-settings__control-grid">
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.signal.speed" label={t("graphVisualSettings.routeSignals.speed")} detail={t("graphVisualSettings.routeSignals.speedDetail")} format="strength" disabled={!activeProfile.edge.signal.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.signal.emissionIntensity" label={t("graphVisualSettings.routeSignals.emission")} detail={t("graphVisualSettings.routeSignals.emissionDetail")} format="strength" disabled={!activeProfile.edge.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.signal.colorStart" label={t("graphVisualSettings.routeSignals.colorStart")} detail={t("graphVisualSettings.routeSignals.colorRangeDetail")} format="percent" disabled={!activeProfile.edge.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.signal.colorEnd" label={t("graphVisualSettings.routeSignals.colorEnd")} detail={t("graphVisualSettings.routeSignals.colorBirthDetail")} format="percent" disabled={!activeProfile.edge.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.signal.headLength" label={t("graphVisualSettings.routeSignals.head")} detail={t("graphVisualSettings.routeSignals.headDetail")} format="strength" disabled={!activeProfile.edge.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.signal.wakeLength" label={t("graphVisualSettings.routeSignals.wake")} detail={t("graphVisualSettings.routeSignals.wakeDetail")} format="strength" disabled={!activeProfile.edge.signal.enabled} />
+            {neuronMaterials && <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.signal.spacing" label={t("graphVisualSettings.routeSignals.spacing")} detail={t("graphVisualSettings.routeSignals.spacingDetail")} format="strength" disabled={!activeProfile.edge.signal.enabled} />}
+          </div>
+        </FxCategory>}
+
+        {idleSphere && <FxCategory category="edges" title={t("graphVisualSettings.idleSignals.title")} meta={t(activeProfile.orb.signals.enabled ? "common.state.on" : "common.state.off")}>
+          <div className="graph-visual-settings__control-grid">
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.signals.count" label={t("graphVisualSettings.idleSignals.count")} detail={t("graphVisualSettings.idleSignals.countDetail")} format="count" disabled={!activeProfile.orb.signals.enabled || !activeProfile.edge.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.signals.sizeVariation" label={t("graphVisualSettings.idleSignals.sizeVariation")} detail={t("graphVisualSettings.idleSignals.sizeVariationDetail")} format="percent" disabled={!activeProfile.orb.signals.enabled || !activeProfile.edge.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.signals.batchInterval" label={t("graphVisualSettings.idleSignals.batchInterval")} detail={t("graphVisualSettings.idleSignals.batchIntervalDetail")} format="seconds" disabled={!activeProfile.orb.signals.enabled || !activeProfile.edge.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.signals.launchSpread" label={t("graphVisualSettings.idleSignals.launchSpread")} detail={t("graphVisualSettings.idleSignals.launchSpreadDetail")} format="percent" disabled={!activeProfile.orb.signals.enabled || !activeProfile.edge.signal.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="orb.signals.hops" label={t("graphVisualSettings.idleSignals.hops")} detail={t("graphVisualSettings.idleSignals.hopsDetail")} format="count" disabled={!activeProfile.orb.signals.enabled || !activeProfile.edge.signal.enabled} />
+          </div>
+        </FxCategory>}
+
+        {neuronMaterials && <FxCategory category="edges" title={t("graphVisualSettings.focusBreath.title")} meta={t("graphVisualSettings.focusBreath.summary")} open={false}>
+          <div className="graph-visual-settings__control-grid">
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.focus.boost" label={t("graphVisualSettings.focusBreath.boost")} detail={t("graphVisualSettings.focusBreath.boostDetail")} format="percent" />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.focus.amplitude" label={t("graphVisualSettings.focusBreath.amplitude")} detail={t("graphVisualSettings.focusBreath.amplitudeDetail")} format="percent" />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.focus.period" label={t("graphVisualSettings.focusBreath.period")} detail={t("graphVisualSettings.focusBreath.periodDetail")} format="seconds" />
           </div>
         </FxCategory>}
 
         <FxCategory
+          category="scene"
           title={t(neuronMaterials ? "graphVisualSettings.routeSignals.background" : "graphVisualSettings.category.signals")}
           meta={t("graphVisualSettings.category.signalsSummary", {
             count: activeProfile.signal.count,
@@ -641,6 +789,7 @@ export function GraphVisualSettings({
 
         {settings.view.dimension === 3 ? (
         <FxCategory
+          category="layout"
           title={t("graphVisualSettings.scope.idleOrb")}
           meta={t(settings.idleShape === "neuronSphere" ? "graphVisualSettings.sphere.summary" : "graphVisualSettings.category.orbSummary")}
         >
@@ -668,6 +817,7 @@ export function GraphVisualSettings({
         ) : null}
 
         <FxCategory
+          category="scene"
           title={t("graphVisualSettings.category.motion")}
           meta={t("graphVisualSettings.category.motionSummary")}
         >
@@ -679,7 +829,7 @@ export function GraphVisualSettings({
         </FxCategory>
 
         {(settings.layout.mode === "neuron" || settings.idleShape === "neuronSphere") && (
-          <FxCategory title={t("graphVisualSettings.radiance.title")} meta={t("graphVisualSettings.radiance.summary")}>
+          <FxCategory category="glow" title={t("graphVisualSettings.radiance.title")} meta={t("graphVisualSettings.radiance.summary")}>
             <div className="graph-visual-settings__control-grid">
               {["temperature", "focus", "transmissionLink"].map((control) => (
                 <GraphFxRangeControl key={control} profileId={profileId} profile={activeProfile} path={`postFx.radiance.${control}`} label={t(`graphVisualSettings.radiance.${control}`)} detail={t(`graphVisualSettings.radiance.${control}Detail`)} format="percent" />
@@ -689,6 +839,7 @@ export function GraphVisualSettings({
         )}
 
         <FxCategory
+          category="glow"
           title={t("graphVisualSettings.category.postFx")}
           meta={t("graphVisualSettings.category.bloomSummary", {
             state: t(activeProfile.postFx.bloom.enabled ? "common.state.on" : "common.state.off"),
@@ -699,11 +850,14 @@ export function GraphVisualSettings({
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="postFx.bloom.threshold" label={technicalLabel(t, "BLOOM THRESHOLD")} detail={t("graphVisualSettings.control.bloomThreshold.detail")} disabled={!activeProfile.postFx.bloom.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="postFx.bloom.softKnee" label={technicalLabel(t, "BLOOM SOFT KNEE")} detail={t("graphVisualSettings.control.bloomSoftKnee.detail")} disabled={!activeProfile.postFx.bloom.enabled} />
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="postFx.bloom.radius" label={technicalLabel(t, "BLOOM RADIUS")} detail={t("graphVisualSettings.control.bloomRadius.detail")} disabled={!activeProfile.postFx.bloom.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="postFx.bloom.falloff" label={t("graphVisualSettings.glow.falloff")} detail={t("graphVisualSettings.glow.falloffDetail")} disabled={!activeProfile.postFx.bloom.enabled} />
+            <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="postFx.bloom.colorPreservation" label={t("graphVisualSettings.glow.colorPreservation")} detail={t("graphVisualSettings.glow.colorPreservationDetail")} format="percent" disabled={!activeProfile.postFx.bloom.enabled} />
           </div>
         </FxCategory>
-      </SettingsGroup>
+      </div>
 
       <SettingsGroup
+        category="scene"
         title={t("graphVisualSettings.section.view")}
         meta={t("graphVisualSettings.section.viewSummary", {
           visibility: t(settings.view.enabled
@@ -732,6 +886,7 @@ export function GraphVisualSettings({
       </SettingsGroup>
 
       <SettingsGroup
+        category="nodes"
         title={t("graphVisualSettings.section.nodes")}
         meta={t("graphVisualSettings.section.nodesSummary", {
           count: settings.node.maxCount,
@@ -786,6 +941,7 @@ export function GraphVisualSettings({
       </SettingsGroup>
 
       <SettingsGroup
+        category="edges"
         title={t("graphVisualSettings.section.relations")}
         meta={`${Math.round(settings.edge.opacity * 100)}%`}
       >
@@ -796,6 +952,7 @@ export function GraphVisualSettings({
       </SettingsGroup>
 
       <SettingsGroup
+        category="nodes"
         title={t("graphVisualSettings.section.labels")}
         meta={`${settings.labels.count} · ${settings.labels.fontSize}PX`}
       >
@@ -809,6 +966,8 @@ export function GraphVisualSettings({
       {!(settings.layout.mode === "neuron" && settings.view.dimension === 3) ? <GraphLayoutSettings settings={settings} t={t} /> : null}
 
       <SettingsGroup
+        category="scene"
+        open
         title={t("graphVisualSettings.section.scenePerformance")}
         meta={t("graphVisualSettings.section.sceneSummary", {
           count: settings.scene.stars,
@@ -827,7 +986,8 @@ export function GraphVisualSettings({
         />
       </SettingsGroup>
 
-      <footer className="graph-visual-settings__footer">
+      {category === "scene" ? <details className="graph-visual-settings__diagnostics">
+        <summary>{t("graphVisualSettings.editor.diagnostics")}</summary>
         <p>
           {settings.node.useThemeColors
             ? t("graphVisualSettings.footer.themePalette", {
@@ -857,11 +1017,14 @@ export function GraphVisualSettings({
             })
             : t("graphVisualSettings.footer.noConstraints")}
         </p>
-        <button type="button" onClick={reset}>
-          <ArrowResetRegular />{t("graphVisualSettings.scope.resetAllButton", { dimension: settings.view.dimension })}
-        </button>
+      </details> : null}
+      </div>
+      <footer className="graph-visual-settings__footer">
+        <span>{t("graphVisualSettings.editor.live")}</span>
+        <span>{t("graphVisualSettings.editor.editing", { dimension: settings.view.dimension })}</span>
       </footer>
     </section>
+    </SettingsCategoryContext.Provider>
   );
 
   if (!embedded && mobileDrawer && typeof document !== "undefined") {
@@ -871,9 +1034,10 @@ export function GraphVisualSettings({
   return panel;
 }
 
-function GraphLayoutSettings({ settings, t, open = false }) {
+function GraphLayoutSettings({ settings, t, open = true }) {
   return (
       <SettingsGroup
+        category="layout"
         title={t(settings.layout.mode === "neuron" ? "graphVisualSettings.neuron.layout" : "graphVisualSettings.section.layoutForces")}
         open={open}
         meta={t(settings.layout.mode === "neuron" ? "graphVisualSettings.neuron.layoutDetail" : "graphVisualSettings.section.layoutSummary")}
