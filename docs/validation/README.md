@@ -16,6 +16,8 @@ the native Explorer taskbar and desktop.
   Host tests and build, frontend license closure, and synthetic Pi staging
   safety checks. Run `scripts/verify-renderer-smoke.ps1` in both `en-US` and
   `zh-CN` from an interactive Windows desktop as a pre-release gate.
+- [Runtime regression checks](runtime-regressions-2026-09-25.md) record four
+  stateful cases found during the September 25 review.
 
 ## Coverage still required for a release claim
 

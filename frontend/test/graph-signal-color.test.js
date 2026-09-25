@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Color, SRGBColorSpace } from "three";
-import { createSignalColorPalette, sampleSignalBirthColor, signalBirthSample, advanceSignalCycleBase } from "../src/graphics/graph/graph-signal-color.js";
+import { createSignalColorPalette, sampleSignalBirthColor, signalBirthSample } from "../src/graphics/graph/graph-signal-color.js";
 import { createIdleSignalState, advanceIdleSignals, writeNextIdleSignalRoutes } from "../src/graphics/graph/graph-idle-signals.js";
 import { createNeuronSphereModel, createNeuronSphereCurves } from "../src/graphics/graph/graph-neuron-sphere-model.js";
-import { advanceFocusedSignalTravel } from "../src/graphics/graph/graph-focus-filament.js";
 import { normalizeGraphFxProfile } from "../src/graphics/graph/graph-fx-profile.js";
 import { getGraphVisualSettingsSnapshot, resetGraphVisualSettings, setGraphVisualProfileSetting } from "../src/graphics/graph/graph-visual-settings.js";
 
@@ -80,25 +79,6 @@ test("idle birth colors survive frames, bends, hubs, palette edits and later bat
   assert.ok(newborns.length > 0);
   for (const route of newborns) assert.deepEqual(route.color, a.palette.orange);
   assert.equal(a.appearances, buffer);
-});
-
-test("focused packet identity survives repeated travel-clock wraps at every route distance", () => {
-  for (const spacing of [215, 430, 1290]) {
-    let travel = 0;
-    let base = 0;
-    let absolute = 0;
-    for (let frame = 0; frame < 12_000; frame += 1) {
-      const previous = travel;
-      travel = advanceFocusedSignalTravel(previous, 0.05, 1800, 2, spacing);
-      base = advanceSignalCycleBase(base, previous, travel, 0.05, 2, spacing);
-      absolute += 24;
-      for (const distance of [0, 79, 610, 1800]) {
-        if (absolute < distance) continue;
-        const actual = (Math.floor((travel - distance) / spacing) + base) % 4096;
-        assert.equal(actual, Math.floor((absolute - distance) / spacing) % 4096);
-      }
-    }
-  }
 });
 
 test("birth color endpoints migrate, clamp and persist with the shared signal profile", () => {

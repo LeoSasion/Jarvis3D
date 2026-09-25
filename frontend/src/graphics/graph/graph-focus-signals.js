@@ -46,7 +46,10 @@ export function updateFocusedSignalGeometry(state, starts, ends) {
   state.geometryRevision += 1;
 }
 
-export function syncFocusedSignalOrigins(state, plan) {
+export function syncFocusedSignalOrigins(state, plan, starts, ends) {
+  // A new focus can arrive after the graph has stopped animating. Snapshot its
+  // current arc lengths here, before the next demand frame tries to emit.
+  if (plan.trees.length) updateFocusedSignalGeometry(state, starts, ends);
   const origins = new Set(plan.trees.map((tree) => tree.origin));
   for (const origin of state.emitters.keys()) {
     if (!origins.has(origin)) state.emitters.delete(origin);
@@ -65,6 +68,7 @@ export function syncFocusedSignalOrigins(state, plan) {
 // Leaving Explore ends the session; an empty hover only stops future emissions.
 export function endFocusedSignalSession(state) {
   state.emitters.clear();
+  state.births.clear();
   state.packets.length = 0;
   state.texture.image.data.fill(0);
   state.texture.needsUpdate = true;

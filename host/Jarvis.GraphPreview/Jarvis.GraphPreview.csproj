@@ -5,8 +5,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Isolated build intermediates must not cause project-local obj files to enter source globs. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Program.cs" />
     <Compile Include="../Jarvis.Host/Services/GraphVisualSettingsStore.cs" Link="GraphVisualSettingsStore.cs" />
     <Compile Include="../Jarvis.Host/Services/ObsidianGraphService.cs" Link="ObsidianGraphService.cs" />
     <Compile Include="../Jarvis.Host/Services/ObsidianVaultWatcher.cs" Link="ObsidianVaultWatcher.cs" />

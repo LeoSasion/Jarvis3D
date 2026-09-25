@@ -35,7 +35,7 @@ import { GRAPH_CELL_SHADER } from "./graph-cell-shader.js";
 import { createGraphCellRoles, createGraphCellVariations, writeGraphCellHighlights, usesGraphCellMaterial } from "./graph-cell-state.js";
 import {
   createRestingRouteIndex, createFocusedRestingRoutePlan, getFocusedFilamentGain,
-  writeFocusedRouteMask, FOCUSED_SIGNAL_SHADER, FOCUSED_SIGNAL_SPACING, FOCUSED_SIGNAL_SPEED,
+  writeFocusedRouteMask, FOCUSED_SIGNAL_SHADER, FOCUSED_SIGNAL_SPEED,
 } from "./graph-focus-filament.js";
 import {
   createFocusedSignalState, syncFocusedSignalOrigins, updateFocusedSignalGeometry,
@@ -62,7 +62,7 @@ import {
 import { GRAPH_LABEL_LAYER } from "./graph-label-rendering.js";
 import { createNeuronSphereModel, createNeuronSphereCurves } from "./graph-neuron-sphere-model.js";
 import { createIdleSignalState, advanceIdleSignals, writeNextIdleSignalRoutes } from "./graph-idle-signals.js";
-import { createSignalColorPalette, SIGNAL_BIRTH_COLOR_SHADER } from "./graph-signal-color.js";
+import { createSignalColorPalette } from "./graph-signal-color.js";
 import {
   createGraphPointerQueue,
   createGraphScreenIndex,
@@ -463,7 +463,6 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
   ${GRAPH_RADIANCE_SHADER}
   ${FOCUSED_SIGNAL_SHADER}
   ${FOCUSED_SIGNAL_HISTORY_SHADER}
-  ${SIGNAL_BIRTH_COLOR_SHADER}
   uniform float lineCoreEmissionByStrength;
   uniform float lineCoreEmissionIntensity;
   uniform float lineCoreOpacity;
@@ -497,6 +496,7 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
   varying float energyLineWorldWidth;
   varying float energyLineFocus;
   varying float energyLineActivation;
+  varying vec3 energyLineSignalColor;
 
   void main() {
     float lineDistance = abs(energyLineDistance);
@@ -632,9 +632,7 @@ const ENERGY_LINE_FRAGMENT_SHADER = `
         float secondWins = step(firstPacket.x * 7.0 + firstPacket.y * 1.7 + 0.00001,
           secondPacket.x * 7.0 + secondPacket.y * 1.7);
         packet = mix(firstPacket, secondPacket, secondWins);
-        packetColor = signalBirthColor(
-          mix(energyLineSignalDistance.x, energyLineSignalDistance.y, secondWins),
-          mix(lineSignalOrigins.x, lineSignalOrigins.y, secondWins));
+        packetColor = energyLineSignalColor;
       }
       float signalBoundary = energyLineCoreBoundary * energyLineSignalSize;
       float signalCore = 1.0 - smoothstep(max(0.0, signalBoundary - coreFeather),
@@ -1341,11 +1339,6 @@ export function GraphScene({
     [focusedSignals],
   );
   useEffect(() => () => focusedSignals.texture.dispose(), [focusedSignals]);
-  useLayoutEffect(() => {
-    if (presentationTarget === 1) syncFocusedSignalOrigins(focusedSignals, focusedRoutePlan);
-    else endFocusedSignalSession(focusedSignals);
-    invalidate();
-  }, [focusedSignals, focusedRoutePlan, presentationTarget, invalidate]);
   const focusedSignalAppearance = useMemo(() => new Float32Array(edgeCapacity * edgeSegments * 4).fill(1),
     [edgeCapacity, edgeSegments]);
   const filamentActivation = useMemo(() => createFilamentActivationState(edgeCapacity * edgeSegments),
@@ -1676,15 +1669,9 @@ export function GraphScene({
       lineTranslucency: { value: 0 },
       lineFocusGain: { value: 1 },
       lineSignalTravel: { value: -1 },
-      lineSignalPeriod: { value: FOCUSED_SIGNAL_SPACING },
       lineSignalHeadLength: { value: 1 },
       lineSignalWakeLength: { value: 1 },
       lineSignalGain: { value: 1 },
-      lineSignalOrange: { value: new Color() },
-      lineSignalPale: { value: new Color() },
-      lineSignalColorRange: { value: new Vector2(0, 1) },
-      lineSignalOrigins: { value: new Vector2(1, 2) },
-      lineSignalCycleBase: { value: 0 },
       lineSignalHistoryEnabled: { value: 1 },
       lineSignalHistory: { value: null },
       lineSignalHistorySize: { value: new Vector2(256, 1) },
@@ -1701,18 +1688,12 @@ export function GraphScene({
     vertexShader: ENERGY_LINE_VERTEX_SHADER,
   }), [scenePlan.nodes.activeColor, scenePlan.nodes.hubColor]);
   const energyLineUniforms = energyLineMaterial.uniforms;
-  useLayoutEffect(() => {
-    energyLineUniforms.lineSignalOrange.value.fromArray(signalPalette.orange);
-    energyLineUniforms.lineSignalPale.value.fromArray(signalPalette.pale);
-    energyLineUniforms.lineSignalColorRange.value.set(signalPalette.start, signalPalette.end);
-    invalidate();
-  }, [energyLineUniforms, signalPalette, invalidate]);
   const sphereLineMaterial = useMemo(() => {
     const material = energyLineMaterial.clone();
     material.uniforms = {
       ...energyLineMaterial.uniforms,
       lineMasterOpacity: { value: 0 }, lineSegmented: { value: 1 }, lineHaloVisibility: { value: 0 },
-      lineSignalTravel: { value: -1 }, lineSignalPeriod: { value: 0 }, lineFocusGain: { value: 1 },
+      lineSignalTravel: { value: -1 }, lineFocusGain: { value: 1 },
       lineSignalHistoryEnabled: { value: 0 },
     };
     return material;
@@ -2700,6 +2681,15 @@ export function GraphScene({
   ]);
 
   useLayoutEffect(() => {
+    if (presentationTarget === 1) {
+      syncFocusedSignalOrigins(focusedSignals, focusedRoutePlan, energyLineStarts, energyLineEnds);
+    } else {
+      endFocusedSignalSession(focusedSignals);
+    }
+    invalidate();
+  }, [focusedSignals, focusedRoutePlan, presentationTarget, energyLineStarts, energyLineEnds, invalidate]);
+
+  useLayoutEffect(() => {
     syncDynamicLabelSlots();
     updateNodeColors();
     updateFocusedEdges(positionsRef.current);
@@ -2901,7 +2891,6 @@ export function GraphScene({
       && fx3d.edge.master.opacity > 0 && scenePlan.edges.opacity > 0;
     const focusedFilamentActive = routeFilamentVisible && focusedRouteEdges.size > 0;
     energyLineUniforms.lineFocusGain.value = getFocusedFilamentGain(elapsed, reducedMotion, fx3d.edge.focus);
-    energyLineUniforms.lineSignalPeriod.value = FOCUSED_SIGNAL_SPACING * fx3d.edge.signal.spacing;
     energyLineUniforms.lineSignalHeadLength.value = fx3d.edge.signal.headLength;
     energyLineUniforms.lineSignalWakeLength.value = fx3d.edge.signal.wakeLength;
     const routeSignalActive = routeFilamentVisible && !reducedMotion && documentVisibleRef.current

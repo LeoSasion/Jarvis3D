@@ -300,9 +300,16 @@ internal sealed class WebBridge : IDisposable
 
         return method switch
         {
-            "graphVisual.read" => await Task.Run(() => (object)_graphVisualSettings.Read(), cancellationToken),
-            "graphVisual.write" => await Task.Run(() => (object)_graphVisualSettings.Write(
-                parameters.GetProperty("settings"), parameters.GetProperty("revision").GetString()), cancellationToken),
+            "graphVisual.read" => await Task.Run(() =>
+            {
+                RequireEmptyParameters(parameters, "graphVisual.read");
+                return (object)_graphVisualSettings.Read();
+            }, cancellationToken),
+            "graphVisual.write" => await Task.Run(() =>
+            {
+                var request = GetGraphVisualWriteRequest(parameters);
+                return (object)_graphVisualSettings.Write(request.Settings, request.Revision);
+            }, cancellationToken),
             "system.getSnapshot" => await Task.Run(
                 () => (object)_snapshotFeed.GetSystemSnapshot(),
                 cancellationToken),
@@ -632,6 +639,28 @@ internal sealed class WebBridge : IDisposable
         {
             throw new BridgeFaultException("INVALID_VAULT", exception.Message);
         }
+    }
+
+    internal static GraphVisualWriteRequest GetGraphVisualWriteRequest(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            parameters.EnumerateObject().Any(property => property.Name is not ("settings" or "revision")) ||
+            !parameters.TryGetProperty("settings", out var settings) ||
+            settings.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("revision", out var revision) ||
+            revision.ValueKind is not (JsonValueKind.Null or JsonValueKind.String))
+        {
+            throw new BridgeFaultException("INVALID_PARAMS", "graphVisual.write requires settings and revision.");
+        }
+
+        var value = revision.GetString();
+        if (value is not null &&
+            (value.Length != 64 || value.Any(character => !char.IsAsciiHexDigit(character))))
+        {
+            throw new BridgeFaultException("INVALID_PARAMS", "graphVisual.write revision is malformed.");
+        }
+
+        return new GraphVisualWriteRequest(settings, value);
     }
 
     internal static ObsidianGraphChunkRequest GetKnowledgeGraphChunkRequest(JsonElement parameters)
@@ -2037,6 +2066,8 @@ internal sealed record ObsidianGraphChunkRequest(
     int NodeLimit,
     int EdgeOffset,
     int EdgeLimit);
+
+internal sealed record GraphVisualWriteRequest(JsonElement Settings, string? Revision);
 
 internal sealed record ObsidianVaultSelectionResult(
     bool Canceled,

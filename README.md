@@ -6,7 +6,17 @@
 
 ## Neural graph previews
 
-The idle neuron sphere and 3D graph share translucent polygon cells with bright membranes and small nuclei. Ordinary cells have stable ±25% size variation and three nearby orange hues assigned by knowledge cluster, turning brighter warm white on hover, selection, or active relation highlighting; primary somas retain their bright cores and size. Highlighted associations follow paths through the existing visible connections with a gentle brightness breath. Short electrical pulses travel continuously along these curves and through their junctions, with warm-white heads and brief orange wakes, without introducing new terminal shortcuts. Tapered connections preserve orange bodies with rapidly fading yellow highlights along their own transparency gradients, independent of line length and camera distance. Scene-wide Bloom derives glow from brightness, with no local node or connection halo overlays; graph labels stay sharp. These are screenshots of the running browser preview; the shell's simulated status is labeled in the interface.
+The idle neuron sphere and 3D graph share translucent polygon cells with bright membranes and small
+nuclei. Ordinary cells have stable ±25% size variation and three nearby orange hues assigned by
+knowledge cluster, turning brighter warm white on hover, selection, or active relation highlighting;
+primary somas retain their bright cores and size. Highlighted associations follow paths through the
+existing visible connections with a gentle brightness breath. Short electrical pulses travel continuously
+along these curves and through their junctions without introducing new terminal shortcuts. Each pulse
+keeps its birth color, ranging from vivid orange to a pale warm accent, across its head and fading wake.
+Tapered connections preserve orange bodies with rapidly fading yellow highlights along their own
+transparency gradients, independent of line length and camera distance. Scene-wide Bloom derives glow
+from brightness, with no local node or connection halo overlays; graph labels stay sharp. These are
+screenshots of the running browser preview; the shell's simulated status is labeled in the interface.
 
 ### Neuron sphere — idle view
 

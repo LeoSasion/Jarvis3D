@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createFocusedRestingRoutePlan, createRestingRouteIndex } from "../src/graphics/graph/graph-focus-filament.js";
 import { createFocusedSignalState, updateFocusedSignalGeometry, syncFocusedSignalOrigins, advanceFocusedSignals, endFocusedSignalSession } from "../src/graphics/graph/graph-focus-signals.js";
-import { createSignalColorPalette } from "../src/graphics/graph/graph-signal-color.js";
+import { createSignalColorPalette, sampleFocusedSignalColor } from "../src/graphics/graph/graph-signal-color.js";
 import { createNodeActivationState, chargeSignalContacts } from "../src/graphics/graph/graph-node-activation.js";
 import { shouldContinueGraphFrame } from "../src/graphics/graph/graph-frame-policy.js";
 
@@ -19,12 +19,17 @@ function fixture() {
   const state = createFocusedSignalState(3, 2);
   const starts = new Float32Array([0, 0, 0, 50, 0, 0, 200, 0, 0, 150, 0, 0, 100, 0, 0, 100, 50, 0]);
   const ends = new Float32Array([50, 0, 0, 100, 0, 0, 150, 0, 0, 100, 0, 0, 100, 50, 0, 100, 100, 0]);
-  updateFocusedSignalGeometry(state, starts, ends);
-  const focus = (...origins) => syncFocusedSignalOrigins(state, createFocusedRestingRoutePlan(index, relations, origins));
+  let currentEnds = ends;
+  const focus = (...origins) => syncFocusedSignalOrigins(state,
+    createFocusedRestingRoutePlan(index, relations, origins), starts, currentEnds);
+  const updateGeometry = (nextEnds) => {
+    currentEnds = nextEnds;
+    updateFocusedSignalGeometry(state, starts, nextEnds);
+  };
   const advance = (frames = 1, settings = options, onTravel) => {
     for (let frame = 0; frame < frames; frame += 1) advanceFocusedSignals(state, 0.05, settings, onTravel);
   };
-  return { state, focus, advance, starts, ends };
+  return { state, focus, advance, starts, ends, updateGeometry };
 }
 
 function entries(state, edgeIndex) {
@@ -39,6 +44,48 @@ function entries(state, edgeIndex) {
   }
   return result;
 }
+
+test("first focus after a settled graph snapshots geometry before its first birth", () => {
+  const { state, focus, advance } = fixture();
+  assert.equal(state.geometryRevision, 0);
+  focus("a");
+  advance();
+  assert.equal(state.packets.length, 1);
+  assert.equal(state.packets[0].route.steps.length, 3);
+  assert.equal(state.packets[0].route.maximum, 200);
+  state.texture.dispose();
+});
+
+test("a launched packet follows curved segment lengths through reversed edges and branches", () => {
+  const nodes = ["a", "hub", "b", "c", "unrelated"].map((id) => ({ id }));
+  const edges = [edge("a", "hub"), edge("b", "hub"), edge("hub", "c"), edge("hub", "unrelated")];
+  const relations = [edge("a", "b"), edge("a", "c")];
+  const curves = [
+    [[0, 0, 0], [3, 4, 0], [6, 4, 0]],
+    [[6, 10, 0], [6, 8, 0], [6, 4, 0]],
+    [[6, 4, 0], [6, 4, 3], [6, 4, 7]],
+    [[6, 4, 0], [8, 4, 0], [10, 4, 0]],
+  ];
+  const starts = new Float32Array(curves.flatMap((curve) => [...curve[0], ...curve[1]]));
+  const ends = new Float32Array(curves.flatMap((curve) => [...curve[1], ...curve[2]]));
+  const state = createFocusedSignalState(edges.length, 2);
+  const plan = createFocusedRestingRoutePlan(createRestingRouteIndex(nodes, edges), relations, ["a"]);
+  syncFocusedSignalOrigins(state, plan, starts, ends);
+  advanceFocusedSignals(state, 0.05, options);
+  const route = state.packets[0].route;
+  assert.deepEqual(route.contacts, [
+    { node: 0, distance: 0 }, { node: 1, distance: 8 },
+    { node: 2, distance: 14 }, { node: 3, distance: 15 },
+  ]);
+  assert.deepEqual(route.steps.map(({ edge: index, forward, distance, total }) =>
+    [index, forward, distance, total]), [
+    [0, true, 0, 8], [1, false, 8, 6], [2, true, 8, 7],
+  ]);
+  assert.deepEqual(route.filamentContacts.slice(4, 8).map(({ distance }) => distance), [14, 12, 12, 8]);
+  assert.deepEqual(entries(state, 1).map(({ head, length }) => [head, length]), [[-2, -6]]);
+  assert.deepEqual(entries(state, 3), []);
+  state.texture.dispose();
+});
 
 test("A → B → C keeps every launched wave moving and emits only the new focus", () => {
   const { state, focus, advance } = fixture();
@@ -121,6 +168,7 @@ test("exiting Explore clears live waves and re-entry cannot revive the previous 
 
   endFocusedSignalSession(state);
   assert.equal(state.emitters.size, 0);
+  assert.equal(state.births.size, 0);
   assert.equal(state.packets.length, 0);
   assert.strictEqual(state.texture, texture, "reuse the existing GPU resource");
   assert.ok(texture.version > version, "upload the cleared history before the next render");
@@ -161,13 +209,13 @@ test("shared curved segments carry independent forward/reverse waves beyond two 
 });
 
 test("geometry updates and palette edits do not replace an in-flight birth or route", () => {
-  const { state, focus, advance, starts, ends } = fixture();
+  const { state, focus, advance, ends, updateGeometry } = fixture();
   focus("a");
   advance(3);
   const packet = state.packets[0];
   const route = packet.route;
   const color = [...packet.color];
-  updateFocusedSignalGeometry(state, starts, Float32Array.from(ends, (value) => value * 2));
+  updateGeometry(Float32Array.from(ends, (value) => value * 2));
   focus("b");
   advance(1, { ...options, palette: createSignalColorPalette("#00ff00") });
   assert.strictEqual(packet.route, route);
@@ -199,5 +247,7 @@ test("long-running emission stays bounded by route lifetime and keeps a precise 
   assert.ok(state.packets.length <= 6);
   assert.ok(state.packets.every((packet) => packet.travel >= 0 && packet.travel <= 242));
   assert.equal(state.births.get(0), Math.ceil(72_000 * 12 / 43));
+  const latest = state.packets.at(-1);
+  assert.deepEqual(latest.color, sampleFocusedSignalColor(options.palette, latest.origin, latest.birth));
   state.texture.dispose();
 });

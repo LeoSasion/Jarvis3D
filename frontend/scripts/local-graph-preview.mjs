@@ -1,4 +1,7 @@
 import { execFile, spawn } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, URL } from "node:url";
 import { promisify } from "node:util";
@@ -8,11 +11,12 @@ import { Buffer } from "node:buffer";
 
 const run = promisify(execFile);
 const project = fileURLToPath(new URL("../../host/Jarvis.GraphPreview/Jarvis.GraphPreview.csproj", import.meta.url));
-const assembly = fileURLToPath(new URL("../../host/Jarvis.GraphPreview/bin/Debug/net8.0/Jarvis.GraphPreview.dll", import.meta.url));
 
 export function isLocalGraphRequest(request) {
   const address = request.socket.remoteAddress;
   if (!["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address)) return false;
+  const fetchSite = request.headers["sec-fetch-site"];
+  if (fetchSite && !["same-origin", "none"].includes(fetchSite)) return false;
   try {
     const url = new URL(`http://${request.headers.host}`);
     if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return false;
@@ -35,11 +39,11 @@ export async function readVisualSettingsRequest(request) {
   if (!value || typeof value !== "object" || Array.isArray(value)
     || Object.keys(value).some((key) => !["revision", "settings"].includes(key))
     || !(value.revision === null || typeof value.revision === "string" && /^[A-Fa-f0-9]{64}$/u.test(value.revision))
-    || !value.settings || typeof value.settings !== "object") throw new Error("INVALID_PARAMS");
+    || !value.settings || typeof value.settings !== "object" || Array.isArray(value.settings)) throw new Error("INVALID_PARAMS");
   return { method: "visual.write", revision: value.revision, settings: value.settings };
 }
 
-export function localGraphPreview(vault) {
+export function localGraphPreview(vault, { outputRoot = tmpdir() } = {}) {
   let worker;
   let starting;
   let sequence = 0;
@@ -54,30 +58,45 @@ export function localGraphPreview(vault) {
     if (worker) return Promise.resolve(worker);
     if (starting) return starting;
     starting = (async () => {
-      await run("dotnet", ["build", project, "--nologo", "--verbosity", "quiet"], {
-        windowsHide: true, timeout: 120_000,
-      });
-      if (closed) throw new Error("LOCAL_GRAPH_UNAVAILABLE");
-      const child = spawn("dotnet", [assembly], {
-        env: { ...process.env, JARVIS_OBSIDIAN_VAULT: vault },
-        windowsHide: true,
-        stdio: ["pipe", "pipe", "ignore"],
-      });
-      worker = child;
-      child.stdin.on("error", failPending);
-      child.on("error", failPending);
-      child.on("exit", () => { worker = null; failPending(); });
-      createInterface({ input: child.stdout }).on("line", (line) => {
-        try {
-          const message = JSON.parse(line);
-          const item = pending.get(message.id);
-          if (!item) return;
-          pending.delete(message.id);
-          if (message.error) item.reject(new Error(message.error.code));
-          else item.resolve(message.result);
-        } catch { failPending(); }
-      });
-      return child;
+      // A running dotnet worker locks its DLL on Windows, so each server owns both build directories.
+      const output = await mkdtemp(join(outputRoot, "jarvis-graph-preview-"));
+      try {
+        await run("dotnet", ["build", project, "--nologo", "--verbosity", "quiet",
+          "--output", join(output, "bin"),
+          `-p:BaseIntermediateOutputPath=${join(output, "obj")}/`], {
+          windowsHide: true, timeout: 120_000,
+        });
+        if (closed) throw new Error("LOCAL_GRAPH_UNAVAILABLE");
+        const child = spawn("dotnet", [join(output, "bin", "Jarvis.GraphPreview.dll")], {
+          env: { ...process.env, JARVIS_OBSIDIAN_VAULT: vault },
+          windowsHide: true,
+          stdio: ["pipe", "pipe", "ignore"],
+        });
+        worker = child;
+        const stop = () => {
+          if (worker !== child) return;
+          worker = null;
+          failPending();
+        };
+        child.stdin.on("error", () => { stop(); child.kill(); });
+        child.on("error", stop);
+        child.on("exit", stop);
+        child.once("close", () => { void rm(output, { recursive: true, force: true }).catch(() => {}); });
+        createInterface({ input: child.stdout }).on("line", (line) => {
+          try {
+            const message = JSON.parse(line);
+            const item = pending.get(message.id);
+            if (!item) return;
+            pending.delete(message.id);
+            if (message.error) item.reject(new Error(message.error.code));
+            else item.resolve(message.result);
+          } catch { failPending(); }
+        });
+        return child;
+      } catch (error) {
+        await rm(output, { recursive: true, force: true }).catch(() => {});
+        throw error;
+      }
     })().finally(() => { starting = null; });
     return starting;
   };
@@ -93,7 +112,15 @@ export function localGraphPreview(vault) {
         resolve: (result) => { clearTimeout(timer); resolve(result); },
         reject: (error) => { clearTimeout(timer); reject(error); },
       });
-      child.stdin.write(`${JSON.stringify({ ...params, id })}\n`);
+      const failWrite = () => {
+        const item = pending.get(id);
+        if (!item) return;
+        pending.delete(id);
+        item.reject(new Error("LOCAL_GRAPH_UNAVAILABLE"));
+      };
+      try {
+        child.stdin.write(`${JSON.stringify({ ...params, id })}\n`, (error) => { if (error) failWrite(); });
+      } catch { failWrite(); }
     });
   };
 
@@ -106,8 +133,7 @@ export function localGraphPreview(vault) {
       server.middlewares.use("/__jarvis/visual-settings", async (request, response) => {
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("Content-Type", "application/json; charset=utf-8");
-        if (!isLocalGraphRequest(request) || request.headers["sec-fetch-site"] === "cross-site"
-          || !["GET", "PUT"].includes(request.method)) {
+        if (!isLocalGraphRequest(request) || !["GET", "PUT"].includes(request.method)) {
           response.statusCode = 403;
           response.end(JSON.stringify({ code: "LOCAL_SETTINGS_FORBIDDEN" }));
           return;

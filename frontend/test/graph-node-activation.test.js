@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createNodeActivationState, sampleNodeActivation, touchNodeActivation, chargeSignalContacts, updateNodeActivation } from "../src/graphics/graph/graph-node-activation.js";
-import { writeFocusedSignalDistances, advanceFocusedSignalTravel } from "../src/graphics/graph/graph-focus-filament.js";
 import { createIdleSignalState, writeNextIdleSignalRoutes } from "../src/graphics/graph/graph-idle-signals.js";
 import { shouldContinueGraphFrame } from "../src/graphics/graph/graph-frame-policy.js";
 import { normalizeGraphFxProfile } from "../src/graphics/graph/graph-fx-profile.js";
-import { createSignalColorPalette, sampleFocusedSignalColor } from "../src/graphics/graph/graph-signal-color.js";
 
 const options = { chargeTime: 0.08, holdTime: 0.12, decayTime: 1.6 };
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 0.00001, `${actual} != ${expected}`);
@@ -39,39 +37,6 @@ test("nodes charge to the same peak, retain residual energy on repeat arrivals, 
   assert.equal(state.changed, false);
   assert.equal(state.levels, buffer);
   assert.equal(sampleNodeActivation(Infinity, 0, options), 0);
-});
-
-test("every focused junction uses the ribbon's cumulative distance including reversed edges", () => {
-  const contacts = [];
-  const distances = new Float32Array(8);
-  const maximum = writeFocusedSignalDistances(distances, {
-    edges: new Set([0, 1]), trees: [{ origin: 0, steps: [
-      { node: 1, parent: 0, edge: 0, forward: true },
-      { node: 2, parent: 1, edge: 1, forward: false },
-    ] }],
-  }, 1, new Float32Array([0, 0, 0, 5, 0, 0]), new Float32Array([2, 0, 0, 2, 0, 0]), contacts);
-  assert.equal(maximum, 5);
-  assert.deepEqual(contacts, [{ node: 0, distance: 0, origin: 0 }, { node: 1, distance: 2, origin: 0 }, { node: 2, distance: 5, origin: 0 }]);
-  assert.deepEqual([...distances], [0, 2, -1, -1, 5, 2, -1, -1]);
-  const state = createNodeActivationState(4);
-  state.time = 0.5;
-  chargeSignalContacts(state, contacts, 0, 0.5, 1, 4, options);
-  updateNodeActivation(state, options);
-  assert.ok(state.levels[0] > 0);
-  assert.deepEqual([...state.levels.slice(1)], [0, 0, 0]);
-  state.time = 2.1;
-  chargeSignalContacts(state, contacts, 1.9, 2.1, 1, 4, options);
-  updateNodeActivation(state, options);
-  near(state.levels[1], 1);
-  assert.equal(state.levels[2], 0); // A periodic packet never precedes the initial front.
-  state.time = 12.1;
-  chargeSignalContacts(state, contacts, 11.9, 12.1, 1, 4, options);
-  assert.equal(state.hits[0], 12);
-  const wrapped = advanceFocusedSignalTravel(11.9, 0.05, 5, 1 / 60, 4);
-  near(wrapped, 8.1);
-  state.time += 0.2;
-  chargeSignalContacts(state, contacts, wrapped, wrapped + 0.2, 1, 4, options);
-  assert.equal(state.hits[0], 12); // Do not trigger again after the bounded clock wraps.
 });
 
 test("frame-sized arrival intervals do not miss small nodes or alter charge timing", () => {
@@ -144,22 +109,6 @@ test("arriving packets color the entire cell, keep that hue during decay, and ne
   assert.equal(state.changed, true);
   assert.deepEqual([...state.colors.slice(0, 3)], [...new Float32Array(orange)]);
   assert.equal(state.levels[1], 0);
-});
-
-test("focused contact color uses the arriving pulse and its origin, including bounded clock rebases", () => {
-  const palette = createSignalColorPalette("#ff6500");
-  const state = createNodeActivationState(2, true);
-  const contacts = [{ node: 0, origin: 19, distance: 10 }, { node: 1, origin: 27, distance: 10 }];
-  for (const base of [0, 4095]) {
-    const born = 3;
-    state.time += 1;
-    chargeSignalContacts(state, contacts, 1299, 1301, 240, 430, options,
-      (contact, pulse) => sampleFocusedSignalColor(palette, contact.origin, pulse + base));
-    for (const contact of contacts) {
-      const color = sampleFocusedSignalColor(palette, contact.origin, born + base);
-      assert.deepEqual([...state.colors.slice(contact.node * 3, contact.node * 3 + 3)], [...new Float32Array(color)]);
-    }
-  }
 });
 
 test("disabled and reduced-motion states clear transient energy and decay stops requesting frames", () => {

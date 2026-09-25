@@ -5,7 +5,7 @@ function changes(before, after, path = [], result = []) {
     const next = after[key];
     const previous = before?.[key];
     if (next && typeof next === "object" && !Array.isArray(next)) changes(previous, next, [...path, key], result);
-    else if (JSON.stringify(previous) !== JSON.stringify(next)) result.push({ path: [...path, key], value: next });
+    else if (!sameValue(previous, next)) result.push({ path: [...path, key], value: next });
   }
   return result;
 }
@@ -20,12 +20,21 @@ function overlay(base, pending) {
   return result;
 }
 
+function valueAt(value, path) {
+  return path.reduce((current, key) => current?.[key], value);
+}
+
+function sameValue(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 export function createGraphSettingsFileSync({ api, initial, normalize, onValue, onStatus, select = (value) => value }) {
   let base = select(initial);
   let presented = select(initial);
   let revision;
   let sequence = 0;
   let active = null;
+  let inFlight = null;
   let disposed = false;
   const pending = new Map();
   const status = (state, error = null) => { if (!disposed) onStatus(state, error); };
@@ -40,6 +49,9 @@ export function createGraphSettingsFileSync({ api, initial, normalize, onValue, 
     const changedRevision = snapshot.revision !== revision;
     revision = snapshot.revision;
     base = select(normalize(snapshot.settings));
+    for (const [key, change] of pending) {
+      if (sameValue(change.value, valueAt(base, change.path))) pending.delete(key);
+    }
     const next = normalize(overlay(base, pending));
     presented = select(next);
     if (!disposed) onValue(next, remote && changedRevision);
@@ -60,7 +72,10 @@ export function createGraphSettingsFileSync({ api, initial, normalize, onValue, 
       for (let attempt = 0; pending.size && attempt < 8 && !disposed; attempt++) {
         const sent = new Map(pending);
         const settings = normalize(overlay(base, sent));
-        const saved = await api.write({ revision, settings });
+        inFlight = sent;
+        let saved;
+        try { saved = await api.write({ revision, settings }); }
+        finally { inFlight = null; }
         if (disposed) return;
         validate(saved);
         if (!saved.conflict) {
@@ -87,7 +102,9 @@ export function createGraphSettingsFileSync({ api, initial, normalize, onValue, 
     edit(next) {
       const selected = select(next);
       for (const change of changes(presented, selected)) {
-        pending.set(JSON.stringify(change.path), { ...change, sequence: ++sequence });
+        const key = JSON.stringify(change.path);
+        if (sameValue(change.value, valueAt(base, change.path)) && !inFlight?.has(key)) pending.delete(key);
+        else pending.set(key, { ...change, sequence: ++sequence });
       }
       presented = selected;
       if (pending.size) status("saving");

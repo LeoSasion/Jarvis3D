@@ -94,6 +94,61 @@ test("simultaneous independent edits survive CAS conflicts and propagate without
   assert.equal(api.writes, 2);
 });
 
+test("reverting an unsaved edit leaves another browser's later change intact", async () => {
+  const api = disk(profile());
+  const a = browser(api);
+  const b = browser(api);
+  await Promise.all([a.sync.refresh(), b.sync.refresh()]);
+  a.sync.edit(profile(1.95));
+  a.sync.edit(profile());
+  b.sync.edit(profile(1.5));
+  await b.sync.flush();
+  await a.sync.refresh();
+  assert.deepEqual(a.state.value, profile(1.5));
+  assert.equal((await api.read()).settings.fx.strength, 1.5);
+  assert.equal(api.writes, 1);
+});
+
+test("a remote write that already matches the pending edit needs no echo write", async () => {
+  const api = disk(profile());
+  const a = browser(api);
+  const b = browser(api);
+  await Promise.all([a.sync.refresh(), b.sync.refresh()]);
+  a.sync.edit(profile(1.95));
+  b.sync.edit(profile(1.95));
+  await b.sync.flush();
+  await a.sync.refresh();
+  assert.deepEqual(a.state.value, profile(1.95));
+  assert.equal(api.writes, 1);
+});
+
+test("reverting an edit during its write still saves the reversion", async () => {
+  const storage = disk(profile());
+  let release;
+  let started;
+  const began = new Promise((resolve) => { started = resolve; });
+  let first = true;
+  const api = { read: storage.read, write: async (request) => {
+    if (first) {
+      first = false;
+      started();
+      await new Promise((resolve) => { release = resolve; });
+    }
+    return storage.write(request);
+  } };
+  const a = browser(api);
+  await a.sync.refresh();
+  a.sync.edit(profile(1.95));
+  const saving = a.sync.flush();
+  await began;
+  a.sync.edit(profile());
+  release();
+  await saving;
+  assert.deepEqual((await storage.read()).settings, profile());
+  assert.deepEqual(a.state.value, profile());
+  assert.equal(storage.writes, 2);
+});
+
 test("an edit made during an in-flight save is neither acknowledged early nor lost", async () => {
   const storage = disk(profile());
   let release;

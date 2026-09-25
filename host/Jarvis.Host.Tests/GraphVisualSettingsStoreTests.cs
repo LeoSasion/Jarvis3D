@@ -75,6 +75,19 @@ public sealed class GraphVisualSettingsStoreTests : IDisposable
         Assert.Equal(saved.Revision, store.Read().Revision);
     }
 
+    [Fact]
+    public void DeepSettingsCannotReplaceAFileThatTheStoreCanRead()
+    {
+        var store = new GraphVisualSettingsStore(SettingsPath);
+        var saved = store.Write(Value(), null);
+        var nested = string.Concat(Enumerable.Repeat("{\"child\":", 25)) + "0" + new string('}', 25);
+        var text = Value().GetRawText()[..^1] + ",\"extra\":" + nested + "}";
+        using var deep = JsonDocument.Parse(text);
+
+        Assert.ThrowsAny<JsonException>(() => store.Write(deep.RootElement, saved.Revision));
+        Assert.Equal(saved.Revision, store.Read().Revision);
+    }
+
     [Theory]
     [InlineData("null")]
     [InlineData("\"7\"")]

@@ -227,6 +227,35 @@ public sealed class WebBridgeBoundaryTests
         Assert.Equal(256, request.EdgeLimit);
     }
 
+    [Fact]
+    public void GraphVisualWriteRequestAcceptsOnlySettingsAndAnExpectedRevision()
+    {
+        using var document = JsonDocument.Parse("""
+            {"settings":{"version":7},"revision":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+            """);
+
+        var request = WebBridge.GetGraphVisualWriteRequest(document.RootElement);
+
+        Assert.Equal(7, request.Settings.GetProperty("version").GetInt32());
+        Assert.Equal("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", request.Revision);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"settings\":{},\"revision\":5}")]
+    [InlineData("{\"settings\":[],\"revision\":null}")]
+    [InlineData("{\"settings\":{},\"revision\":\"stale\"}")]
+    [InlineData("{\"settings\":{},\"revision\":null,\"path\":\"C:/elsewhere\"}")]
+    public void GraphVisualWriteRequestRejectsMalformedEnvelope(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+
+        var exception = Assert.Throws<BridgeFaultException>(() =>
+            WebBridge.GetGraphVisualWriteRequest(document.RootElement));
+
+        Assert.Equal("INVALID_PARAMS", exception.Code);
+    }
+
     [Theory]
     [InlineData("{\"revision\":\"obsidian-v1-aa\",\"nodeOffset\":0,\"nodeLimit\":513,\"edgeOffset\":0,\"edgeLimit\":0}")]
     [InlineData("{\"revision\":\"../../private\",\"nodeOffset\":0,\"nodeLimit\":1,\"edgeOffset\":0,\"edgeLimit\":0}")]

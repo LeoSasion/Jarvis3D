@@ -6,20 +6,9 @@ export function getFocusedFilamentGain(elapsed, reducedMotion = false, { boost =
 export const FOCUSED_SIGNAL_SPEED = 240;
 export const FOCUSED_SIGNAL_SPACING = 430;
 
-export function advanceFocusedSignalTravel(current, delta, maximumDistance, speed = 1, spacing = FOCUSED_SIGNAL_SPACING) {
-  const next = current + Math.min(0.05, Math.max(0, delta)) * FOCUSED_SIGNAL_SPEED * speed;
-  // Keep GPU float precision after hours of selection. Only wrap behind the
-  // furthest destination, by full packet intervals, preserving the initial front.
-  const loopBase = Math.ceil(maximumDistance / spacing) * spacing;
-  return next >= loopBase + spacing
-    ? loopBase + (next - loopBase) % spacing : next;
-}
-
-// A compact bright head and an orange wake, measured along the model-space
-// route. The initial front must arrive before periodic signals can appear.
+// The retained Explore packets and idle walks share this model-space head/wake shape.
 export const FOCUSED_SIGNAL_SHADER = `
   uniform float lineSignalTravel;
-  uniform float lineSignalPeriod;
   uniform float lineSignalHeadLength;
   uniform float lineSignalWakeLength;
   varying vec2 energyLineSignalDistance;
@@ -37,9 +26,7 @@ export const FOCUSED_SIGNAL_SHADER = `
 
   vec2 focusedSignal(float distanceFromOrigin) {
     if (distanceFromOrigin < 0.0 || lineSignalTravel < distanceFromOrigin) return vec2(0.0);
-    float age = lineSignalTravel - distanceFromOrigin;
-    if (lineSignalPeriod > 0.0) age = mod(age, lineSignalPeriod);
-    return focusedSignalAge(age);
+    return focusedSignalAge(lineSignalTravel - distanceFromOrigin);
   }
 `;
 
@@ -115,49 +102,6 @@ export function createFocusedRestingRoutePlan(index, relations, activeNodeIds) {
     if (steps.length) trees.push({ origin, steps });
   }
   return { edges: routeEdges, trees };
-}
-
-export function findFocusedRestingRoutes(index, relations, activeNodeIds) {
-  return createFocusedRestingRoutePlan(index, relations, activeNodeIds).edges;
-}
-
-// Two channels support simultaneous selected and hovered origins, including
-// opposite travel on a shared edge. Geometry is the same resting ribbon buffer.
-export function writeFocusedSignalDistances(target, plan, segments, starts, ends, contacts = []) {
-  target.fill(-1);
-  contacts.length = 0;
-  let maximumDistance = 0;
-  const lengths = new Map();
-  for (const edge of plan.edges) {
-    const cumulative = new Float64Array(segments + 1);
-    for (let segment = 0; segment < segments; segment += 1) {
-      const offset = (edge * segments + segment) * 3;
-      cumulative[segment + 1] = cumulative[segment] + Math.hypot(
-        ends[offset] - starts[offset],
-        ends[offset + 1] - starts[offset + 1],
-        ends[offset + 2] - starts[offset + 2],
-      );
-    }
-    lengths.set(edge, cumulative);
-  }
-  plan.trees.slice(0, 2).forEach((tree, channel) => {
-    const distances = new Map([[tree.origin, 0]]);
-    contacts.push({ node: tree.origin, distance: 0, origin: tree.origin });
-    for (const step of tree.steps) {
-      const cumulative = lengths.get(step.edge);
-      const total = cumulative[segments];
-      const originDistance = distances.get(step.parent);
-      distances.set(step.node, originDistance + total);
-      contacts.push({ node: step.node, distance: originDistance + total, origin: tree.origin });
-      maximumDistance = Math.max(maximumDistance, originDistance + total);
-      for (let segment = 0; segment < segments; segment += 1) {
-        const offset = (step.edge * segments + segment) * 4 + channel * 2;
-        target[offset] = originDistance + (step.forward ? cumulative[segment] : total - cumulative[segment]);
-        target[offset + 1] = originDistance + (step.forward ? cumulative[segment + 1] : total - cumulative[segment + 1]);
-      }
-    }
-  });
-  return maximumDistance;
 }
 
 export function writeFocusedRouteMask(target, routeEdges, segments, enabled) {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { graphFxSettingRanges, normalizeGraphFxProfile } from "../src/graphics/graph/graph-fx-profile.js";
-import { getFocusedFilamentGain, advanceFocusedSignalTravel } from "../src/graphics/graph/graph-focus-filament.js";
+import { getFocusedFilamentGain } from "../src/graphics/graph/graph-focus-filament.js";
 import { createGraphCellVariations } from "../src/graphics/graph/graph-cell-state.js";
 import { getGraphVisualSettingsSnapshot, normalizeGraphVisualSettings, resetGraphVisualSettings, setGraphSharedNeuronStyle, setGraphVisualProfileSetting } from "../src/graphics/graph/graph-visual-settings.js";
 
@@ -53,16 +53,12 @@ test("new controls migrate old profiles, clamp invalid input, and preserve per-v
   } finally { resetGraphVisualSettings(); }
 });
 
-test("focus controls keep the dimmest highlight above normal and preserve adjustable packet phase", () => {
+test("focus controls keep the dimmest highlight above normal", () => {
   const focus = { boost: 0.2, amplitude: 0.4, period: 4 };
   assert.equal(getFocusedFilamentGain(0, false, focus), 1.2);
   assert.equal(getFocusedFilamentGain(2, false, focus), 1.6);
   assert.equal(getFocusedFilamentGain(2, true, focus), 1.2);
   assert.equal(getFocusedFilamentGain(2, false, { ...focus, amplitude: 0 }), 1.2);
-  const current = 2995;
-  const next = advanceFocusedSignalTravel(current, 0.05, 1000, 1, 600);
-  assert.equal((next - 137) % 600, (current + 12 - 137) % 600);
-  assert.ok(next >= 1000 && next < 1800);
 });
 
 test("node variation can be disabled or scaled without rerolling node identity", () => {

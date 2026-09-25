@@ -9,7 +9,7 @@ namespace Jarvis.Host.Services;
 internal sealed class GraphVisualSettingsStore
 {
     public const int MaximumBytes = 48 * 1024;
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, MaxDepth = 24 };
     private static readonly JsonDocumentOptions DocumentOptions = new() { MaxDepth = 24 };
     private readonly string _path;
     private readonly string _mutexName;
