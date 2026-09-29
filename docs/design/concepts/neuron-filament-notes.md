@@ -44,4 +44,4 @@
 
 参考含绘画式分枝和镜头散焦，本轮保留实际图谱布局，没有加入全画面景深、真实折射或场景透射。细枝仍受像素覆盖和抗锯齿影响；这与按屏幕宽度主动改变发光色阶不同。
 
-最终运行截图：[球体](../../validation/neuron-radiance-sphere-preview.jpg)、[3D](../../validation/neuron-radiance-3d-preview.jpg)、[2D](../../validation/neuron-radiance-2d-preview.jpg)。验收记录见 [design-qa.md](../../../frontend/design-qa.md)。
+2026-09-16 运行截图：[球体](../../validation/neuron-radiance-sphere-preview.jpg)、[3D](../../validation/neuron-radiance-3d-preview.jpg)、[2D](../../validation/neuron-radiance-2d-preview.jpg)。当前画面见项目 [README](../../../README.md)，当时的验收记录见 [design-qa.md](../../../frontend/design-qa.md)。

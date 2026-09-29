@@ -6,6 +6,10 @@ the native Explorer taskbar and desktop.
 
 ## Evidence kept in this repository
 
+- [Current browser preview stills](../design/references/jarvis-operator-hud-overview.png)
+  show the idle desktop; [3D Explore](neuron-radiance-3d-preview.png) and
+  [2D Explore](neuron-radiance-2d-preview.png) were captured on 2026-09-30.
+  Earlier JPEGs remain with their dated material-study notes.
 - [Current Windows 11 native acceptance](win11-native-acceptance-2026-08-20.md)
   records the latest automated and controlled native gates, audit score,
   validation-harness fixes, and the hardware-dependent coverage still missing.

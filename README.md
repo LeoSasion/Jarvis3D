@@ -1,32 +1,39 @@
 # JARVIS
 
-`JarvisV1` is the repository and release identity for JARVIS, an experimental operator-HUD desktop shell for Windows 10 and Windows 11. The passive neural field, compact telemetry rails, and vector instrument language are intentional product identity, while every system claim remains Host-backed or explicitly marked as simulated. A native C#/WPF host and React/WebView2 interface provide a replacement taskbar, desktop command surface, native window styling, file tools, a local knowledge graph, Agent workflows, and an integrated ConPTY terminal.
+JARVIS (`JarvisV1` in release tooling) is an experimental desktop shell for
+Windows 10 and 11. A native C#/WPF host and a React/WebView2 interface bring
+together a reversible taskbar, desktop commands, file tools, a local knowledge
+graph, Agent workflows, and a ConPTY terminal. System state comes from the
+Host; the browser preview labels simulated state instead of presenting it as
+live Windows telemetry.
 
-![JARVIS operator HUD](docs/design/references/jarvis-operator-hud-overview.png)
+![Current JARVIS desktop preview with the idle neuron sphere, telemetry rail, and taskbar](docs/design/references/jarvis-operator-hud-overview.png)
 
-## Neural graph previews
+*Current local browser preview: the idle neuron sphere behind the desktop
+controls. The native Host is required for real Windows integration.*
 
-The idle neuron sphere and 3D graph share translucent polygon cells with bright membranes and small
-nuclei. Ordinary cells have stable ±25% size variation and three nearby orange hues assigned by
-knowledge cluster, turning brighter warm white on hover, selection, or active relation highlighting;
-primary somas retain their bright cores and size. Highlighted associations follow paths through the
-existing visible connections with a gentle brightness breath. Short electrical pulses travel continuously
-along these curves and through their junctions without introducing new terminal shortcuts. Each pulse
-keeps its birth color, ranging from vivid orange to a pale warm accent, across its head and fading wake.
-Tapered connections preserve orange bodies with rapidly fading yellow highlights along their own
-transparency gradients, independent of line length and camera distance. Scene-wide Bloom derives glow
-from brightness, with no local node or connection halo overlays; graph labels stay sharp. These are
-screenshots of the running browser preview; the shell's simulated status is labeled in the interface.
+## Neural graph
 
-### Neuron sphere — idle view
+The desktop's idle neuron sphere and the Explore views use the same orange-family
+cell and filament materials. Explore unfolds the graph into 3D branches or 2D
+clusters. Selected relations light up along existing paths; short electrical
+signals cross those paths and junctions, charge the cells they touch, then fade.
+A signal keeps its assigned warm hue through its head, wake, and cell activation.
+Line color follows each filament's own strength and transparency gradient, while
+scene-wide Bloom spreads light from bright geometry. Still images cannot show
+the signal motion or the focused lines' brightness breathing.
 
-![JARVIS neuron sphere idle view](docs/validation/neuron-radiance-sphere-preview.jpg)
+### 3D Explore
 
-### 3D neuron graph — exploration view
+![Current 3D neuron graph with highlighted routes and active cells](docs/validation/neuron-radiance-3d-preview.png)
 
-![JARVIS 3D neuron graph exploration view](docs/validation/neuron-radiance-3d-preview.jpg)
+### 2D Explore
 
-See the [shared filament implementation and controls](docs/design/concepts/neuron-filament-notes.md) for details.
+![Current 2D neuron graph with clustered cells and existing connections](docs/validation/neuron-radiance-2d-preview.png)
+
+These are unedited 1280×720 captures of the running local browser preview. The
+[filament notes](docs/design/concepts/neuron-filament-notes.md) retain the earlier
+material study and its dated comparisons.
 
 ### Screen recording
 
@@ -40,6 +47,11 @@ substituting another codec. Use an up-to-date Chrome or Edge browser; resizing t
 tab or window during recording is supported.
 
 ### Local graph visual settings
+
+**Graph Visual Settings** provides bounded controls for node variation and
+activation, filament and signal appearance, idle emission, Bloom, layout, and
+scene visibility. The active profile is shared or independent across idle, 2D,
+and 3D according to the selected mode.
 
 The active graph configuration is saved in `%LOCALAPPDATA%\JARVIS\Settings\graph-visual-settings.json`.
 The Windows Host and the loopback Vite development/preview server use the same file. Visible browser

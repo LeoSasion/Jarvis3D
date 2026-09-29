@@ -6,7 +6,7 @@ runtime behavior, accessibility, and Host-backed state remain authoritative.
 
 ## Current reference set
 
-- `references/jarvis-operator-hud-overview.png` — current 1920×1080 browser-
+- `references/jarvis-operator-hud-overview.png` — current 1280×720 browser-
   preview capture of the operator HUD. Simulated telemetry is visibly labeled.
 - `references/jarvis-neural-orb-reference.jpg` — orange neural-orb emission and
   node-energy reference for the passive 3D idle field.
