@@ -14,8 +14,12 @@ Pi's [RPC reference](https://github.com/earendil-works/pi/blob/v1.0.0/packages/c
 | No-auth prompt | In a fresh agent directory with credential environment variables removed, Pi rejected a synthetic prompt with its API-key-required error. No provider request was made. |
 | Complete response without a cloud provider | A temporary model configuration and HTTP server bound only to `127.0.0.1` returned one deterministic OpenAI-compatible response. With the production RPC launch flags and no `--provider`/`--model` overrides, Pi reported `disposition: started`, emitted `text_delta`, completed the assistant message with `stopReason: stop`, and emitted `agent_settled`. Exactly one loopback request occurred. |
 | Host unit suite | 483 tests passed, including started-versus-queued/handled/invalid disposition cases. |
+| Exact-commit Windows candidate | `0.1.0-rc.20261003` was built from clean source commit `b57ec9cf6ce424ba395955d501daf65082f5252f`. Release verification passed for 783 package files and all 784 portable ZIP entries. The portable ZIP SHA-256 is `a9e56557601de687202f2f4eb4a9352e77681c338d7e3db8839ec1c120d34805`; the installer SHA-256 is `22be85750437f0e1ca9364689928f07f851d367f89286ec45ef04f6ae9a63c40`. |
+| Isolated installer lifecycle | Install, no-window Host lifecycle probe, repair, uninstall, startup cleanup, and Pi runtime verification all passed. Explorer remained present and no JARVIS process remained. The candidate's renderer smoke passed in `en-US` and `zh-CN`. |
 
 The test prompts were synthetic and did not read the user's Vault. No external model provider was called. Real-provider answer quality, cancellation, network failures, and recovery still need a separate credentialed acceptance run with non-sensitive notes. This upgrade does not claim those behaviors were tested.
+
+The candidate packages are local at `artifacts/installer/JARVIS-Setup-0.1.0-rc.20261003-win-x64.exe` and `artifacts/release/JARVIS-0.1.0-rc.20261003-win-x64.zip`. These generated artifacts are not tracked in Git; the release and installer verification receipts are under `artifacts/validation/`. The candidate was tested in an isolated current-user install path and did not replace a normal JARVIS installation.
 
 Repeat the packaged-runtime checks after staging:
 
