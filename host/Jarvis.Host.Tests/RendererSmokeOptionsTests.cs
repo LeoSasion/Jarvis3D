@@ -68,6 +68,35 @@ public sealed class RendererSmokeOptionsTests
     }
 
     [Theory]
+    [InlineData(@"\\?\")]
+    [InlineData(@"\\.\")]
+    [InlineData("//?/")]
+    [InlineData("//./")]
+    public void DeviceNamespaceAliasesAreRejectedForRootsAndReceipts(string prefix)
+    {
+        var production = HostDataPaths.ProductionRoot;
+        Assert.False(RendererSmokeOptions.TryParse(
+            CreateArguments(prefix + production, prefix + Path.Combine(production, "renderer.json")),
+            out _, out _));
+
+        var isolated = CreateIsolatedRoot();
+        Assert.False(RendererSmokeOptions.TryParse(
+            CreateArguments(isolated, prefix + Path.Combine(isolated, "renderer.json")),
+            out _, out _));
+    }
+
+    [Theory]
+    [InlineData(@"\\localhost\C$\jarvis-validation")]
+    [InlineData(@"\\?\UNC\localhost\C$\jarvis-validation")]
+    [InlineData("//localhost/C$/jarvis-validation")]
+    public void UncRootsAndReceiptsAreRejected(string networkRoot)
+    {
+        var receipt = Path.Combine(networkRoot, "renderer.json");
+        Assert.False(RendererSmokeOptions.TryParse(CreateArguments(networkRoot, receipt), out _, out _));
+        Assert.False(RendererSmokeOptions.TryParse(CreateArguments(CreateIsolatedRoot(), receipt), out _, out _));
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData("abc")]
     [InlineData("gggggggggggggggggggggggggggggggg")]

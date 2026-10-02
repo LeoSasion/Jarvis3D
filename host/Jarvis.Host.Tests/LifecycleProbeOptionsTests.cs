@@ -103,6 +103,35 @@ public sealed class LifecycleProbeOptionsTests
             out _));
     }
 
+    [Theory]
+    [InlineData(@"\\?\")]
+    [InlineData(@"\\.\")]
+    [InlineData("//?/")]
+    [InlineData("//./")]
+    public void DeviceNamespaceAliasesAreRejectedForRootsAndReceipts(string prefix)
+    {
+        var production = HostDataPaths.ProductionRoot;
+        Assert.False(LifecycleProbeOptions.TryParse(
+            CreateArguments(prefix + production, prefix + Path.Combine(production, "probe.json")),
+            out _, out _));
+
+        var isolated = CreateIsolatedRoot();
+        Assert.False(LifecycleProbeOptions.TryParse(
+            CreateArguments(isolated, prefix + Path.Combine(isolated, "probe.json")),
+            out _, out _));
+    }
+
+    [Theory]
+    [InlineData(@"\\localhost\C$\jarvis-validation")]
+    [InlineData(@"\\?\UNC\localhost\C$\jarvis-validation")]
+    [InlineData("//localhost/C$/jarvis-validation")]
+    public void UncRootsAndReceiptsAreRejected(string networkRoot)
+    {
+        var receipt = Path.Combine(networkRoot, "probe.json");
+        Assert.False(LifecycleProbeOptions.TryParse(CreateArguments(networkRoot, receipt), out _, out _));
+        Assert.False(LifecycleProbeOptions.TryParse(CreateArguments(CreateIsolatedRoot(), receipt), out _, out _));
+    }
+
     [Fact]
     public void DuplicateOrUnknownProbeArgumentsFailClosed()
     {

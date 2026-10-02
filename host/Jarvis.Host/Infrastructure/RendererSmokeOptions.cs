@@ -92,10 +92,10 @@ internal sealed record RendererSmokeOptions(
             }
         }
 
-        if (!Path.IsPathFullyQualified(dataRootValue) ||
-            !Path.IsPathFullyQualified(receiptValue))
+        if (!HostDataPaths.IsLocalAbsolutePath(dataRootValue) ||
+            !HostDataPaths.IsLocalAbsolutePath(receiptValue))
         {
-            error = "Renderer smoke paths must be absolute.";
+            error = "Renderer smoke paths must be ordinary absolute local drive paths.";
             return false;
         }
 

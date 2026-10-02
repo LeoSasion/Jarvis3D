@@ -3,14 +3,18 @@ import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
 import { localGraphPreview } from "./scripts/local-graph-preview.mjs";
 import { execFileSync } from "node:child_process";
+import process from "node:process";
 
 function buildIdentity() {
   const root = fileURLToPath(new URL("../", import.meta.url));
+  const requestedVersion = process.env.JARVIS_BUILD_VERSION?.trim();
+  const version = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u.test(requestedVersion ?? "")
+    ? requestedVersion : "development";
   try {
-    return { version: "development", revision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8", windowsHide: true }).trim(),
+    return { version, revision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8", windowsHide: true }).trim(),
       dirty: Boolean(execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8", windowsHide: true }).trim()),
       builtAtUtc: new Date().toISOString() };
-  } catch { return { version: "development", revision: "unknown", dirty: null, builtAtUtc: new Date().toISOString() }; }
+  } catch { return { version, revision: "unknown", dirty: null, builtAtUtc: new Date().toISOString() }; }
 }
 
 export default defineConfig(({ mode, command }) => {

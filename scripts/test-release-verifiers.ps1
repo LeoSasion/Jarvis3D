@@ -117,7 +117,7 @@ try {
     if ($commitParameter.Count -ne 1 -or @($commitParameter[0].Attributes | Where-Object {
             $_.TypeName.Name -eq 'Parameter' -and @($_.NamedArguments | Where-Object ArgumentName -eq 'Mandatory').Count -eq 1
         }).Count -ne 1) { throw 'Installer ExpectedCommit must be mandatory before any script action.' }
-    foreach ($name in @('Assert-InstalledReleaseProvenance', 'Assert-ChildPath')) {
+    foreach ($name in @('Assert-InstalledReleaseProvenance', 'Assert-PinnedPiLicense', 'Assert-ChildPath')) {
         $definition = $installerAst.Find({ param($node)
             $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
         }, $true)
@@ -188,6 +188,40 @@ try {
     Copy-Item -LiteralPath (Join-Path $fixtureRoot 'bbbbbbbbbbbb.exe') -Destination $hostPath -Force
     Assert-Rejected -Name 'installed executable wrong commit' -MessagePattern 'executable version' -Action {
         Assert-InstalledReleaseProvenance -Directory $packageRoot -ReleaseVersion '0.1.0' -SourceCommit $expectedCommit
+    }
+
+    $licenseReference = Join-Path $fixtureRoot 'license-reference.txt'
+    $licenseInstalled = Join-Path $fixtureRoot 'license-installed.txt'
+    $licenseText = "Synthetic license`nKeep this text intact.`n"
+    $licenseBytes = [Text.UTF8Encoding]::new($false).GetBytes($licenseText)
+    [IO.File]::WriteAllBytes($licenseInstalled, $licenseBytes)
+    $licenseHash = (Get-FileHash -LiteralPath $licenseInstalled -Algorithm SHA256).Hash.ToLowerInvariant()
+    foreach ($referenceCase in @('LF', 'CRLF', 'CR', 'no-final-newline')) {
+        $referenceText = switch ($referenceCase) {
+            'CRLF' { $licenseText.Replace("`n", "`r`n") }
+            'CR' { $licenseText.Replace("`n", "`r") }
+            'no-final-newline' { $licenseText.TrimEnd("`n") }
+            default { $licenseText }
+        }
+        [IO.File]::WriteAllText($licenseReference, $referenceText, [Text.UTF8Encoding]::new($false))
+        Assert-PinnedPiLicense -InstalledPath $licenseInstalled -ReferencePath $licenseReference -ExpectedHash $licenseHash
+        $results.Add([ordered]@{ case = "Pi license reference $referenceCase"; passed = $true })
+    }
+    [IO.File]::WriteAllText($licenseReference, $licenseText, [Text.UTF8Encoding]::new($false))
+    $tamperedLicense = [byte[]]$licenseBytes.Clone()
+    $tamperedLicense[0] = $tamperedLicense[0] -bxor 1
+    [IO.File]::WriteAllBytes($licenseInstalled, $tamperedLicense)
+    Assert-Rejected -Name 'Pi license installed byte tamper' -MessagePattern 'installed Pi license bytes' -Action {
+        Assert-PinnedPiLicense -InstalledPath $licenseInstalled -ReferencePath $licenseReference -ExpectedHash $licenseHash
+    }
+    [IO.File]::WriteAllText($licenseInstalled, $licenseText.Replace("`n", "`r`n"), [Text.UTF8Encoding]::new($false))
+    Assert-Rejected -Name 'Pi license installed CRLF bytes' -MessagePattern 'installed Pi license bytes' -Action {
+        Assert-PinnedPiLicense -InstalledPath $licenseInstalled -ReferencePath $licenseReference -ExpectedHash $licenseHash
+    }
+    [IO.File]::WriteAllBytes($licenseInstalled, $licenseBytes)
+    [IO.File]::WriteAllText($licenseReference, $licenseText.Replace('intact', 'edited'), [Text.UTF8Encoding]::new($false))
+    Assert-Rejected -Name 'Pi license retained reference tamper' -MessagePattern 'retained Pi license' -Action {
+        Assert-PinnedPiLicense -InstalledPath $licenseInstalled -ReferencePath $licenseReference -ExpectedHash $licenseHash
     }
 
     $safetyParent = Join-Path $fixtureRoot 'path-safety'

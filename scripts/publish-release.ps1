@@ -122,6 +122,22 @@ function Invoke-Checked {
     }
 }
 
+function Invoke-FrontendBuild {
+    param(
+        [Parameter(Mandatory)] [string]$WorkingDirectory,
+        [Parameter(Mandatory)] [string]$ReleaseVersion
+    )
+
+    $previousVersion = [Environment]::GetEnvironmentVariable('JARVIS_BUILD_VERSION', 'Process')
+    try {
+        [Environment]::SetEnvironmentVariable('JARVIS_BUILD_VERSION', $ReleaseVersion, 'Process')
+        Invoke-Checked -FilePath $npm -Arguments @('run', 'build') -WorkingDirectory $WorkingDirectory
+    }
+    finally {
+        [Environment]::SetEnvironmentVariable('JARVIS_BUILD_VERSION', $previousVersion, 'Process')
+    }
+}
+
 if (-not (Test-Path -LiteralPath $projectPath)) {
     throw "JARVIS host project was not found: $projectPath"
 }
@@ -181,7 +197,7 @@ $frontendLicenseBuildRoot = Reset-ChildDirectory `
 if ($SkipNodeInstall) {
     Write-Warning 'Locked npm install was skipped by request; existing node_modules will be used.'
     $frontendDist = Reset-ChildDirectory -Path $frontendDist -Parent $frontendRoot
-    Invoke-Checked -FilePath $npm -Arguments @('run', 'build') -WorkingDirectory $frontendRoot
+    Invoke-FrontendBuild -WorkingDirectory $frontendRoot -ReleaseVersion $Version
     Invoke-Checked `
         -FilePath $node `
         -Arguments @(
@@ -211,7 +227,7 @@ else {
     }
 
     Invoke-Checked -FilePath $npm -Arguments $nodeInstallArguments -WorkingDirectory $frontendBuildRoot
-    Invoke-Checked -FilePath $npm -Arguments @('run', 'build') -WorkingDirectory $frontendBuildRoot
+    Invoke-FrontendBuild -WorkingDirectory $frontendBuildRoot -ReleaseVersion $Version
     Invoke-Checked `
         -FilePath $node `
         -Arguments @(

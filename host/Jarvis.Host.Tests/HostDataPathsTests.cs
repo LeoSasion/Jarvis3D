@@ -38,4 +38,19 @@ public sealed class HostDataPathsTests
         Assert.False(HostDataPaths.TryValidateRoot(Path.Combine(root, "Settings"), out _));
         Assert.False(HostDataPaths.TryValidateRoot(Path.Combine(root, "..", "..", Guid.NewGuid().ToString("N")), out _));
     }
+
+    [Theory]
+    [InlineData(@"\\?\C:\jarvis-validation")]
+    [InlineData(@"\\.\C:\jarvis-validation")]
+    [InlineData(@"\\localhost\C$\jarvis-validation")]
+    [InlineData(@"\\?\UNC\localhost\C$\jarvis-validation")]
+    [InlineData("//?/C:/jarvis-validation")]
+    [InlineData("//./C:/jarvis-validation")]
+    [InlineData("//localhost/C$/jarvis-validation")]
+    [InlineData(@"C:\jarvis-validation:stream")]
+    public void AliasedAndStreamPathsAreRejectedBeforeCanonicalization(string value)
+    {
+        Assert.False(HostDataPaths.IsLocalAbsolutePath(value));
+        Assert.False(HostDataPaths.TryValidateRoot(value, out _));
+    }
 }

@@ -57,6 +57,24 @@ function Assert-InstalledReleaseProvenance {
     return [pscustomobject]@{ manifest = $manifest; informationalVersion = $informationalVersion }
 }
 
+function Assert-PinnedPiLicense {
+    param([string]$InstalledPath, [string]$ReferencePath, [string]$ExpectedHash)
+    if ($ExpectedHash -cnotmatch '\A[0-9a-f]{64}\z') { throw 'The pinned Pi license hash is invalid.' }
+    # Match stage-pi-runtime.ps1's canonical reference rule. The installed bytes
+    # must still match the pin exactly; only Git checkout line endings may vary.
+    $reference = [IO.File]::ReadAllText($ReferencePath).Replace("`r`n", "`n").Replace("`r", "`n")
+    if (-not $reference.EndsWith("`n", [StringComparison]::Ordinal)) { $reference += "`n" }
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        $referenceHash = [BitConverter]::ToString($sha256.ComputeHash([Text.UTF8Encoding]::new($false).GetBytes($reference))).Replace('-', '').ToLowerInvariant()
+    }
+    finally { $sha256.Dispose() }
+    if ($referenceHash -cne $ExpectedHash) { throw 'The retained Pi license does not match its pinned canonical hash.' }
+    if ((Get-FileHash -LiteralPath $InstalledPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $ExpectedHash) {
+        throw 'The installed Pi license bytes do not match their pinned hash.'
+    }
+}
+
 function Assert-ChildPath {
     param(
         [Parameter(Mandatory)] [string]$Path,
@@ -371,14 +389,12 @@ function Assert-InstalledPiRuntime {
 
     $installedManifestHash = (Get-FileHash -LiteralPath $runtimeManifestPath -Algorithm SHA256).Hash
     $trustedManifestHash = (Get-FileHash -LiteralPath $piTrustManifestPath -Algorithm SHA256).Hash
-    $installedLicenseHash = (Get-FileHash -LiteralPath $runtimeLicensePath -Algorithm SHA256).Hash
-    $trustedLicenseHash = (Get-FileHash -LiteralPath $piLicensePath -Algorithm SHA256).Hash
+    Assert-PinnedPiLicense -InstalledPath $runtimeLicensePath -ReferencePath $piLicensePath -ExpectedHash $trustManifest.license.sha256
     $treeReceiptItem = Get-Item -LiteralPath $runtimeTreeReceiptPath
     $treeReceiptHash = (Get-FileHash -LiteralPath $runtimeTreeReceiptPath -Algorithm SHA256).Hash
     $executableItem = Get-Item -LiteralPath $runtimeExecutablePath
     $executableHash = (Get-FileHash -LiteralPath $runtimeExecutablePath -Algorithm SHA256).Hash
     if ($installedManifestHash -ne $trustedManifestHash -or
-        $installedLicenseHash -ne $trustedLicenseHash -or
         $treeReceiptItem.Length -ne [long]$trustManifest.archive.treeReceiptBytes -or
         -not $treeReceiptHash.Equals(
             [string]$trustManifest.archive.treeSha256,

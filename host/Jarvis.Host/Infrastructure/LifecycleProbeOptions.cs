@@ -51,10 +51,10 @@ internal sealed record LifecycleProbeOptions(
             return false;
         }
 
-        if (!Path.IsPathFullyQualified(dataRootValue) ||
-            !Path.IsPathFullyQualified(receiptValue))
+        if (!HostDataPaths.IsLocalAbsolutePath(dataRootValue) ||
+            !HostDataPaths.IsLocalAbsolutePath(receiptValue))
         {
-            error = "Lifecycle probe paths must be absolute.";
+            error = "Lifecycle probe paths must be ordinary absolute local drive paths.";
             return false;
         }
 

@@ -49,7 +49,7 @@ internal static class HostDataPaths
         root = null;
         try
         {
-            if (!Path.IsPathFullyQualified(value)) return false;
+            if (!IsLocalAbsolutePath(value)) return false;
             var candidate = Path.GetFullPath(value).TrimEnd(Path.DirectorySeparatorChar);
             var parent = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "jarvis-native-validation"));
             var production = Path.GetFullPath(ProductionRoot).TrimEnd(Path.DirectorySeparatorChar);
@@ -69,6 +69,16 @@ internal static class HostDataPaths
             return false;
         }
     }
+
+    // Validation accepts ordinary drive paths only. Device and UNC namespaces
+    // can alias local production directories while evading string comparisons.
+    internal static bool IsLocalAbsolutePath(string value) =>
+        value.Length >= 3 &&
+        char.IsAsciiLetter(value[0]) &&
+        value[1] == ':' &&
+        (value[2] == Path.DirectorySeparatorChar || value[2] == Path.AltDirectorySeparatorChar) &&
+        value.IndexOf(':', 2) < 0 &&
+        Path.IsPathFullyQualified(value);
 
     internal static bool IsReparseFreeTree(string candidate)
     {
