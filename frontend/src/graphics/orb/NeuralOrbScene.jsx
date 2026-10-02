@@ -1,6 +1,7 @@
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { AdditiveBlending, Color, FrontSide } from "three";
+import { createGraphComparisonClock, getGraphVisualPreviewSnapshot, subscribeGraphVisualPreview } from "../graph/graph-visual-preview.js";
 import { useGraphicsRuntimeContext } from "../runtime/runtime-context.js";
 import {
   createNeuralOrbTopology,
@@ -303,6 +304,8 @@ export function NeuralOrbScene({
   const invalidate = useThree((state) => state.invalidate);
   const size = useThree((state) => state.size);
   const runtime = useGraphicsRuntimeContext();
+  const { frozen } = useSyncExternalStore(subscribeGraphVisualPreview, getGraphVisualPreviewSnapshot);
+  const comparisonClock = useMemo(createGraphComparisonClock, []);
   const budget = selectNeuralOrbBudget(runtime?.qualityProfile?.id);
   const topology = useMemo(() => createNeuralOrbTopology(budget), [budget]);
   const ambientSignalDefaults = useMemo(
@@ -359,10 +362,12 @@ export function NeuralOrbScene({
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [invalidate]);
 
+  useEffect(() => { invalidate(); }, [frozen, invalidate]);
+
   useFrame((state, delta) => {
     const assembly = assemblyRef.current;
     if (!assembly) return;
-    const elapsed = state.clock.elapsedTime;
+    const { elapsed, frameDelta } = comparisonClock.sample(state.clock.elapsedTime, delta, frozen);
     const cameraDistance = camera.position.length();
     const cameraZoom = Math.max(0.01, Number(camera.zoom) || 1);
     const frameMinimum = Math.max(1, Math.min(size.width, size.height));
@@ -391,14 +396,15 @@ export function NeuralOrbScene({
     ambientUniforms.uPixelRatio.value = runtime?.effectiveDpr ?? 1;
     signalUniforms.uPixelRatio.value = runtime?.effectiveDpr ?? 1;
 
-    if (reducedMotion || (typeof document !== "undefined" && document.visibilityState === "hidden")) {
+    if (frozen || reducedMotion || (typeof document !== "undefined" && document.visibilityState === "hidden")) {
       return;
     }
-    assembly.rotation.y += delta * 0.072;
+    assembly.rotation.y += frameDelta * 0.072;
     assembly.rotation.x = 0.12 + Math.sin(elapsed * 0.19) * 0.045;
     assembly.rotation.z = Math.sin(elapsed * 0.13) * 0.018;
-    if (innerRef.current) innerRef.current.rotation.y -= delta * 0.035;
-    if (ambientRef.current) ambientRef.current.rotation.y += delta * 0.018;
+    if (innerRef.current) innerRef.current.rotation.y -= frameDelta * 0.035;
+    if (ambientRef.current) ambientRef.current.rotation.y += frameDelta * 0.018;
+    runtime?.markContinuousFrame?.();
     invalidate();
   });
 

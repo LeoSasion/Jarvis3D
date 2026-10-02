@@ -1,0 +1,54 @@
+{
+  "environment": "Codex in-app Chromium browser; 1280x720; synthetic 96-note Vault; full-motion override; effective quality low because system reduced-motion preference remains active",
+  "notes": "Active R3F frame intervals, not GPU execution time or screen presentation rate; up to 600 recent frames per sample. Browser CPU and memory were not measured.",
+  "samples": [
+    {
+      "adaptiveTier": "0",
+      "capturedAt": "2026-10-02T12:35:45.742Z",
+      "effectiveDpr": "1.000",
+      "effectiveQuality": "low",
+      "frameStatistics": {
+        "count": 600,
+        "meanMs": 4.221666666666667,
+        "p50Ms": 4.199999988079071,
+        "p95Ms": 4.799999982118607,
+        "maxMs": 20.19999998807907,
+        "sampledDurationMs": 2533
+      },
+      "rendererState": "ready",
+      "scenario": "idle"
+    },
+    {
+      "adaptiveTier": "0",
+      "capturedAt": "2026-10-02T12:45:52.286Z",
+      "effectiveDpr": "1.000",
+      "effectiveQuality": "low",
+      "frameStatistics": {
+        "count": 600,
+        "meanMs": 4.2425,
+        "p50Ms": 4.199999988079071,
+        "p95Ms": 4.4000000059604645,
+        "maxMs": 26.900000005960464,
+        "sampledDurationMs": 2545.5
+      },
+      "rendererState": "ready",
+      "scenario": "explore-3d-focused"
+    },
+    {
+      "adaptiveTier": "0",
+      "capturedAt": "2026-10-02T12:46:48.972Z",
+      "effectiveDpr": "1.000",
+      "effectiveQuality": "low",
+      "frameStatistics": {
+        "count": 600,
+        "meanMs": 4.172833333363136,
+        "p50Ms": 4.199999988079071,
+        "p95Ms": 4.5999999940395355,
+        "maxMs": 7.899999976158142,
+        "sampledDurationMs": 2503.7000000178814
+      },
+      "rendererState": "ready",
+      "scenario": "explore-2d-focused"
+    }
+  ]
+}

@@ -54,5 +54,5 @@ test("Agent messages and live platform details remain raw while time follows the
   assert.match(agentSource, /formatTime\(date, language\)/u);
   assert.doesNotMatch(agentSource, /toLocaleTimeString/u);
   assert.match(agentSource, />JARVIS Agent<\/strong>/u);
-  assert.match(agentSource, /\[JARVIS FILE CONTEXT — METADATA ONLY\]/u);
+  assert.match(agentSource, /message\?\.role === "user" \? getUserDirective\(text\) : text/u);
 });

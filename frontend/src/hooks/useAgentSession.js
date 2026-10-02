@@ -18,6 +18,9 @@ import {
 } from "../agent-context-model.js";
 import { createAgentSessionGate } from "../agent-session-gate.js";
 import { platform } from "../platform/index.js";
+import { translate } from "../i18n/language-system.js";
+import { createResumePrompt } from "../agent-conversation-library.js";
+import { useAgentConversationLibrary } from "./useAgentConversationLibrary.js";
 
 function createClientMessageId() {
   return globalThis.crypto?.randomUUID?.() ??
@@ -126,6 +129,8 @@ export function useAgentSession() {
     () => createAgentContextModel(),
   );
   const [draft, setDraft] = useState("");
+  const library = useAgentConversationLibrary(model.messages, model.state);
+  const resumedConversationRef = useRef(null);
   const gateRef = useRef(null);
   const supportsChat = canUseAgentChat(model.state);
   const supportsAbort = agentSupportsCapability(
@@ -175,7 +180,7 @@ export function useAgentSession() {
   const send = useCallback(async (message = draft) => {
     const text = String(message ?? "").trim();
     if (!text) return null;
-    if (gateRef.current?.isTransitioning()) {
+    if (gateRef.current?.isTransitioning() || library.busyRef.current) {
       throw new Error("Wait for the new Agent session to be ready.");
     }
     if (!model.state.available) {
@@ -187,7 +192,21 @@ export function useAgentSession() {
 
     const clientMessageId = createClientMessageId();
     const attachContext = isAgentContextArmed(context);
-    const prompt = createAgentPromptForContext(text, context);
+    let prompt = createAgentPromptForContext(text, context);
+    const resume = library.resumeMessages.length > 0 && !resumedConversationRef.current;
+    if (resume) {
+      try { prompt = createResumePrompt(prompt, library.resumeMessages); }
+      catch {
+        const error = new Error(translate("knowledge.agent.tooLong"));
+        dispatch({ type: "error", error });
+        throw error;
+      }
+    }
+    if (prompt.length > 16_000) {
+      const error = new Error(translate("knowledge.agent.tooLong"));
+      dispatch({ type: "error", error });
+      throw error;
+    }
     if (attachContext) {
       dispatchContext({ type: "submit", clientMessageId });
     }
@@ -201,6 +220,7 @@ export function useAgentSession() {
       if (readResult(result, "accepted", "Accepted") === false) {
         throw commandResultError(result, "The Agent Provider rejected the prompt.");
       }
+      if (resume) resumedConversationRef.current = true;
       if (attachContext) {
         dispatchContext({
           type: "run-start",
@@ -214,7 +234,7 @@ export function useAgentSession() {
       dispatch({ type: "error", error });
       throw error;
     }
-  }, [context.items, draft, model.state.available, model.state.status, supportsChat]);
+  }, [context, draft, library, model.state, supportsChat]);
 
   const addContextItems = useCallback((entries) => {
     if (["submitting", "running"].includes(context.phase)) return context.items;
@@ -256,23 +276,42 @@ export function useAgentSession() {
     }
     const gate = gateRef.current;
     if (!gate) throw new Error("Agent session is not initialized.");
-    const { state, applied } = await runAgentSessionTransition(
-      platform.agent,
-      gate,
-      model.state,
-    );
-    if (applied) {
+    let state;
+    await library.change(null, async () => {
+      const result = await runAgentSessionTransition(platform.agent, gate, model.state);
+      state = result.state;
+      if (result.applied) {
+        setDraft("");
+        dispatchContext({ type: "session-reset" });
+        resumedConversationRef.current = null;
+      }
+    });
+    return state;
+  }, [library, model.state, supportsNewSession]);
+
+  const restoreConversation = useCallback(async (id) => {
+    if (["running", "starting"].includes(model.state.status)) throw new Error("AGENT_BUSY");
+    const gate = gateRef.current;
+    if (!gate) throw new Error("Agent session is not initialized.");
+    await library.change(id, async () => {
+      if (supportsNewSession) await runAgentSessionTransition(platform.agent, gate, model.state);
+      else {
+        const token = gate.beginSessionTransition();
+        if (token === null) throw new Error("AGENT_BUSY");
+        gate.completeSessionTransition(token, model.state);
+      }
       setDraft("");
       dispatchContext({ type: "session-reset" });
-    }
-    return state;
-  }, [model.state, supportsNewSession]);
+      resumedConversationRef.current = null;
+    });
+  }, [library, model.state, supportsNewSession]);
 
   return {
     state: model.state,
-    messages: model.messages,
+    messages: library.messages,
     historyError: model.historyError,
-    sessionTransitioning: model.sessionTransitioning,
+    sessionTransitioning: model.sessionTransitioning || library.transitioning,
+    library: { ...library, restore: restoreConversation },
     draft,
     setDraft,
     context,

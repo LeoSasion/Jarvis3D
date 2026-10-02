@@ -43,7 +43,7 @@ export async function readVisualSettingsRequest(request) {
   return { method: "visual.write", revision: value.revision, settings: value.settings };
 }
 
-export function localGraphPreview(vault, { outputRoot = tmpdir() } = {}) {
+export function localGraphPreview(vault, { outputRoot = tmpdir(), settingsDirectory = null } = {}) {
   let worker;
   let starting;
   let sequence = 0;
@@ -68,7 +68,8 @@ export function localGraphPreview(vault, { outputRoot = tmpdir() } = {}) {
         });
         if (closed) throw new Error("LOCAL_GRAPH_UNAVAILABLE");
         const child = spawn("dotnet", [join(output, "bin", "Jarvis.GraphPreview.dll")], {
-          env: { ...process.env, JARVIS_OBSIDIAN_VAULT: vault },
+          env: { ...process.env, JARVIS_OBSIDIAN_VAULT: vault,
+            ...(settingsDirectory ? { JARVIS_PREVIEW_TEST_SETTINGS_DIRECTORY: settingsDirectory } : {}) },
           windowsHide: true,
           stdio: ["pipe", "pipe", "ignore"],
         });
@@ -146,6 +147,40 @@ export function localGraphPreview(vault, { outputRoot = tmpdir() } = {}) {
           response.end(JSON.stringify({ code: "LOCAL_SETTINGS_UNAVAILABLE" }));
         }
       });
+      const registerLocalStore = (route, allowedMethods) => server.middlewares.use(route, async (request, response) => {
+        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        if (!isLocalGraphRequest(request) || request.method !== "POST"
+          || request.headers["content-type"]?.split(";")[0].trim() !== "application/json") {
+          response.statusCode = 403;
+          response.end(JSON.stringify({ code: "LOCAL_SETTINGS_FORBIDDEN" }));
+          return;
+        }
+        try {
+          let size = 0;
+          const chunks = [];
+          for await (const chunk of request) {
+            size += Buffer.byteLength(chunk);
+            if (size > 256 * 1024) throw new Error("INVALID_PARAMS");
+            chunks.push(Buffer.from(chunk));
+          }
+          const params = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          if (!params || !allowedMethods.includes(params.method)) throw new Error("INVALID_PARAMS");
+          // Worker request ids are transport-owned; source document ids have distinct parameter names.
+          if (params.id !== undefined && params.method.startsWith("configuration.snapshots.")) {
+            params.snapshotId = params.id;
+            delete params.id;
+          }
+          response.end(JSON.stringify(await requestGraph(params)));
+        } catch {
+          response.statusCode = 503;
+          response.end(JSON.stringify({ code: "LOCAL_SETTINGS_UNAVAILABLE" }));
+        }
+      });
+      registerLocalStore("/__jarvis/configuration", ["configuration.read", "configuration.write",
+        "configuration.snapshots.list", "configuration.snapshots.create", "configuration.snapshots.read", "configuration.snapshots.delete", "configuration.snapshots.restore"]);
+      registerLocalStore("/__jarvis/agent-conversations", ["agentConversations.list", "agentConversations.read",
+        "agentConversations.save", "agentConversations.rename", "agentConversations.delete"]);
       if (!vault) return;
       server.middlewares.use("/__jarvis/graph", async (request, response) => {
         response.setHeader("Cache-Control", "no-store");
@@ -167,6 +202,17 @@ export function localGraphPreview(vault, { outputRoot = tmpdir() } = {}) {
               if (!Number.isSafeInteger(value) || value < 0) throw new Error("LOCAL_GRAPH_UNAVAILABLE");
               params[key] = value;
             }
+          } else if (url.pathname === "/search") {
+            params = {
+              method: "search", query: url.searchParams.get("query") ?? "", tag: url.searchParams.get("tag") ?? "",
+              offset: Number(url.searchParams.get("offset") ?? 0), limit: Number(url.searchParams.get("limit") ?? 40),
+            };
+          } else if (["/neighborhood", "/readNote"].includes(url.pathname)) {
+            params = {
+              method: url.pathname.slice(1), revision: url.searchParams.get("revision") ?? "",
+              nodeId: url.searchParams.get("nodeId") ?? "",
+              hops: Number(url.searchParams.get("hops") ?? 1), startLine: Number(url.searchParams.get("startLine") ?? 1),
+            };
           } else {
             response.statusCode = 404;
             response.end(JSON.stringify({ code: "LOCAL_GRAPH_NOT_FOUND" }));

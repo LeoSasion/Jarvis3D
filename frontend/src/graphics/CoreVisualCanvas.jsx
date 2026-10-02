@@ -22,7 +22,7 @@ import {
   createGraphRenderPlan,
 } from "./graph/graph-render-policy.js";
 import {
-  getGraphVisualSettingsSnapshot,
+  getGraphVisualRenderSettingsSnapshot,
   getGraphVisualPresetId,
   initializeGraphVisualSettings,
   resolveGraphVisualColors,
@@ -35,6 +35,9 @@ import {
 } from "./graphics-runtime-policy.js";
 import { RenderPipeline } from "./RenderPipeline.jsx";
 import { publishGraphicsDiagnostics } from "./runtime/graphics-diagnostics-store.js";
+import {
+  getGraphVisualPreviewSnapshot, selectGraphComparisonView, subscribeGraphVisualPreview,
+} from "./graph/graph-visual-preview.js";
 import "./graphics-runtime.css";
 
 function selectDebouncedLayout(layout) {
@@ -145,7 +148,7 @@ function EnabledCoreVisualCanvas({
     () => selectGraphicsQualityProfile(environment, settings.performance.quality),
     [environment, settings.performance.quality],
   );
-  const resolvedDimension = !interactive && settings.idleShape === "neuronSphere" ? 3 : dimension === 3 || dimension === 2
+  const resolvedDimension = dimension === 3 || dimension === 2
     ? dimension
     : settings.view.dimension;
   const presentation = interactive
@@ -225,6 +228,7 @@ function EnabledCoreVisualCanvas({
       data-graphics-input-owner={interactive ? "graph" : undefined}
     >
       <GraphicsRuntime
+        measurementKey={`${presentation}:${resolvedDimension}:${reducedMotion}`}
         dimension={resolvedDimension}
         fallback={fallback}
         interactive={interactive}
@@ -323,6 +327,7 @@ function NeuralOrbCoreVisualCanvas({
       style={{ "--core-visual-accent": colors.accent }}
     >
       <GraphicsRuntime
+        measurementKey={`neural-orb:${reducedMotion}`}
         dimension={3}
         fallback={fallback}
         interactive={false}
@@ -348,25 +353,33 @@ function NeuralOrbCoreVisualCanvas({
 }
 
 export function CoreVisualCanvas(props) {
+  const { frozen } = useSyncExternalStore(subscribeGraphVisualPreview, getGraphVisualPreviewSnapshot);
+  const comparisonViewRef = useRef(null);
   const storedSettings = useSyncExternalStore(
     subscribeGraphVisualSettings,
-    getGraphVisualSettingsSnapshot,
-    getGraphVisualSettingsSnapshot,
+    getGraphVisualRenderSettingsSnapshot,
+    getGraphVisualRenderSettingsSnapshot,
   );
+  const requestedDimension = props.scene === "neural-orb"
+    || (!props.interactive && storedSettings.idleShape === "neuronSphere") ? 3
+    : props.dimension === 2 || props.dimension === 3 ? props.dimension : storedSettings.view.dimension;
+  comparisonViewRef.current = selectGraphComparisonView(comparisonViewRef.current, {
+    ...props, dimension: requestedDimension,
+  }, frozen);
+  const view = comparisonViewRef.current;
 
   useEffect(() => {
     initializeGraphVisualSettings();
   }, []);
 
   const settings = useMemo(
-    () => selectGraphDimensionSettings(storedSettings, props.scene === "neural-orb"
-      || (!props.interactive && storedSettings.idleShape === "neuronSphere") ? 3 : props.dimension),
-    [storedSettings, props.dimension, props.scene, props.interactive],
+    () => selectGraphDimensionSettings(storedSettings, view.dimension),
+    [storedSettings, view.dimension],
   );
 
-  if (props.scene === "neural-orb") {
-    return <NeuralOrbCoreVisualCanvas {...props} settings={settings} />;
+  if (view.scene === "neural-orb") {
+    return <NeuralOrbCoreVisualCanvas {...props} {...view} settings={settings} />;
   }
   if (!settings.view.enabled) return null;
-  return <EnabledCoreVisualCanvas {...props} settings={settings} />;
+  return <EnabledCoreVisualCanvas {...props} {...view} settings={settings} />;
 }

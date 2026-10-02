@@ -8,6 +8,9 @@ const EMPTY_SNAPSHOT = Object.freeze({
   maxTextureSize: 0,
   rendererStatus: "unavailable",
   requestedQuality: "unavailable",
+  adjustmentReason: "initial",
+  frameStatistics: null,
+  frameMeasuredAt: null,
   updatedAt: null,
 });
 
@@ -20,6 +23,7 @@ function finiteNumber(value, fallback = 0) {
 
 export function publishGraphicsDiagnostics(value = {}, status = null) {
   snapshot = Object.freeze({
+    ...snapshot,
     adaptiveTier: Math.max(0, Math.floor(finiteNumber(value.adaptiveTier))),
     devicePixelRatio: Math.max(0.1, finiteNumber(value.devicePixelRatio, 1)),
     effectiveDpr: Math.max(0.1, finiteNumber(value.effectiveDpr, 1)),
@@ -29,10 +33,16 @@ export function publishGraphicsDiagnostics(value = {}, status = null) {
     requestedQuality: String(
       value.requestedQualityProfile?.id ?? value.requestedQuality ?? "unavailable",
     ),
+    adjustmentReason: String(value.adjustmentReason ?? "initial"),
     updatedAt: new Date().toISOString(),
   });
   listeners.forEach((listener) => listener());
   return snapshot;
+}
+
+export function publishGraphicsFrameStatistics(frameStatistics) {
+  snapshot = Object.freeze({ ...snapshot, frameStatistics, frameMeasuredAt: frameStatistics ? new Date().toISOString() : null });
+  listeners.forEach((listener) => listener());
 }
 
 export function getGraphicsDiagnosticsSnapshot() {

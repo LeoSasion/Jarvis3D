@@ -29,6 +29,9 @@ internal sealed class WebBridge : IDisposable
     private readonly ShellService _shellService;
     private readonly FileExplorerService _fileExplorerService;
     private readonly ObsidianGraphService _obsidianGraphService = new();
+    private readonly ConfigurationPreferencesStore _configurationPreferences = new();
+    private readonly ConfigurationSnapshotStore _configurationSnapshots = new();
+    private readonly AgentConversationStore _agentConversations = new();
     private readonly GraphVisualSettingsStore _graphVisualSettings = new();
     private readonly FileTransferCoordinator _fileTransferCoordinator = new();
     private readonly TerminalSessionService _terminalSessionService;
@@ -300,6 +303,21 @@ internal sealed class WebBridge : IDisposable
 
         return method switch
         {
+            "configuration.read" => await Task.Run(() => (object)_configurationPreferences.Read(), cancellationToken),
+            "configuration.write" => await Task.Run(() => (object)_configurationPreferences.Write(
+                parameters.GetProperty("settings"), parameters.GetProperty("revision").GetString()), cancellationToken),
+            "configuration.snapshots.list" => await Task.Run(() => (object)_configurationSnapshots.List(), cancellationToken),
+            "configuration.snapshots.create" => await Task.Run(() => (object)_configurationSnapshots.Create(GetRequiredString(parameters, "label")), cancellationToken),
+            "configuration.snapshots.read" => await Task.Run(() => (object)_configurationSnapshots.Read(GetRequiredString(parameters, "id")), cancellationToken),
+            "configuration.snapshots.delete" => await Task.Run(() => (object)_configurationSnapshots.Delete(GetRequiredString(parameters, "id")), cancellationToken),
+            "configuration.snapshots.restore" => await Task.Run(() => (object)_configurationSnapshots.Restore(
+                GetRequiredString(parameters, "id"), GetRequiredString(parameters, "graphRevision"),
+                GetRequiredString(parameters, "preferencesRevision")), cancellationToken),
+            "agentConversations.list" => await Task.Run(() => (object)_agentConversations.List(), cancellationToken),
+            "agentConversations.read" => await Task.Run(() => (object)_agentConversations.Read(GetRequiredString(parameters, "conversationId")), cancellationToken),
+            "agentConversations.save" => await Task.Run(() => (object)_agentConversations.Save(parameters.GetProperty("conversation")), cancellationToken),
+            "agentConversations.rename" => await Task.Run(() => (object)_agentConversations.Rename(GetRequiredString(parameters, "conversationId"), GetRequiredString(parameters, "title")), cancellationToken),
+            "agentConversations.delete" => await Task.Run(() => (object)_agentConversations.Delete(GetRequiredString(parameters, "conversationId")), cancellationToken),
             "graphVisual.read" => await Task.Run(() =>
             {
                 RequireEmptyParameters(parameters, "graphVisual.read");
@@ -344,6 +362,9 @@ internal sealed class WebBridge : IDisposable
             "knowledgeGraph.chooseVault" => await ChooseKnowledgeGraphVaultAsync(
                 parameters,
                 cancellationToken),
+            "knowledgeGraph.search" or "knowledgeGraph.neighborhood" or
+            "knowledgeGraph.readNote" or "knowledgeGraph.openNote" => await Task.Run(
+                () => DispatchKnowledge(method, parameters, cancellationToken), cancellationToken),
             "explorer.openFile" => _fileExplorerService.OpenFile(GetRequiredPath(parameters)),
             "explorer.openInWindows" => _fileExplorerService.OpenInWindows(GetRequiredPath(parameters)),
             "explorer.showProperties" => _fileExplorerService.ShowProperties(GetRequiredPath(parameters)),
@@ -603,6 +624,38 @@ internal sealed class WebBridge : IDisposable
         catch (ArgumentException exception)
         {
             throw new BridgeFaultException("INVALID_PARAMS", exception.Message);
+        }
+    }
+
+    private object DispatchKnowledge(string method, JsonElement parameters, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return method switch
+            {
+                "knowledgeGraph.search" => _obsidianGraphService.SearchKnowledge(
+                    parameters.GetProperty("query").GetString() ?? "",
+                    parameters.GetProperty("tag").GetString() ?? "",
+                    GetRequiredBoundedInt(parameters, "offset", 0, 16_384),
+                    GetRequiredBoundedInt(parameters, "limit", 1, 100), cancellationToken),
+                "knowledgeGraph.neighborhood" => _obsidianGraphService.GetKnowledgeNeighborhood(
+                    GetRequiredString(parameters, "revision"), GetRequiredString(parameters, "nodeId"),
+                    GetRequiredBoundedInt(parameters, "hops", 1, 2), cancellationToken),
+                "knowledgeGraph.readNote" => _obsidianGraphService.ReadKnowledgeNote(
+                    GetRequiredString(parameters, "revision"), GetRequiredString(parameters, "nodeId"),
+                    GetRequiredBoundedInt(parameters, "startLine", 1, 100_000), cancellationToken),
+                "knowledgeGraph.openNote" => _obsidianGraphService.OpenKnowledgeNote(
+                    GetRequiredString(parameters, "revision"), GetRequiredString(parameters, "nodeId"), cancellationToken),
+                _ => throw new ArgumentException("Unknown knowledge operation.")
+            };
+        }
+        catch (ObsidianGraphRevisionMismatchException)
+        {
+            throw new BridgeFaultException("GRAPH_REVISION_STALE", "The knowledge source changed. Refresh the search and try again.");
+        }
+        catch (Exception exception) when (exception is System.IO.IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+        {
+            throw new BridgeFaultException("KNOWLEDGE_UNAVAILABLE", "The selected note could not be accessed within the knowledge source limits.");
         }
     }
 

@@ -14,6 +14,7 @@ public sealed class WebBridgeBoundaryTests
         var expected = new[]
         {
             "agent.getState",
+            "configuration.read",
             "feed.getSnapshot",
             "feed.reportFault",
             "lifecycle.showDesktop",
@@ -38,6 +39,7 @@ public sealed class WebBridgeBoundaryTests
 
     [Theory]
     [InlineData("agent.getState")]
+    [InlineData("configuration.read")]
     [InlineData("feed.getSnapshot")]
     [InlineData("feed.reportFault")]
     [InlineData("lifecycle.showDesktop")]
@@ -61,12 +63,27 @@ public sealed class WebBridgeBoundaryTests
     [InlineData("agent.getMessages")]
     [InlineData("agent.newSession")]
     [InlineData("agent.prompt")]
+    [InlineData("agentConversations.list")]
+    [InlineData("agentConversations.read")]
+    [InlineData("agentConversations.save")]
+    [InlineData("agentConversations.rename")]
+    [InlineData("agentConversations.delete")]
+    [InlineData("configuration.write")]
+    [InlineData("configuration.snapshots.list")]
+    [InlineData("configuration.snapshots.create")]
+    [InlineData("configuration.snapshots.read")]
+    [InlineData("configuration.snapshots.delete")]
+    [InlineData("configuration.snapshots.restore")]
     [InlineData("clipboard.read")]
     [InlineData("explorer.browse")]
     [InlineData("knowledgeGraph.chooseVault")]
     [InlineData("knowledgeGraph.getDefaultChunk")]
     [InlineData("knowledgeGraph.getDefaultManifest")]
     [InlineData("knowledgeGraph.getDefaultSource")]
+    [InlineData("knowledgeGraph.search")]
+    [InlineData("knowledgeGraph.neighborhood")]
+    [InlineData("knowledgeGraph.readNote")]
+    [InlineData("knowledgeGraph.openNote")]
     [InlineData("graphVisual.read")]
     [InlineData("graphVisual.write")]
     [InlineData("lifecycle.exitToWindows")]

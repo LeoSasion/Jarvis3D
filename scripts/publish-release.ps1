@@ -39,6 +39,13 @@ $piStagerPath = Join-Path $repositoryRoot 'scripts\stage-pi-runtime.ps1'
 $frontendLicenseStagerPath = Join-Path $repositoryRoot 'scripts\stage-frontend-runtime-licenses.mjs'
 $numericVersion = ($Version -split '[-+]')[0]
 $builtAtUtc = [DateTimeOffset]::UtcNow.ToString('O')
+$sourceCommit = (& git -C $repositoryRoot rev-parse HEAD | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch '^[0-9a-f]{40}$') {
+    throw 'Release provenance requires a valid JARVIS Git commit.'
+}
+$sourceChanges = @(& git -C $repositoryRoot status --porcelain)
+if ($LASTEXITCODE -ne 0) { throw 'Could not inspect the JARVIS working tree for release provenance.' }
+$sourceDirty = $sourceChanges.Count -gt 0
 
 function Assert-ChildPath {
     param(
@@ -226,7 +233,8 @@ Invoke-Checked -FilePath $dotnet -Arguments @(
     "-p:Version=$Version",
     "-p:FileVersion=$numericVersion.0",
     "-p:AssemblyVersion=$numericVersion.0",
-    "-p:InformationalVersion=$Version",
+    "-p:InformationalVersion=$Version+$($sourceCommit.Substring(0, 12))$(if ($sourceDirty) { '.modified' })",
+    "-p:SourceRevisionId=$sourceCommit",
     '-p:IncludeSourceRevisionInInformationalVersion=false',
     '-p:DebugType=None',
     '-p:DebugSymbols=false',
@@ -269,6 +277,8 @@ $versionPayload = [ordered]@{
     configuration = 'Release'
     selfContained = $true
     builtAtUtc = $builtAtUtc
+    sourceCommit = $sourceCommit
+    sourceDirty = $sourceDirty
     releaseChannel = 'manual'
     executable = 'Jarvis.Host.exe'
     startupArgument = '--startup'

@@ -291,7 +291,7 @@ export function App() {
     showToast,
   ]);
 
-  const linkKnowledgeGraphNodeToAgent = useCallback(async (entry) => {
+  const linkKnowledgeGraphNodeToAgent = useCallback(async (entry, directive = null) => {
     if (!agentChatAvailable) {
       await openAgent();
       showToast({
@@ -307,13 +307,16 @@ export function App() {
       showToast(translate("feedback.agent.contextLocked"));
       return;
     }
-    const stagedItems = agentSession.addContextItems(entry ? [entry] : []);
+    const stagedItems = agentSession.addContextItems(Array.isArray(entry) ? entry : entry ? [entry] : []);
     if (!stagedItems.length) {
       showToast(translate("feedback.agent.selectGraphNode"));
       return;
     }
     await openAgent();
-    showToast(translate("feedback.agent.graphNodeLinked", { name: stagedItems[0].name }));
+    if (directive) agentSession.setDraft(directive);
+    showToast(stagedItems.some((item) => item.excerpt)
+      ? translate("knowledge.agent.stagedToast", { count: stagedItems.length })
+      : translate("feedback.agent.graphNodeLinked", { name: stagedItems[0].name }));
   }, [
     agentChatAvailable,
     agentSession.addContextItems,
@@ -915,6 +918,7 @@ export function App() {
               sessionTransitioning={agentSession.sessionTransitioning}
               draft={agentSession.draft}
               linkedContext={agentSession.context}
+              library={agentSession.library}
               linkedFlowPhase={agentSession.context.phase}
               explorerSelection={explorerSelection}
               notice={agentInlineNotice}

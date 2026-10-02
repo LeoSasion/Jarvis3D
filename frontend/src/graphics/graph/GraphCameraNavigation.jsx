@@ -7,6 +7,7 @@ import {
 } from "three";
 import { useLanguage } from "../../i18n/language-system.js";
 import { getGraphCameraZoom } from "../graphics-runtime-policy.js";
+import { useGraphicsRuntimeContext } from "../runtime/runtime-context.js";
 
 import { graphWheelDepth, graphWheelPixels, graphWheelZoom } from "./graph-camera-input.js";
 
@@ -46,11 +47,13 @@ export function GraphCameraNavigation({
   dimension = 2,
   getPositions,
   interactive = false,
+  frozen = false,
   reducedMotion = false,
   zoom = 1,
   onViewChange,
 }) {
   const { t } = useLanguage();
+  const runtime = useGraphicsRuntimeContext();
   const camera = useThree((state) => state.camera);
   const gl = useThree((state) => state.gl);
   const invalidate = useThree((state) => state.invalidate);
@@ -83,6 +86,9 @@ export function GraphCameraNavigation({
   const tweenRef = useRef(null);
   const dragRef = useRef(null);
   const lastCommandIdRef = useRef(command?.id ?? null);
+  useEffect(() => {
+    if (frozen) { tweenRef.current = null; dragRef.current = null; }
+  }, [frozen]);
 
   const applyView = useCallback((nextView, animate = true) => {
     const duration = reducedMotion || !animate ? 0 : 0.22;
@@ -212,6 +218,7 @@ export function GraphCameraNavigation({
   useEffect(() => {
     if (!command || command.id === lastCommandIdRef.current) return;
     lastCommandIdRef.current = command.id;
+    if (frozen) return;
     if (command.type === "dolly-in") navigateWheel(-60);
     if (command.type === "dolly-out") navigateWheel(60);
     if (command.type === "fit") fitGraph();
@@ -222,11 +229,11 @@ export function GraphCameraNavigation({
     if (command.type === "pan-down") panBy(0, PAN_STEP);
     if (command.type === "orbit-left") orbitBy(-0.16, 0);
     if (command.type === "orbit-right") orbitBy(0.16, 0);
-  }, [command, fitGraph, navigateWheel, orbitBy, panBy, resetGraph]);
+  }, [command, fitGraph, frozen, navigateWheel, orbitBy, panBy, resetGraph]);
 
   useEffect(() => {
     const canvas = gl.domElement;
-    if (!interactive) {
+    if (!interactive || frozen) {
       canvas.removeAttribute("tabindex");
       canvas.removeAttribute("aria-label");
       canvas.removeAttribute("aria-keyshortcuts");
@@ -310,9 +317,10 @@ export function GraphCameraNavigation({
       canvas.removeAttribute("aria-label");
       canvas.removeAttribute("aria-keyshortcuts");
     };
-  }, [dimension, fitGraph, gl, interactive, navigateWheel, orbitBy, panBy, publishView, resetGraph, size.height, t]);
+  }, [dimension, fitGraph, frozen, gl, interactive, navigateWheel, orbitBy, panBy, publishView, resetGraph, size.height, t]);
 
   useFrame((_, delta) => {
+    if (frozen) return;
     const tween = tweenRef.current;
     if (!tween) return;
     tween.elapsed = Math.min(tween.duration, tween.elapsed + delta);
@@ -324,7 +332,7 @@ export function GraphCameraNavigation({
     camera.lookAt(targetRef.current);
     camera.updateProjectionMatrix();
     if (progress >= 1) { tweenRef.current = null; publishView(); }
-    else invalidate();
+    else { runtime?.markContinuousFrame?.(); invalidate(); }
   });
 
   return null;

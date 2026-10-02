@@ -70,6 +70,13 @@ export function setUiAudioVolume(volume) {
   persist();
 }
 
+// File synchronization must not play a confirmation tone or open AudioContext.
+export function replaceUiAudioPreferences(value) {
+  state = Object.freeze({ enabled: value?.enabled === true,
+    volume: Math.min(1, Math.max(0, Number.isFinite(value?.volume) ? value.volume : 0.14)) });
+  listeners.forEach((listener) => listener());
+}
+
 export function playUiSound(name, options = {}) {
   if (!state.enabled && !options.force) return;
   const tone = toneMap[name] ?? toneMap.navigate;

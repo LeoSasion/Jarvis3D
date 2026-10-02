@@ -12,6 +12,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   NoToneMapping,
@@ -39,6 +40,9 @@ import {
   resetFrameIntervalSampler,
 } from "./runtime/frame-interval-sampler.js";
 import { GraphicsRuntimeContext } from "./runtime/runtime-context.js";
+import { createFrameStatisticsWindow, recordFrameStatistics } from "./runtime/frame-statistics.js";
+import { publishGraphicsDiagnostics, publishGraphicsFrameStatistics } from "./runtime/graphics-diagnostics-store.js";
+import { getGraphVisualPreviewSnapshot, subscribeGraphVisualPreview } from "./graph/graph-visual-preview.js";
 
 const WEBGL_OPTIONS = Object.freeze({
   alpha: true,
@@ -80,29 +84,72 @@ class GraphicsErrorBoundary extends Component {
 }
 
 function RuntimeFrameSampler({
+  frameActivityRef,
+  measurementKey,
   onFrameComplete,
   onFrameSample,
+  onSamplingPaused,
   sampleInterval,
   slowFrameMs,
+  surfaceRef,
 }) {
   const samplerStateRef = useRef(createFrameIntervalSamplerState());
-  const callbacksRef = useRef({ onFrameComplete, onFrameSample });
-  callbacksRef.current = { onFrameComplete, onFrameSample };
+  const statisticsSamplerRef = useRef(createFrameIntervalSamplerState());
+  const statisticsWindowRef = useRef(createFrameStatisticsWindow());
+  const callbacksRef = useRef({ onFrameComplete, onFrameSample, onSamplingPaused });
+  const wasContinuousRef = useRef(false);
+  callbacksRef.current = { onFrameComplete, onFrameSample, onSamplingPaused };
 
   useEffect(() => {
     resetFrameIntervalSampler(samplerStateRef.current);
   }, [sampleInterval, slowFrameMs]);
 
+  useLayoutEffect(() => {
+    resetFrameIntervalSampler(statisticsSamplerRef.current);
+    statisticsWindowRef.current = createFrameStatisticsWindow();
+    callbacksRef.current.onSamplingPaused();
+    publishGraphicsFrameStatistics(null);
+    if (surfaceRef.current) delete surfaceRef.current.dataset.frameStatistics;
+  }, [measurementKey, surfaceRef]);
+
   useFrame((_, delta) => {
+    const continuous = frameActivityRef.current;
+    frameActivityRef.current = false;
+    if (!continuous) {
+      resetFrameIntervalSampler(samplerStateRef.current);
+      resetFrameIntervalSampler(statisticsSamplerRef.current);
+      statisticsWindowRef.current = createFrameStatisticsWindow();
+      if (wasContinuousRef.current) {
+        queueMicrotask(() => {
+          callbacksRef.current.onSamplingPaused();
+          publishGraphicsFrameStatistics(null);
+        });
+        if (surfaceRef.current) delete surfaceRef.current.dataset.frameStatistics;
+      }
+      wasContinuousRef.current = false;
+      queueMicrotask(() => callbacksRef.current.onFrameComplete());
+      return;
+    }
+    wasContinuousRef.current = true;
     const durationMs = readFrameIntervalSample(samplerStateRef.current, {
       deltaMs: delta * 1_000,
       sampleInterval,
       slowFrameMs,
     });
+    const frameInterval = readFrameIntervalSample(statisticsSamplerRef.current, {
+      deltaMs: delta * 1_000, sampleInterval: 1, slowFrameMs,
+    });
     queueMicrotask(() => {
       callbacksRef.current.onFrameComplete();
       if (durationMs !== null) {
         callbacksRef.current.onFrameSample(durationMs, performance.now());
+      }
+      if (frameInterval !== null) {
+        const summary = recordFrameStatistics(statisticsWindowRef.current, frameInterval, performance.now());
+        if (summary) {
+          publishGraphicsFrameStatistics(summary);
+          if (surfaceRef.current) surfaceRef.current.dataset.frameStatistics = JSON.stringify(summary);
+        }
       }
     });
   }, -1_000);
@@ -112,6 +159,7 @@ function RuntimeFrameSampler({
 
 function RuntimeController({
   children,
+  measurementKey,
   readableLabels,
   onDprChange,
   onFault,
@@ -124,6 +172,7 @@ function RuntimeController({
   const setDpr = useThree((state) => state.setDpr);
   const size = useThree((state) => state.size);
   const [adaptiveTier, setAdaptiveTier] = useState(0);
+  const [adjustmentReason, setAdjustmentReason] = useState("initial");
   const [displayEnvironment, setDisplayEnvironment] = useState(
     readGraphicsDisplayEnvironment,
   );
@@ -133,6 +182,8 @@ function RuntimeController({
   const rendererStatusRef = useRef(rendererStatus);
   const runtimeValueRef = useRef(null);
   const samplingPolicyRef = useRef(null);
+  const frameActivityRef = useRef(false);
+  const markContinuousFrame = useCallback(() => { frameActivityRef.current = true; }, []);
   callbackRefs.current = { onFault, onReady };
   rendererStatusRef.current = rendererStatus;
 
@@ -154,25 +205,29 @@ function RuntimeController({
   });
   const runtimeValue = useMemo(() => Object.freeze({
     adaptiveTier,
+    adjustmentReason,
     devicePixelRatio: displayEnvironment.devicePixelRatio,
     effectiveDpr,
     forcedColors: displayEnvironment.forcedColors,
     maxTextureSize,
+    markContinuousFrame,
     qualityProfile: effectiveQuality,
     rendererStatus,
     requestedQualityProfile: requestedQuality,
   }), [
     adaptiveTier,
+    adjustmentReason,
     displayEnvironment.devicePixelRatio,
     displayEnvironment.forcedColors,
     effectiveDpr,
     effectiveQuality,
     maxTextureSize,
+    markContinuousFrame,
     rendererStatus,
     requestedQuality,
   ]);
   runtimeValueRef.current = runtimeValue;
-  samplingPolicyRef.current = { slowFrameMs: effectiveQuality.slowFrameMs };
+  samplingPolicyRef.current = { slowFrameMs: effectiveQuality.slowFrameMs, sampleInterval: effectiveQuality.frameSampleInterval };
 
   const commitRendererStatus = useCallback((nextStatus) => {
     rendererStatusRef.current = nextStatus;
@@ -184,7 +239,10 @@ function RuntimeController({
     setAdaptiveTier((current) => (
       current === nextState.adaptiveTier ? current : nextState.adaptiveTier
     ));
+    setAdjustmentReason((current) => current === nextState.lastChangeReason ? current : nextState.lastChangeReason);
   }, []);
+
+  useEffect(() => { publishGraphicsDiagnostics(runtimeValue); }, [runtimeValue]);
 
   const handleFrameSample = useCallback((durationMs, now) => {
     const nextState = reduceAdaptivePerformanceState(
@@ -200,6 +258,9 @@ function RuntimeController({
     commitRendererStatus("ready");
     callbackRefs.current.onReady?.("context-restored", runtimeValueRef.current);
   }, [commitRendererStatus]);
+  const handleSamplingPaused = useCallback(() => {
+    commitAdaptiveState(reduceAdaptivePerformanceState(adaptiveStateRef.current, { type: "sampling-paused" }));
+  }, [commitAdaptiveState]);
 
   useLayoutEffect(() => {
     if (rendererStatus === "context-lost") return;
@@ -252,8 +313,12 @@ function RuntimeController({
   return (
     <GraphicsRuntimeContext.Provider value={runtimeValue}>
       <RuntimeFrameSampler
+        frameActivityRef={frameActivityRef}
+        measurementKey={`${measurementKey}:${effectiveQuality.id}:${effectiveDpr}:${rendererStatus}`}
+        surfaceRef={surfaceRef}
         onFrameComplete={handleFrameComplete}
         onFrameSample={handleFrameSample}
+        onSamplingPaused={handleSamplingPaused}
         sampleInterval={effectiveQuality.frameSampleInterval}
         slowFrameMs={effectiveQuality.slowFrameMs}
       />
@@ -269,6 +334,7 @@ function createGraphCamera(camera, depth) {
 }
 
 function CameraController({ dimension, zoom }) {
+  const { frozen } = useSyncExternalStore(subscribeGraphVisualPreview, getGraphVisualPreviewSnapshot);
   const invalidate = useThree((state) => state.invalidate);
   const set = useThree((state) => state.set);
   const size = useThree((state) => state.size);
@@ -276,29 +342,35 @@ function CameraController({ dimension, zoom }) {
     orthographic: createGraphCamera(new OrthographicCamera(), 700),
     perspective: createGraphCamera(new PerspectiveCamera(), 720),
   }), []);
+  const lastCameraRef = useRef(null);
 
   useLayoutEffect(() => {
     const width = Math.max(1, size.width);
     const height = Math.max(1, size.height);
     const cameraZoom = getGraphCameraZoom(zoom, width, height);
-    const camera = dimension === 3 ? cameras.perspective : cameras.orthographic;
+    const camera = frozen && lastCameraRef.current
+      ? lastCameraRef.current
+      : dimension === 3 ? cameras.perspective : cameras.orthographic;
+    lastCameraRef.current = camera;
     if (camera.isOrthographicCamera) {
       camera.left = -width / 2;
       camera.right = width / 2;
       camera.top = height / 2;
       camera.bottom = -height / 2;
-      camera.zoom = cameraZoom;
+      if (!frozen) camera.zoom = cameraZoom;
     } else {
       camera.aspect = width / height;
-      camera.fov = 48;
-      camera.zoom = 1;
+      if (!frozen) {
+        camera.fov = 48;
+        camera.zoom = 1;
+      }
     }
     camera.near = 0.1;
     camera.far = 4_000;
     camera.updateProjectionMatrix();
     set({ camera });
     invalidate();
-  }, [cameras, dimension, invalidate, set, size.height, size.width, zoom]);
+  }, [cameras, dimension, frozen, invalidate, set, size.height, size.width, zoom]);
 
   return null;
 }
@@ -310,6 +382,7 @@ export function GraphicsRuntime({
   zoom = 1,
   fallback = null,
   interactive = false,
+  measurementKey = "default",
   readableLabels = false,
   onFault,
   onReady,
@@ -340,6 +413,7 @@ export function GraphicsRuntime({
           style={{ pointerEvents: interactive ? "auto" : "none" }}
         >
           <RuntimeController
+            measurementKey={measurementKey}
             readableLabels={readableLabels}
             onDprChange={handleDprChange}
             onFault={onFault}

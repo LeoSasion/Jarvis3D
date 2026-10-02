@@ -31,13 +31,13 @@ test("the graphics owner adapts inside the demand loop without another RAF", asy
   assert.match(environment, /resolution:/u);
 });
 
-test("interactive graph canvases expose local focus treatment and passive canvases remove keyboard semantics", async () => {
+test("interactive graph canvases expose local focus treatment and passive or frozen canvases remove keyboard semantics", async () => {
   const [navigation, style] = await Promise.all([
     readSource("graphics/graph/GraphCameraNavigation.jsx"),
     readSource("graphics/graphics-runtime.css"),
   ]);
 
-  assert.match(navigation, /if \(!interactive\) \{[\s\S]*removeAttribute\("tabindex"\)[\s\S]*removeAttribute\("aria-label"\)/u);
+  assert.match(navigation, /if \(!interactive \|\| frozen\) \{[\s\S]*removeAttribute\("tabindex"\)[\s\S]*removeAttribute\("aria-label"\)[\s\S]*removeAttribute\("aria-keyshortcuts"\)/u);
   assert.match(navigation, /canvas\.tabIndex = 0/u);
   assert.match(navigation, /aria-keyshortcuts/u);
   assert.match(navigation, /t\("graph\.camera\.controls\.aria"\)/u);

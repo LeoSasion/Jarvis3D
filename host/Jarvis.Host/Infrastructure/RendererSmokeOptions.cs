@@ -8,7 +8,8 @@ internal sealed record RendererSmokeOptions(
     string DataRoot,
     string ReceiptPath,
     string Nonce,
-    string CultureName = "en-US")
+    string CultureName = "en-US",
+    bool MeasurePerformance = false)
 {
     internal const string DefaultCultureName = "en-US";
     private const string SmokeArgument = "--renderer-smoke";
@@ -16,6 +17,7 @@ internal sealed record RendererSmokeOptions(
     private const string ReceiptArgument = "--renderer-smoke-receipt=";
     private const string NonceArgument = "--renderer-smoke-nonce=";
     private const string CultureArgument = "--renderer-smoke-culture=";
+    private const string PerformanceArgument = "--renderer-smoke-performance";
 
     private static readonly Regex NoncePattern = new(
         "^[0-9a-fA-F]{32}$",
@@ -39,7 +41,7 @@ internal sealed record RendererSmokeOptions(
             return false;
         }
 
-        if (arguments.Count is not (4 or 5) ||
+        if (arguments.Count is < 4 or > 6 ||
             arguments.Count(argument =>
                 argument.Equals(SmokeArgument, StringComparison.OrdinalIgnoreCase)) != 1)
         {
@@ -59,8 +61,9 @@ internal sealed record RendererSmokeOptions(
             .Where(argument =>
                 argument.StartsWith(CultureArgument, StringComparison.OrdinalIgnoreCase))
             .ToArray();
-        if (cultureMatches.Length > 1 ||
-            (arguments.Count == 5 && cultureMatches.Length != 1))
+        var performanceCount = arguments.Count(argument => argument.Equals(PerformanceArgument, StringComparison.OrdinalIgnoreCase));
+        if (cultureMatches.Length > 1 || performanceCount > 1 ||
+            arguments.Count != 4 + cultureMatches.Length + performanceCount)
         {
             error = "Renderer smoke culture is duplicated or an unsupported argument was supplied.";
             return false;
@@ -140,7 +143,8 @@ internal sealed record RendererSmokeOptions(
             dataRoot,
             receiptPath,
             nonceValue.ToLowerInvariant(),
-            cultureName);
+            cultureName,
+            performanceCount == 1);
         return true;
     }
 

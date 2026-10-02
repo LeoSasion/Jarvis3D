@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   AdditiveBlending,
@@ -43,6 +44,7 @@ import {
 } from "./graph-focus-signals.js";
 import { createNodeActivationState, chargeSignalContacts, touchNodeActivation, updateNodeActivation } from "./graph-node-activation.js";
 import { createFilamentActivationState, writeFilamentActivationContacts, chargeBackgroundFilament } from "./graph-filament-activation.js";
+import { createGraphComparisonClock, getGraphVisualPreviewSnapshot, subscribeGraphVisualPreview } from "./graph-visual-preview.js";
 import { GraphCameraNavigation } from "./GraphCameraNavigation.jsx";
 import {
   createNeuronEdgeView,
@@ -1189,6 +1191,9 @@ export function GraphScene({
   const invalidate = useThree((state) => state.invalidate);
   const viewportSize = useThree((state) => state.size);
   const runtime = useGraphicsRuntimeContext();
+  const { frozen } = useSyncExternalStore(subscribeGraphVisualPreview, getGraphVisualPreviewSnapshot);
+  const comparisonClock = useMemo(createGraphComparisonClock, []);
+  const pendingLayoutPositionsRef = useRef(null);
   const coarsePointer = useCoarsePointer();
   const scenePlan = useMemo(
     () => applyGraphRuntimeQuality(renderPlan, runtime?.qualityProfile, graph),
@@ -1280,7 +1285,9 @@ export function GraphScene({
       launchSpread: profile3d.orb.signals.launchSpread, speed: profile3d.edge.signal.speed,
       headLength: profile3d.edge.signal.headLength, wakeLength: profile3d.edge.signal.wakeLength,
     };
-    writeNextIdleSignalRoutes(idleSignals);
+    // Frozen A/B comparisons retain the existing packet identities and phase.
+    // New emission options take effect on subsequent batches after resuming.
+    if (!getGraphVisualPreviewSnapshot().frozen) writeNextIdleSignalRoutes(idleSignals);
     idleSignalDistanceAttribute.needsUpdate = true;
     idleSignalAppearanceAttribute.needsUpdate = true;
     invalidate();
@@ -2571,6 +2578,18 @@ export function GraphScene({
   }, [model.nodes.length]);
   const applyPositionsRef = useRef(applyPositions);
   applyPositionsRef.current = applyPositions;
+  useLayoutEffect(() => {
+    // A settled graph can keep its position/material uniforms from an earlier
+    // frame. Synchronize them once to the captured clock before comparing FX.
+    if (frozen) applyPresentationPositionsRef.current(morphProgressRef.current, lastElapsedRef.current);
+    if (!frozen && pendingLayoutPositionsRef.current) {
+      const pending = pendingLayoutPositionsRef.current;
+      if (pending.revision === activeRevisionRef.current) applyPositionsRef.current(pending.positions);
+      pendingLayoutPositionsRef.current = null;
+    }
+    gl.domElement.dataset.graphComparisonFrozen = String(frozen);
+    invalidate();
+  }, [frozen, gl, invalidate]);
 
   const getPickingIndex = useCallback((sample) => {
     if (!sample?.active || sample.width <= 0 || sample.height <= 0) return null;
@@ -2747,6 +2766,7 @@ export function GraphScene({
     const canvas = gl.domElement;
     const pointerQueue = pointerQueueRef.current;
     const pointerInteraction = pointerInteractionRef.current;
+    if (frozen) { pointerQueue.consume(); return undefined; }
     if (!interactive) {
       if (lastPickedNodeIdRef.current !== null) {
         lastPickedNodeIdRef.current = null;
@@ -2819,7 +2839,7 @@ export function GraphScene({
       canvas.removeEventListener("pointercancel", handlePointerCancel);
       canvas.removeEventListener("pointerleave", handlePointerLeave);
     };
-  }, [gl, interactive, invalidate]);
+  }, [frozen, gl, interactive, invalidate]);
 
   useEffect(() => {
     if (reducedMotion) {
@@ -2832,12 +2852,11 @@ export function GraphScene({
 
   useFrame((state, delta) => {
     const fx3d = profile3dRef.current;
-    const elapsed = state.clock.elapsedTime;
-    const frameDelta = Math.min(0.05, Math.max(0, delta));
+    const { elapsed, frameDelta } = comparisonClock.sample(state.clock.elapsedTime, delta, frozen);
     const activationOptions = fx3d.node.activation;
     const activationEnabled = activationOptions.enabled
       && usesGraphCellMaterial(neuronMode, neuronSphere, morphProgressRef.current);
-    const activationAnimating = activationEnabled && !reducedMotion && documentVisibleRef.current;
+    const activationAnimating = activationEnabled && !frozen && !reducedMotion && documentVisibleRef.current;
     if (activationAnimating) nodeActivation.time += frameDelta;
     filamentActivation.time = nodeActivation.time;
     idleFilamentActivation.time = nodeActivation.time;
@@ -2897,7 +2916,7 @@ export function GraphScene({
       && (focusedSignals.emitters.size > 0 || focusedSignals.packets.length > 0)
       && fx3d.edge.signal.enabled && fx3d.edge.signal.emissionIntensity > 0
       && morphProgressRef.current >= 0.999 && !dimensionChanged;
-    if (routeSignalActive) {
+    if (routeSignalActive && !frozen) {
       advanceFocusedSignals(focusedSignals, frameDelta, { ...fx3d.edge.signal, palette: signalPalette },
         activationAnimating ? (packet, previous, next, speed) => {
           chargeSignalContacts(nodeActivation, packet.route.contacts, previous, next, speed, 0,
@@ -2916,7 +2935,7 @@ export function GraphScene({
       && fx3d.edge.signal.enabled && fx3d.edge.signal.emissionIntensity > 0
       && fx3d.edge.core.enabled && fx3d.edge.core.opacity > 0 && fx3d.edge.core.emissionIntensity > 0
       && fx3d.edge.master.opacity > 0 && scenePlan.edges.opacity > 0;
-    if (idleSignalActive) {
+    if (idleSignalActive && !frozen) {
       const previous = idleSignals.travel;
       const next = previous + frameDelta * FOCUSED_SIGNAL_SPEED * fx3d.edge.signal.speed;
       if (activationAnimating) chargeSignalContacts(nodeActivation, idleSignals.contacts, idleSignals.travel,
@@ -3008,13 +3027,13 @@ export function GraphScene({
       backgroundSignalProgress.fill(-1);
     }
 
-    const nodeActivationActive = updateNodeActivation(nodeActivation, activationOptions, activationEnabled && !reducedMotion);
+    const nodeActivationActive = updateNodeActivation(nodeActivation, activationOptions, activationEnabled && !reducedMotion, frozen);
     if (nodeActivation.changed) {
       nodeActivationAttribute.needsUpdate = true;
       nodeActivationColorAttribute.needsUpdate = true;
     }
-    const filamentActivationActive = updateNodeActivation(filamentActivation, activationOptions, activationEnabled && !reducedMotion);
-    const idleFilamentActivationActive = updateNodeActivation(idleFilamentActivation, activationOptions, activationEnabled && !reducedMotion);
+    const filamentActivationActive = updateNodeActivation(filamentActivation, activationOptions, activationEnabled && !reducedMotion, frozen);
+    const idleFilamentActivationActive = updateNodeActivation(idleFilamentActivation, activationOptions, activationEnabled && !reducedMotion, frozen);
     if (filamentActivation.changed) filamentActivationAttribute.needsUpdate = true;
     if (idleFilamentActivation.changed) idleFilamentActivationAttribute.needsUpdate = true;
 
@@ -3047,7 +3066,7 @@ export function GraphScene({
     const visibleCount = getLabelLodCount();
     lastVisibleLabelCountRef.current = visibleCount;
     updateLabelMatrices(positionsRef.current, visibleCount);
-    if (shouldContinueGraphFrame({
+    if (!frozen && shouldContinueGraphFrame({
       dimensionChanged,
       documentVisible: documentVisibleRef.current,
       focusedFilamentActive,
@@ -3058,6 +3077,7 @@ export function GraphScene({
       reducedMotion,
       signalLayerActive,
     })) {
+      runtime?.markContinuousFrame?.();
       invalidate();
     }
   });
@@ -3173,7 +3193,8 @@ export function GraphScene({
       if (message?.type !== "positions") return;
       consecutiveFailures = 0;
       cancelWatchdog();
-      applyPositionsRef.current(message.positions);
+      if (getGraphVisualPreviewSnapshot().frozen) pendingLayoutPositionsRef.current = message;
+      else applyPositionsRef.current(message.positions);
       onLayoutStateRef.current?.(message.settled ? "settled" : "running", message.iteration);
       if (!message.settled) armWatchdog(event.currentTarget, message.revision);
     }
@@ -3337,6 +3358,7 @@ export function GraphScene({
         </mesh>
       ) : null}
       <GraphCameraNavigation
+        frozen={frozen}
         onViewChange={onCameraViewChange}
         command={cameraCommand}
         dimension={dimension}

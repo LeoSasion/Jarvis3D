@@ -1,0 +1,21 @@
+.configuration-settings { display: grid; gap: 10px; margin-top: 16px; padding: 14px 0; border-top: 1px solid var(--shell-border); color: var(--shell-text); }
+.configuration-settings header, .configuration-settings dl > div, .configuration-settings__actions, .configuration-settings li { display: flex; align-items: center; gap: 10px; }
+.configuration-settings header { justify-content: space-between; flex-wrap: wrap; }
+.configuration-settings p, .configuration-settings dl { margin: 0; font-size: 12px; line-height: 1.6; }
+.configuration-settings header span, .configuration-settings small, .configuration-settings dt { color: var(--shell-muted); font-size: 11px; }
+.configuration-settings dl { display: grid; gap: 4px; }
+.configuration-settings dt { min-width: 90px; }
+.configuration-settings dd { margin: 0; overflow-wrap: anywhere; }
+.configuration-settings form, .configuration-settings li > span { display: grid; gap: 5px; }
+.configuration-settings input { flex: 1; min-width: 0; }
+.configuration-settings input, .configuration-settings button { border: 1px solid var(--shell-border); background: var(--shell-card); color: var(--shell-text); border-radius: 6px; padding: 7px 9px; font: inherit; font-size: 12px; }
+.configuration-settings button { cursor: pointer; }
+.configuration-settings button:hover:not(:disabled) { border-color: var(--shell-accent); }
+.configuration-settings button:disabled { opacity: .5; cursor: default; }
+.configuration-settings :is(button,input):focus-visible { outline: 2px solid var(--shell-focus); outline-offset: 2px; }
+.configuration-settings ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.configuration-settings li > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.configuration-settings li { border-top: 1px solid var(--shell-border-subtle); padding-top: 8px; }
+.configuration-settings__actions { flex-wrap: wrap; }
+.configuration-settings__confirm { padding: 10px; border: 1px solid var(--shell-border); }
+.configuration-settings__confirm button { margin: 8px 6px 0 0; }

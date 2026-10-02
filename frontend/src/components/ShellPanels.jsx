@@ -92,6 +92,7 @@ import {
 import { platform } from "../platform/index.js";
 import { GraphSourceSettings } from "../graph/GraphSourceSettings.jsx";
 import { GraphProfileManager } from "../graph/GraphProfileManager.jsx";
+import { ConfigurationSettingsPanel } from "../settings/ConfigurationSettingsPanel.jsx";
 import { CoreNodeGlyph } from "./VectorMarks.jsx";
 import {
   quickLaunchItems as startApps,
@@ -2241,6 +2242,7 @@ function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp, graphSourceState }
           {activeSection === "settings-interface" ? (
             <div id="settings-interface" className="runtime-settings-section-anchor">
               <InterfacePreferences onToast={onToast} />
+              <ConfigurationSettingsPanel />
             </div>
           ) : null}
 

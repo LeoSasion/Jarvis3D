@@ -3,10 +3,9 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { TRANSLATION_DICTIONARIES } from "../src/i18n/translations.js";
 
-const panelSource = await readFile(
-  new URL("../src/graphics/graph/GraphVisualSettings.jsx", import.meta.url),
-  "utf8",
-);
+const panelSource = (await Promise.all([
+  "GraphVisualSettings.jsx", "GraphVisualSettingsControls.jsx",
+].map((name) => readFile(new URL(`../src/graphics/graph/${name}`, import.meta.url), "utf8")))).join("\n");
 
 test("graph visual settings subscribes to the shared language runtime", () => {
   assert.match(

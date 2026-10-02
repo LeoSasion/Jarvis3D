@@ -11,7 +11,13 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="../Jarvis.Host/Services/GraphVisualSettingsStore.cs" Link="GraphVisualSettingsStore.cs" />
+    <Compile Include="../Jarvis.Host/Services/AtomicJsonSettingsStore.cs" Link="AtomicJsonSettingsStore.cs" />
+    <Compile Include="../Jarvis.Host/Services/ConfigurationPreferencesStore.cs" Link="ConfigurationPreferencesStore.cs" />
+    <Compile Include="../Jarvis.Host/Services/ConfigurationSnapshotStore.cs" Link="ConfigurationSnapshotStore.cs" />
+    <Compile Include="../Jarvis.Host/Services/SettingsRestoreTransaction.cs" Link="SettingsRestoreTransaction.cs" />
+    <Compile Include="../Jarvis.Host/Agents/AgentConversationStore.cs" Link="AgentConversationStore.cs" />
     <Compile Include="../Jarvis.Host/Services/ObsidianGraphService.cs" Link="ObsidianGraphService.cs" />
+    <Compile Include="../Jarvis.Host/Services/ObsidianKnowledgeService.cs" Link="ObsidianKnowledgeService.cs" />
     <Compile Include="../Jarvis.Host/Services/ObsidianVaultWatcher.cs" Link="ObsidianVaultWatcher.cs" />
   </ItemGroup>
 </Project>

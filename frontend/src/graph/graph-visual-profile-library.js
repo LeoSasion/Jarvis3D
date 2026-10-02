@@ -1,4 +1,5 @@
 import { normalizeGraphVisualSettings } from "../graphics/graph/graph-visual-settings.js";
+import { isConfigurationFileConnected } from "../settings/configuration-authority.js";
 
 const STORAGE_KEY = "jarvis.graph-visual-profiles.v1";
 const DOCUMENT_VERSION = 1;
@@ -25,7 +26,7 @@ function createProfileId() {
   return `graph-profile-${Date.now().toString(36)}-${sequence.toString(36)}`;
 }
 
-function normalizeProfile(value, index = 0) {
+export function normalizeGraphVisualProfile(value, index = 0) {
   if (!value || typeof value !== "object") return null;
   const label = boundedText(value.label, MAX_LABEL_LENGTH);
   if (!label) return null;
@@ -51,7 +52,7 @@ export function normalizeGraphVisualProfileDocument(value) {
   const seen = new Set();
   const profiles = [];
   for (const [index, candidate] of source.entries()) {
-    const profile = normalizeProfile(candidate, index);
+    const profile = normalizeGraphVisualProfile(candidate, index);
     if (!profile || seen.has(profile.id)) continue;
     seen.add(profile.id);
     profiles.push(profile);
@@ -89,7 +90,7 @@ let snapshot = readSnapshot();
 
 function commitProfiles(profiles) {
   const next = Object.freeze({ profiles: Object.freeze(profiles.slice(0, MAX_PROFILES)), error: null });
-  if (typeof window !== "undefined") {
+  if (typeof window !== "undefined" && !isConfigurationFileConnected()) {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
         version: DOCUMENT_VERSION,
@@ -124,7 +125,7 @@ export function saveGraphVisualProfile(label, settings, scope = "global") {
     profile.scope === normalizedScope
       && profile.label.localeCompare(normalizedLabel, undefined, { sensitivity: "accent" }) === 0
   ));
-  const profile = normalizeProfile({
+  const profile = normalizeGraphVisualProfile({
     id: existing?.id ?? createProfileId(),
     label: normalizedLabel,
     scope: normalizedScope,
@@ -145,7 +146,7 @@ export function deleteGraphVisualProfile(profileId) {
 
 export function importGraphVisualProfileDocument(serialized, scope = null) {
   const documentValue = normalizeGraphVisualProfileDocument(JSON.parse(String(serialized ?? "")));
-  const imported = documentValue.profiles.map((profile) => normalizeProfile({
+  const imported = documentValue.profiles.map((profile) => normalizeGraphVisualProfile({
     ...profile,
     id: createProfileId(),
     scope: scope ? boundedText(scope, MAX_SCOPE_LENGTH, "global") : profile.scope,
@@ -164,3 +165,8 @@ export const graphVisualProfileLibraryPolicy = Object.freeze({
   maximumProfiles: MAX_PROFILES,
   maximumLabelLength: MAX_LABEL_LENGTH,
 });
+
+export function replaceGraphVisualProfileLibrary(profiles) {
+  snapshot = Object.freeze({ profiles: Object.freeze(profiles.map(normalizeGraphVisualProfile).filter(Boolean).slice(0, MAX_PROFILES)), error: null });
+  listeners.forEach((listener) => listener());
+}

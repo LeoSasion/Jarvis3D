@@ -20,6 +20,7 @@ import {
 } from "react";
 import { getGraphSourceDiagnostics } from "../graph/graph-source-diagnostics.js";
 import { isRenderableGraphSource } from "../graph/graph-source-model.js";
+import { KnowledgeBrowser } from "../graph/KnowledgeBrowser.jsx";
 import { GraphVisualSettings } from "../graphics/graph/GraphVisualSettings.jsx";
 import {
   getGraphVisualSettingsSnapshot,
@@ -132,7 +133,7 @@ export function CoreStage({
     else setGraphDepth(view.depth);
   }, []);
   const [graphExploreMode, setGraphExploreMode] = useState(false);
-  const [graphQuery, setGraphQuery] = useState("");
+  const [neighborhoodGraph, setNeighborhoodGraph] = useState(null);
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState(null);
   const [hoveredGraphNodeId, setHoveredGraphNodeId] = useState(null);
   const [cameraCommand, setCameraCommand] = useState(null);
@@ -148,6 +149,7 @@ export function CoreStage({
   const activeGraphSource = graphSource ?? graphState;
   const presentation = getKnowledgeGraphPresentation(activeGraphSource);
   const defaultGraph = defaultGraphState?.graph ?? null;
+  const renderedGraph = graphExploreMode && neighborhoodGraph ? neighborhoodGraph : defaultGraph;
   const defaultGraphConnected = Boolean(defaultGraph?.available);
   const defaultGraphReady = isRenderableGraphSource(defaultGraph);
   const graphDiagnostics = useMemo(
@@ -167,18 +169,18 @@ export function CoreStage({
     [graphSelection],
   );
   const selectedGraphNode = useMemo(
-    () => defaultGraph?.nodes.find((node) => node.id === selectedGraphNodeId) ?? null,
-    [defaultGraph, selectedGraphNodeId],
+    () => renderedGraph?.nodes.find((node) => node.id === selectedGraphNodeId) ?? null,
+    [renderedGraph, selectedGraphNodeId],
   );
   const selectedGraphRelations = useMemo(
-    () => defaultGraph?.edges.filter((edge) => (
+    () => renderedGraph?.edges.filter((edge) => (
       edge.source === selectedGraphNodeId || edge.target === selectedGraphNodeId
     )) ?? [],
-    [defaultGraph, selectedGraphNodeId],
+    [renderedGraph, selectedGraphNodeId],
   );
   const defaultGraphNodeMap = useMemo(
-    () => new Map((defaultGraph?.nodes ?? []).map((node) => [node.id, node])),
-    [defaultGraph],
+    () => new Map((renderedGraph?.nodes ?? []).map((node) => [node.id, node])),
+    [renderedGraph],
   );
   const selectedGraphConnections = useMemo(
     () => selectedGraphRelations.flatMap((edge) => {
@@ -217,9 +219,9 @@ export function CoreStage({
     setGraphExploreMode((current) => {
       const next = !current;
       if (!next) {
-        setGraphQuery("");
         setSelectedGraphNodeId(null);
         setHoveredGraphNodeId(null);
+        setNeighborhoodGraph(null);
       }
       return next;
     });
@@ -228,26 +230,9 @@ export function CoreStage({
   useEffect(() => {
     if (graphVisualSettings.view.enabled) return;
     setGraphExploreMode(false);
-    setGraphQuery("");
     setSelectedGraphNodeId(null);
     setHoveredGraphNodeId(null);
   }, [graphVisualSettings.view.enabled]);
-
-  const selectDefaultGraphMatch = useCallback((value) => {
-    const query = value.trim().toLocaleLowerCase();
-    if (!query || !defaultGraph) return;
-    const match = defaultGraph.nodes.find((node) => (
-      `${node.title} ${node.relativePath} ${node.group} ${(node.tags ?? []).join(" ")}`
-        .toLocaleLowerCase()
-        .includes(query)
-    ));
-    if (match) setSelectedGraphNodeId(match.id);
-  }, [defaultGraph]);
-
-  const searchDefaultGraph = useCallback((event) => {
-    event.preventDefault();
-    selectDefaultGraphMatch(graphQuery);
-  }, [graphQuery, selectDefaultGraphMatch]);
 
   const handlePointerMove = (event) => {
     const stage = stageRef.current;
@@ -304,7 +289,7 @@ export function CoreStage({
       ) : defaultGraphReady ? (
         <div className={`core-stage__media is-graphics ${graphExploreMode ? "is-exploring" : ""} ${graphVisualSettings.view.enabled ? "" : "is-disabled"}`}>
           {graphExploreMode && graphVisualSettings.view.enabled
-            && graphVisualSettings.layout.mode === "neuron" ? (
+            && graphVisualSettings.layout.mode === "neuron" && !defaultGraphState ? (
               <div className="core-stage__neuron-heading">
                 <h2>{t("core.graph.neuron.title")}</h2>
                 <p>{t(graphVisualSettings.view.dimension === 3 ? "core.graph.neuron.spatialDetail" : "core.graph.neuron.detail")}</p>
@@ -316,7 +301,7 @@ export function CoreStage({
                 onCameraViewChange={handleCameraViewChange}
                 cameraCommand={cameraCommand}
                 fallback={<GraphFallback runtimeFallback />}
-                graph={defaultGraph}
+                graph={renderedGraph}
                 hoveredNodeId={hoveredGraphNodeId}
                 interactive={graphExploreMode}
                 motionMode={graphMotionMode}
@@ -404,24 +389,6 @@ export function CoreStage({
               {t("core.graph.toolbar.show")}
             </button>
           )}
-          {graphVisualSettings.view.enabled && graphExploreMode ? (
-            <form role="search" onSubmit={searchDefaultGraph}>
-              <SearchRegular aria-hidden="true" />
-              <input
-                type="search"
-                value={graphQuery}
-                onChange={(event) => {
-                  setGraphQuery(event.currentTarget.value);
-                  selectDefaultGraphMatch(event.currentTarget.value);
-                }}
-                placeholder={t("core.graph.search.placeholder")}
-                aria-label={t("core.graph.search.accessibility.label")}
-              />
-              <button type="submit" className="sr-only">
-                {t("core.graph.search.submit")}
-              </button>
-            </form>
-          ) : null}
           {!graphExploreMode ? (
             <button
               ref={visualSettingsTriggerRef}
@@ -455,7 +422,7 @@ export function CoreStage({
       {defaultGraphReady && !presentation.connected ? (
         <GraphAccessibleNavigator
           active={graphVisualSettings.view.enabled && graphExploreMode}
-          nodes={defaultGraph.nodes}
+          nodes={renderedGraph.nodes}
           selectedNodeId={selectedGraphNodeId}
           connections={selectedGraphConnections}
           onSelectNode={selectDefaultGraphNode}
@@ -488,6 +455,16 @@ export function CoreStage({
             </button>
           ) : null}
         </aside>
+      ) : null}
+      {graphVisualSettings.view.enabled && graphExploreMode && defaultGraphReady && !presentation.connected ? (
+        <KnowledgeBrowser
+          key={defaultGraph.source.name}
+          graph={defaultGraph}
+          selectedNodeId={selectedGraphNodeId}
+          onSelectNode={selectDefaultGraphNode}
+          onNeighborhood={setNeighborhoodGraph}
+          onLinkToAgent={onLinkGraphNode}
+        />
       ) : null}
       {graphVisualSettings.view.enabled && graphExploreMode && selectedGraphNode ? (
         <aside

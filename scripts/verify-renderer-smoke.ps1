@@ -2,7 +2,9 @@ param(
     [string]$HostPath = (Join-Path $PSScriptRoot '..\host\Jarvis.Host\bin\Debug\net8.0-windows\Jarvis.Host.exe'),
     [int]$TimeoutSeconds = 45,
     [ValidateSet('en-US', 'zh-CN')]
-    [string]$Culture = 'en-US'
+    [string]$Culture = 'en-US',
+    [switch]$MeasurePerformance,
+    [string]$ReportPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -65,6 +67,19 @@ try {
         "--renderer-smoke-culture=$Culture"
     ) -join ' '
 
+    if ($MeasurePerformance) {
+        $TimeoutSeconds = [Math]::Max($TimeoutSeconds, 120)
+        $startInfo.Arguments += ' --renderer-smoke-performance'
+        $fixtureVault = Join-Path $dataRoot 'FixtureVault'
+        New-Item -ItemType Directory -Path $fixtureVault -Force | Out-Null
+        for ($index = 0; $index -lt 96; $index++) {
+            $links = 1..3 | ForEach-Object { '[[Note-{0:d3}]]' -f (($index + $_) % 96) }
+            $note = "---`naliases: [Fixture-$index]`ntags: [validation]`n---`n# Synthetic note $index`n" + ($links -join "`n")
+            [IO.File]::WriteAllText((Join-Path $fixtureVault ('Note-{0:d3}.md' -f $index)), $note)
+        }
+        $startInfo.EnvironmentVariables['JARVIS_OBSIDIAN_VAULT'] = $fixtureVault
+    }
+
     $process = [System.Diagnostics.Process]::Start($startInfo)
     if ($null -eq $process) {
         throw 'Renderer smoke host could not be started.'
@@ -84,6 +99,10 @@ try {
             else {
                 'No renderer receipt or isolated Host log was produced.'
             }
+        }
+        $failureLog = Join-Path $dataRoot 'Logs\jarvis-host.log'
+        if (Test-Path -LiteralPath $failureLog) {
+            $diagnostic += "`n" + ((Get-Content -LiteralPath $failureLog -Tail 20 -Encoding UTF8) -join "`n")
         }
         throw "Renderer smoke host exited with code $($process.ExitCode).`n$diagnostic"
     }
@@ -125,7 +144,16 @@ try {
         throw 'Renderer smoke host remained alive after producing its receipt.'
     }
 
-    Write-Output "renderer-smoke: PASS ($Culture)"
+    if ($MeasurePerformance) {
+        $performanceReport = Join-Path $dataRoot 'receipts\performance.json'
+        if (-not (Test-Path -LiteralPath $performanceReport)) { throw 'Native performance report was not produced.' }
+        if ([string]::IsNullOrWhiteSpace($ReportPath)) {
+            $ReportPath = Join-Path ([IO.Path]::GetTempPath()) "jarvis-native-performance-$nonce.json"
+        }
+        if (Test-Path -LiteralPath $ReportPath) { throw 'Refusing to overwrite an existing performance report.' }
+        Copy-Item -LiteralPath $performanceReport -Destination $ReportPath
+        Write-Output "Native performance report: $ReportPath"
+    }
 }
 finally {
     if ($null -ne $process -and -not $process.HasExited) {
@@ -167,3 +195,5 @@ finally {
     }
     Assert-NativeTaskbarVisible
 }
+
+Write-Output "renderer-smoke: PASS ($Culture)"

@@ -1,12 +1,8 @@
 import {
   ArrowResetRegular,
   DismissRegular,
-  EyeOffRegular,
-  EyeRegular,
 } from "@fluentui/react-icons";
 import {
-  createContext,
-  useContext,
   useEffect,
   useId,
   useMemo,
@@ -33,32 +29,29 @@ import {
   subscribeGraphicsDiagnostics,
 } from "../runtime/graphics-diagnostics-store.js";
 import { getGraphLabelContrastReport } from "./graph-theme-palette.js";
-import { normalizeGraphRangeInput } from "./graph-settings-input.js";
-import {
-  getGraphFxSettingRange,
-  getGraphFxSettingValue,
-} from "./graph-fx-profile.js";
 import {
   getGraphVisualPresetId,
   getGraphVisualSettingsSnapshot,
   getGraphVisualSettingsPersistenceState,
   retryGraphVisualSettingsPersistence,
   graphVisualPresets,
-  graphVisualSettingRanges,
   initializeGraphVisualSettings,
   resetActiveGraphVisualSettings,
   resetGraphVisualSettings,
   resetGraphVisualProfile,
   resolveGraphVisualColors,
   setGraphVisualPreset,
-  setGraphVisualProfileSetting,
   setGraphVisualSetting,
   setGraphSharedNeuronStyle,
   subscribeGraphVisualSettings,
 } from "./graph-visual-settings.js";
+import { SettingsCategoryContext, SettingsFilterContext, technicalLabel, RangeControl, GraphFxRangeControl, ColorControl, getRadioTabIndex, handleRadioNavigation, ChoiceGroup, SettingsGroup, FxCategory, FxLayerToggle } from "./GraphVisualSettingsControls.jsx";
+import { GraphVisualEditorToolbar } from "./GraphVisualEditorToolbar.jsx";
+import { GRAPH_EDITOR_COPY } from "./graph-visual-editor-model.js";
+import { getGraphVisualPreviewSnapshot, subscribeGraphVisualPreview } from "./graph-visual-preview.js";
+import { GraphicsPerformanceStatus } from "../runtime/GraphicsPerformanceStatus.jsx";
 import "./graph-visual-settings.css";
 
-const SettingsCategoryContext = createContext("nodes");
 const settingsCategories = ["nodes", "edges", "glow", "layout", "scene", "presets"];
 
 const qualityOptions = Object.freeze([
@@ -99,258 +92,18 @@ function useMobileSettingsDrawer() {
   return mobile;
 }
 
-function formatValue(value, format) {
-  if (format === "percent") return `${Math.round(value * 100)}%`;
-  if (format === "count") return String(Math.round(value));
-  if (format === "pixels") return `${Math.round(value)} PX`;
-  if (format === "strength") return `${Number(value).toFixed(2)}×`;
-  if (format === "seconds") return `${Number(Number(value).toFixed(2))} s`;
-  return Number(value).toFixed(2);
-}
-
-function technicalLabel(t, label) {
-  return t(`graphVisualSettings.label.${label.toLowerCase().replaceAll(" ", "_")}`);
-}
-
-function RangeValue({ value, range, format, label, disabled, onCommit }) {
-  const { t } = useLanguage();
-  const multiplier = format === "percent" ? 100 : 1;
-  const displayValue = Number((value * multiplier).toFixed(4));
-  const [draft, setDraft] = useState(String(displayValue));
-  return (
-    <div className="graph-visual-settings__value">
-      <input
-        type="number"
-        aria-label={t("graphVisualSettings.editor.precise", { label })}
-        value={draft}
-        min={range.min * multiplier}
-        max={range.max * multiplier}
-        step={Number((range.step * multiplier).toFixed(8))}
-        disabled={disabled}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => {
-          const next = normalizeGraphRangeInput(draft, range, format, value);
-          setDraft(String(Number((next * multiplier).toFixed(4))));
-          if (next !== value) onCommit(next);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            event.currentTarget.blur();
-          } else if (event.key === "Escape") {
-            event.stopPropagation();
-            setDraft(String(displayValue));
-          }
-        }}
-      />
-      <span aria-hidden="true">{format === "percent" ? "%" : format === "strength" ? "×" : format === "pixels" ? "px" : format === "seconds" ? "s" : ""}</span>
-    </div>
-  );
-}
-
-function RangeControl({
-  section,
-  setting,
-  label,
-  detail,
-  value,
-  format,
-  disabled = false,
-  onValueChange,
-  range: providedRange,
-}) {
-  const range = providedRange ?? graphVisualSettingRanges[section][setting];
-  const inputId = useId();
-  const detailId = `${inputId}-detail`;
-  const outputId = `${inputId}-output`;
-  const formattedValue = formatValue(value, format);
-  const commit = (nextValue) => {
-    if (onValueChange) onValueChange(nextValue);
-    else setGraphVisualSetting(section, setting, nextValue);
-  };
-  return (
-    <div className={`graph-visual-settings__range ${disabled ? "is-disabled" : ""}`}>
-      <span>
-        <label htmlFor={inputId}><strong>{label}</strong></label>
-        <small id={detailId}>{detail}</small>
-      </span>
-      <output id={outputId} htmlFor={inputId} aria-hidden="true" className="sr-only">{formattedValue}</output>
-      <RangeValue key={value} value={value} range={range} format={format} label={label} disabled={disabled} onCommit={commit} />
-      <input
-        id={inputId}
-        type="range"
-        min={range.min}
-        max={range.max}
-        step={range.step}
-        value={value}
-        style={{ "--range-progress": `${(value - range.min) / (range.max - range.min) * 100}%` }}
-        aria-describedby={detailId}
-        aria-valuetext={formattedValue}
-        disabled={disabled}
-        onChange={(event) => {
-          commit(Number(event.currentTarget.value));
-        }}
-      />
-    </div>
-  );
-}
-
-function GraphFxRangeControl({
-  profileId,
-  profile,
-  path,
-  label,
-  detail,
-  format,
-  disabled = false,
-}) {
-  return (
-    <RangeControl
-      label={label}
-      detail={detail}
-      disabled={disabled}
-      format={format}
-      range={getGraphFxSettingRange(profileId, path)}
-      value={getGraphFxSettingValue(profile, path)}
-      onValueChange={(value) => setGraphVisualProfileSetting(profileId, path, value)}
-    />
-  );
-}
-
-function ColorControl({
-  section,
-  setting,
-  label,
-  value,
-  effectiveValue,
-  themeDriven,
-  t,
-}) {
-  const displayedValue = effectiveValue ?? value;
-  return (
-    <label className="graph-visual-settings__color">
-      <span>
-        <strong>{label}</strong>
-        <small>
-          {themeDriven
-            ? t("graphVisualSettings.palette.themeToken")
-            : t("graphVisualSettings.palette.customToken")}
-        </small>
-      </span>
-      <code>{displayedValue}</code>
-      <input
-        type="color"
-        value={displayedValue}
-        onChange={(event) => setGraphVisualSetting(section, setting, event.currentTarget.value)}
-      />
-    </label>
-  );
-}
-
-function getRadioTabIndex(value, options, index) {
-  const selectedIndex = options.findIndex((option) => option.id === value);
-  return index === (selectedIndex < 0 ? 0 : selectedIndex) ? 0 : -1;
-}
-
-function handleRadioNavigation(event, options, currentIndex, onChange) {
-  let nextIndex = -1;
-  if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-    nextIndex = (currentIndex + 1) % options.length;
-  } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-    nextIndex = (currentIndex - 1 + options.length) % options.length;
-  } else if (event.key === "Home") {
-    nextIndex = 0;
-  } else if (event.key === "End") {
-    nextIndex = options.length - 1;
-  }
-  if (nextIndex < 0) return;
-  event.preventDefault();
-  const buttons = event.currentTarget.parentElement?.querySelectorAll('[role="radio"]');
-  buttons?.[nextIndex]?.focus();
-  onChange(options[nextIndex].id);
-}
-
-function ChoiceGroup({ label, value, options, onChange, t }) {
-  return (
-    <fieldset className="graph-visual-settings__choices">
-      <legend>{label}</legend>
-      <div role="radiogroup" aria-label={label}>
-        {options.map((option, index) => (
-          <button
-            key={option.id}
-            type="button"
-            role="radio"
-            aria-checked={value === option.id}
-            tabIndex={getRadioTabIndex(value, options, index)}
-            className={value === option.id ? "is-selected" : ""}
-            onClick={() => onChange(option.id)}
-            onKeyDown={(event) => handleRadioNavigation(event, options, index, onChange)}
-          >
-            {option.labelKey ? t(option.labelKey) : option.label}
-          </button>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
-
-function SettingsGroup({ category, title, meta, children, open = false }) {
-  const activeCategory = useContext(SettingsCategoryContext);
-  if (category && category !== activeCategory) return null;
-  return (
-    <details className="graph-visual-settings__group" open={open}>
-      <summary><strong>{title}</strong><code>{meta}</code></summary>
-      <div>{children}</div>
-    </details>
-  );
-}
-
-function FxCategory({ category, title, meta, children, open = true }) {
-  const activeCategory = useContext(SettingsCategoryContext);
-  if (category !== activeCategory) return null;
-  return (
-    <details className="graph-visual-settings__fx-category" open={open}>
-      <summary><strong>{title}</strong><code>{meta}</code></summary>
-      <div>{children}</div>
-    </details>
-  );
-}
-
-function FxLayerToggle({ profileId, path, label, enabled, t }) {
-  const activeCategory = useContext(SettingsCategoryContext);
-  const category = path.startsWith("node.") ? "nodes"
-    : path.startsWith("edge.") || path.startsWith("orb.signals.") ? "edges"
-      : path.startsWith("postFx.") ? "glow"
-        : path.startsWith("orb.") ? "layout" : "scene";
-  if (category !== activeCategory) return null;
-  const stateLabel = t(enabled ? "common.state.on" : "common.state.off");
-  return (
-    <button
-      type="button"
-      aria-label={t("graphVisualSettings.layer.toggleAria", {
-        label,
-        state: stateLabel,
-      })}
-      aria-pressed={enabled}
-      className={enabled ? "is-enabled" : ""}
-      onClick={() => setGraphVisualProfileSetting(profileId, path, !enabled)}
-    >
-      <strong>{label}</strong>
-      <span>
-        {enabled ? <EyeRegular /> : <EyeOffRegular />}
-        <code>{stateLabel}</code>
-      </span>
-    </button>
-  );
-}
-
 export function GraphVisualSettings({
   embedded = false,
   onClose,
   onToast,
   returnFocusRef,
 }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const editorCopy = GRAPH_EDITOR_COPY[language] ?? GRAPH_EDITOR_COPY["en-US"];
+  const [query, setQuery] = useState("");
+  const [changedOnly, setChangedOnly] = useState(false);
+  const filtering = Boolean(query.trim()) || changedOnly;
+  const preview = useSyncExternalStore(subscribeGraphVisualPreview, getGraphVisualPreviewSnapshot);
   const panelRef = useRef(null);
   const contentRef = useRef(null);
   const categoryId = useId();
@@ -462,6 +215,7 @@ export function GraphVisualSettings({
       const focusable = [...(panelRef.current?.querySelectorAll(
         'button:not([disabled]), input:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
       ) ?? [])].filter((element) => element.tabIndex >= 0
+        && !element.closest("[inert]")
         && element.getClientRects().length > 0
         && (element.checkVisibility?.() ?? true));
       if (focusable.length === 0) return;
@@ -526,7 +280,8 @@ export function GraphVisualSettings({
   };
 
   const panel = (
-    <SettingsCategoryContext.Provider value={category}>
+    <SettingsCategoryContext.Provider value={filtering ? null : category}>
+    <SettingsFilterContext.Provider value={{ query, changedOnly, dimension: settings.view.dimension, readOnly: preview.side === "a" }}>
     <section
       ref={panelRef}
       id={embedded ? "graph-visual-settings-embedded" : "graph-visual-settings-panel"}
@@ -557,9 +312,10 @@ export function GraphVisualSettings({
         ) : null}
       </header>
 
-      <div className="graph-visual-settings__mode">
+      <div className="graph-visual-settings__mode" inert={preview.side === "a"}>
         <ChoiceGroup
           label={t("graphVisualSettings.scope.title")}
+          disabled={preview.frozen}
           value={settings.view.dimension}
           options={dimensionOptions}
           onChange={(value) => setGraphVisualSetting("view", "dimension", value)}
@@ -569,6 +325,7 @@ export function GraphVisualSettings({
           {t(settings.sharedStyle ? "graphVisualSettings.editor.shared" : "graphVisualSettings.editor.independent")}
         </span>
       </div>
+      <GraphVisualEditorToolbar settings={settings} query={query} onQuery={setQuery} changedOnly={changedOnly} onChangedOnly={setChangedOnly} />
       <div className="graph-visual-settings__tabs" role="tablist" aria-label={t("graphVisualSettings.editor.categories")}>
         {settingsCategories.map((id, index) => (
           <button
@@ -594,9 +351,10 @@ export function GraphVisualSettings({
           >{t(`graphVisualSettings.editor.tab.${id}`)}</button>
         ))}
       </div>
-      <div ref={contentRef} id={`${categoryId}-panel`} className="graph-visual-settings__content" role="tabpanel" aria-labelledby={`${categoryId}-${category}`} tabIndex={0}>
-        <p className="graph-visual-settings__category-help">{t(`graphVisualSettings.editor.help.${category}`)}</p>
-      {category === "presets" ? <>
+      <div ref={contentRef} id={`${categoryId}-panel`} className={`graph-visual-settings__content ${filtering ? "is-filtering" : ""}`} inert={preview.side === "a"} role="tabpanel" aria-labelledby={`${categoryId}-${category}`} tabIndex={0}>
+        <p className="graph-visual-settings__category-help">{filtering ? query.trim() ? editorCopy.results : editorCopy.modified : t(`graphVisualSettings.editor.help.${category}`)}</p>
+        {filtering && <p className="graph-visual-settings__empty" role="status">{editorCopy.empty}</p>}
+      {category === "presets" && !filtering ? <>
       <div className="graph-visual-settings__reset-actions">
         <button type="button" onClick={applyDefaultStyle}><ArrowResetRegular />{t("graphVisualSettings.defaults.apply")}</button>
       </div>
@@ -869,14 +627,15 @@ export function GraphVisualSettings({
         })}
       >
         <ChoiceGroup
-          label={t("graphVisualSettings.choice.graphDisplay")}
+          section="view" setting="enabled" label={t("graphVisualSettings.choice.graphDisplay")}
           value={settings.view.enabled}
           options={visibilityOptions}
           onChange={(value) => setGraphVisualSetting("view", "enabled", value)}
           t={t}
         />
         <ChoiceGroup
-          label={t("graphVisualSettings.choice.graphDimension")}
+          section="view" setting="dimension" label={t("graphVisualSettings.choice.graphDimension")}
+          disabled={preview.frozen}
           value={settings.view.dimension}
           options={dimensionOptions}
           onChange={(value) => setGraphVisualSetting("view", "dimension", value)}
@@ -908,6 +667,10 @@ export function GraphVisualSettings({
           <ColorControl section="node" setting="activeColor" label={technicalLabel(t, "ACTIVE")} value={settings.node.activeColor} effectiveValue={resolvedColors.activeColor} themeDriven={settings.node.useThemeColors} t={t} />
           <ColorControl section="node" setting="groupColor" label={technicalLabel(t, "GROUP")} value={settings.node.groupColor} effectiveValue={resolvedColors.groupColor} themeDriven={settings.node.useThemeColors} t={t} />
         </div>
+        <ChoiceGroup section="node" setting="useThemeColors" label={editorCopy.palette}
+          value={settings.node.useThemeColors}
+          options={[{ id: true, label: editorCopy.theme }, { id: false, label: editorCopy.custom }]}
+          onChange={(value) => setGraphVisualSetting("node", "useThemeColors", value)} t={t} />
         {!settings.node.useThemeColors ? (
           <div
             className={`graph-visual-settings__contrast-status ${labelContrast.passes ? "is-pass" : "is-warning"}`}
@@ -980,7 +743,7 @@ export function GraphVisualSettings({
           <RangeControl section="scene" setting="stars" label={technicalLabel(t, "STAR FIELD")} detail={t("graphVisualSettings.control.starField.detail", { count: quality.starBudget })} value={settings.scene.stars} format="count" />
         </div>
         <ChoiceGroup
-          label={t("graphVisualSettings.choice.quality")}
+          section="performance" setting="quality" label={t("graphVisualSettings.choice.quality")}
           value={settings.performance.quality}
           options={qualityOptions}
           onChange={(value) => setGraphVisualSetting("performance", "quality", value)}
@@ -988,19 +751,15 @@ export function GraphVisualSettings({
         />
       </SettingsGroup>
 
-      {category === "scene" ? <details className="graph-visual-settings__diagnostics">
+      {category === "scene" && !filtering ? <details className="graph-visual-settings__diagnostics">
         <summary>{t("graphVisualSettings.editor.diagnostics")}</summary>
+        <GraphicsPerformanceStatus />
         <p>
           {settings.node.useThemeColors
             ? t("graphVisualSettings.footer.themePalette", {
               theme: themeId.toUpperCase(),
             })
             : t("graphVisualSettings.footer.customPalette")}
-          {" "}
-          {t("graphVisualSettings.footer.quality", {
-            requested: settings.performance.quality.toUpperCase(),
-            effective: quality.id.toUpperCase(),
-          })}
           {" "}
           {t("graphVisualSettings.footer.bloom", {
             requested: bloomRequested ? "ON" : "OFF",
@@ -1026,6 +785,7 @@ export function GraphVisualSettings({
         <span>{t("graphVisualSettings.editor.editing", { dimension: settings.view.dimension })}</span>
       </footer>
     </section>
+    </SettingsFilterContext.Provider>
     </SettingsCategoryContext.Provider>
   );
 

@@ -1,10 +1,12 @@
 // Keep only locally edited leaves when rebasing onto a newer on-disk revision.
 // Opening an old browser must never turn its cached full snapshot into a write.
-function changes(before, after, path = [], result = []) {
-  for (const key of Object.keys(after)) {
+function changes(before, after, path = [], result = [], isAtomicValue = () => false) {
+  for (const key of new Set([...Object.keys(before ?? {}), ...Object.keys(after)])) {
     const next = after[key];
     const previous = before?.[key];
-    if (next && typeof next === "object" && !Array.isArray(next)) changes(previous, next, [...path, key], result);
+    if (!Object.hasOwn(after, key)) result.push({ path: [...path, key], deleted: true });
+    else if (next && typeof next === "object" && !Array.isArray(next) && !isAtomicValue([...path, key]))
+      changes(previous, next, [...path, key], result, isAtomicValue);
     else if (!sameValue(previous, next)) result.push({ path: [...path, key], value: next });
   }
   return result;
@@ -12,10 +14,11 @@ function changes(before, after, path = [], result = []) {
 
 function overlay(base, pending) {
   const result = structuredClone(base);
-  for (const { path, value } of pending.values()) {
+  for (const { path, value, deleted } of pending.values()) {
     let target = result;
     for (const key of path.slice(0, -1)) target = target[key] ??= {};
-    target[path.at(-1)] = value;
+    if (deleted) delete target[path.at(-1)];
+    else target[path.at(-1)] = value;
   }
   return result;
 }
@@ -28,7 +31,8 @@ function sameValue(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-export function createGraphSettingsFileSync({ api, initial, normalize, onValue, onStatus, select = (value) => value }) {
+export function createGraphSettingsFileSync({ api, initial, normalize, onValue, onStatus, select = (value) => value,
+  validateSnapshot, onSnapshot, isAtomicValue }) {
   let base = select(initial);
   let presented = select(initial);
   let revision;
@@ -40,6 +44,7 @@ export function createGraphSettingsFileSync({ api, initial, normalize, onValue, 
   const status = (state, error = null) => { if (!disposed) onStatus(state, error); };
 
   const validate = (snapshot) => {
+    if (validateSnapshot) return validateSnapshot(snapshot);
     if (!snapshot || typeof snapshot.revision !== "string" || snapshot.settings?.version !== 7)
       throw new Error("INVALID_LOCAL_SETTINGS");
   };
@@ -48,6 +53,7 @@ export function createGraphSettingsFileSync({ api, initial, normalize, onValue, 
     validate(snapshot);
     const changedRevision = snapshot.revision !== revision;
     revision = snapshot.revision;
+    onSnapshot?.(snapshot);
     base = select(normalize(snapshot.settings));
     for (const [key, change] of pending) {
       if (sameValue(change.value, valueAt(base, change.path))) pending.delete(key);
@@ -101,7 +107,7 @@ export function createGraphSettingsFileSync({ api, initial, normalize, onValue, 
   return {
     edit(next) {
       const selected = select(next);
-      for (const change of changes(presented, selected)) {
+      for (const change of changes(presented, selected, [], [], isAtomicValue)) {
         const key = JSON.stringify(change.path);
         if (sameValue(change.value, valueAt(base, change.path)) && !inFlight?.has(key)) pending.delete(key);
         else pending.set(key, { ...change, sequence: ++sequence });

@@ -1,0 +1,14 @@
+.agent-conversation-library { margin: 0 18px; padding: 8px 0; border-bottom: 1px solid var(--shell-border); max-height: 260px; overflow: auto; font-size: 12px; }
+.agent-conversation-library summary { cursor: pointer; }
+.agent-conversation-library summary small { margin-left: 12px; color: var(--shell-muted); }
+.agent-conversation-library input, .agent-conversation-library button { color: var(--shell-text); background: var(--shell-surface); border: 1px solid var(--shell-border); padding: 5px 8px; margin: 6px; }
+.agent-conversation-library input { max-width: 220px; }
+.agent-conversation-library button { cursor: pointer; }
+.agent-conversation-library button:disabled { opacity: 0.5; cursor: default; }
+.agent-conversation-library ul { list-style: none; padding: 0; }
+.agent-conversation-library li { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--shell-border); }
+.agent-conversation-library li span { display: grid; gap: 3px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.agent-conversation-library small, .agent-source-excerpts small { color: var(--shell-muted); }
+.agent-source-excerpts { margin: 8px 0; font-size: 12px; }
+.agent-source-excerpts summary { cursor: pointer; }
+.agent-source-excerpts pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }

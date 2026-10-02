@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "sampledAtUtc": "2026-10-02T12:41:24.1852026+00:00",
+  "environment": "isolated native WebView2; visible non-activating window; full-motion query override; synthetic 96-note Vault",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "logicalProcessors": 24,
+  "webView2Version": "154.0.4258.48",
+  "taskbarTouched": false,
+  "repeatedExploreTransitionsPassed": true,
+  "knowledgeSearchAndExcerptPassed": true,
+  "notes": "Frame intervals are not GPU execution times. Working sets are summed, may include shared pages, and are not unique memory. Occlusion and other desktop workloads affect results.",
+  "samples": [
+    {
+      "scenario": "idle",
+      "durationSeconds": 16.2200062,
+      "processCpuSeconds": 10.046875,
+      "machineCpuPercent": 2.580885076368741,
+      "peakSummedWorkingSetBytes": 617873408,
+      "processMeasurementComplete": true,
+      "processSetChanged": false,
+      "unavailableProcessReadings": 0,
+      "baselineProcessCount": 6,
+      "finalProcessCount": 6,
+      "graphics": {
+        "adaptiveTier": "0",
+        "documentVisible": true,
+        "effectiveDpr": "1.000",
+        "effectiveQuality": "low",
+        "frameStatistics": "{\u0022count\u0022:600,\u0022meanMs\u0022:4.166166666646799,\u0022p50Ms\u0022:4.199999988079071,\u0022p95Ms\u0022:4.300000011920929,\u0022maxMs\u0022:4.5999999940395355,\u0022sampledDurationMs\u0022:2499.699999988079}",
+        "height": 720,
+        "rendererState": "ready",
+        "systemReducedMotion": true,
+        "width": 1280
+      }
+    },
+    {
+      "scenario": "explore-3d-focused",
+      "durationSeconds": 16.3000483,
+      "processCpuSeconds": 10.640625,
+      "machineCpuPercent": 2.719987955619177,
+      "peakSummedWorkingSetBytes": 639774720,
+      "processMeasurementComplete": true,
+      "processSetChanged": false,
+      "unavailableProcessReadings": 0,
+      "baselineProcessCount": 6,
+      "finalProcessCount": 6,
+      "graphics": {
+        "adaptiveTier": "0",
+        "documentVisible": true,
+        "effectiveDpr": "1.000",
+        "effectiveQuality": "low",
+        "frameStatistics": "{\u0022count\u0022:600,\u0022meanMs\u0022:4.166500000009934,\u0022p50Ms\u0022:4.199999988079071,\u0022p95Ms\u0022:4.300000011920929,\u0022maxMs\u0022:6.300000011920929,\u0022sampledDurationMs\u0022:2499.9000000059605}",
+        "height": 720,
+        "rendererState": "ready",
+        "systemReducedMotion": true,
+        "width": 1280
+      }
+    },
+    {
+      "scenario": "explore-2d-focused",
+      "durationSeconds": 16.1543408,
+      "processCpuSeconds": 11.40625,
+      "machineCpuPercent": 2.941998024745686,
+      "peakSummedWorkingSetBytes": 638341120,
+      "processMeasurementComplete": true,
+      "processSetChanged": false,
+      "unavailableProcessReadings": 0,
+      "baselineProcessCount": 6,
+      "finalProcessCount": 6,
+      "graphics": {
+        "adaptiveTier": "0",
+        "documentVisible": true,
+        "effectiveDpr": "1.000",
+        "effectiveQuality": "low",
+        "frameStatistics": "{\u0022count\u0022:600,\u0022meanMs\u0022:4.166499999960264,\u0022p50Ms\u0022:4.199999988079071,\u0022p95Ms\u0022:4.300000011920929,\u0022maxMs\u0022:6.399999976158142,\u0022sampledDurationMs\u0022:2499.899999976158}",
+        "height": 720,
+        "rendererState": "ready",
+        "systemReducedMotion": true,
+        "width": 1280
+      }
+    }
+  ]
+}

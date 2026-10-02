@@ -10,6 +10,9 @@ export function createLocalGraphPreview(fetchGraph = globalThis.fetch.bind(globa
     return payload;
   };
   return {
+    search: (params) => request("search", params),
+    neighborhood: (params) => request("neighborhood", params),
+    readNote: (params) => request("readNote", params),
     getDefaultManifest: (params) => request("manifest", params),
     getDefaultChunk: (params) => request("chunk", params),
   };

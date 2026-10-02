@@ -8,6 +8,25 @@ import { normalizeGraphFxProfile } from "../src/graphics/graph/graph-fx-profile.
 const options = { chargeTime: 0.08, holdTime: 0.12, decayTime: 1.6 };
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 0.00001, `${actual} != ${expected}`);
 
+test("frozen A/B activation hides and resamples energy without losing arrivals or birth colors", () => {
+  const state = createNodeActivationState(1, true);
+  touchNodeActivation(state, 0, 0, options, [1, 0.3, 0.04]);
+  state.time = 0.5;
+  updateNodeActivation(state, options, true, true);
+  const level = state.levels[0];
+  const colors = [...state.colors];
+  updateNodeActivation(state, options, false, true);
+  assert.equal(state.levels[0], 0);
+  updateNodeActivation(state, { ...options, decayTime: 0.01 }, true, true);
+  assert.equal(state.levels[0], 0);
+  assert.equal(state.hits[0], 0);
+  updateNodeActivation(state, options, true, true);
+  near(state.levels[0], level);
+  assert.deepEqual([...state.colors], colors);
+  updateNodeActivation(state, options, false);
+  assert.equal(state.hits[0], -Infinity);
+});
+
 test("nodes charge to the same peak, retain residual energy on repeat arrivals, and settle completely", () => {
   const state = createNodeActivationState(3);
   const buffer = state.levels;

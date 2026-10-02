@@ -46,6 +46,7 @@ public partial class App : Application
             }
 
             Directory.CreateDirectory(_rendererSmokeOptions!.DataRoot);
+            ConfigurationPreferencesStore.UseIsolatedDirectory(Path.Combine(_rendererSmokeOptions.DataRoot, "Settings"));
             HostLog.UseIsolatedLogDirectory(Path.Combine(_rendererSmokeOptions.DataRoot, "Logs"));
             var smokeCulture = CultureInfo.GetCultureInfo(_rendererSmokeOptions.CultureName);
             CultureInfo.CurrentCulture = smokeCulture;

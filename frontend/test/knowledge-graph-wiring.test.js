@@ -5,7 +5,9 @@ import test from "node:test";
 const sourceRoot = new URL("../src/", import.meta.url);
 
 async function readSource(path) {
-  return readFile(new URL(path, sourceRoot), "utf8");
+  const source = await readFile(new URL(path, sourceRoot), "utf8");
+  if (path !== "graphics/graph/GraphVisualSettings.jsx") return source;
+  return `${source}\n${await readFile(new URL("graphics/graph/GraphVisualSettingsControls.jsx", sourceRoot), "utf8")}`;
 }
 
 test("Explorer navigation cannot replace the relationship graph's Obsidian Vault", async () => {
@@ -16,14 +18,14 @@ test("Explorer navigation cannot replace the relationship graph's Obsidian Vault
   assert.match(app, /onAddToAgentContext=\{linkExplorerSelectionToAgent\}/u);
 });
 
-test("connected graph actions use the bounded Agent metadata path", async () => {
+test("connected graph actions stage bounded metadata or explicitly selected excerpts", async () => {
   const [app, workspace, model] = await Promise.all([
     readSource("App.jsx"),
     readSource("components/KnowledgeGraphWorkspace.jsx"),
     readSource("knowledge-graph-model.js"),
   ]);
 
-  assert.match(app, /agentSession\.addContextItems\(entry \? \[entry\] : \[\]\)/u);
+  assert.match(app, /agentSession\.addContextItems\(Array\.isArray\(entry\) \? entry : entry \? \[entry\] : \[\]\)/u);
   assert.match(workspace, /getKnowledgeGraphNodeContextItem\(selectedNode\)/u);
   assert.match(workspace, /t\("graph\.workspace\.action\.askAgent"\)/u);
   assert.match(workspace, /platformKind === "windows"/u);

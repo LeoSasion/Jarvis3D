@@ -91,6 +91,19 @@ public sealed class RendererSmokeOptionsTests
         Assert.Equal(RendererSmokeOptions.DefaultCultureName, options!.CultureName);
     }
 
+    [Fact]
+    public void PerformanceMeasurementRequiresAnExplicitIsolatedSmokeFlag()
+    {
+        var root = CreateIsolatedRoot();
+        var arguments = CreateArguments(root, Path.Combine(root, "renderer.json"));
+        Assert.True(RendererSmokeOptions.TryParse(arguments, out var ordinary, out _));
+        Assert.False(ordinary!.MeasurePerformance);
+        Assert.True(RendererSmokeOptions.TryParse([.. arguments, "--renderer-smoke-performance"], out var benchmark, out _));
+        Assert.True(benchmark!.MeasurePerformance);
+        Assert.False(RendererSmokeOptions.TryParse([.. arguments, "--renderer-smoke-other"], out _, out _));
+        Assert.False(RendererSmokeOptions.TryParse([.. arguments.Take(4), "--renderer-smoke-performance", "--renderer-smoke-performance"], out _, out _));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("not a culture")]

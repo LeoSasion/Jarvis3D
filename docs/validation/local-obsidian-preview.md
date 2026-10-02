@@ -3,7 +3,7 @@
 The current test Vault is `C:\Users\Administrator\Documents\服装行业知识库`.
 The desktop relationship graph stays attached to the Vault when File Explorer opens, navigates, or closes.
 
-For localhost development, set `JARVIS_OBSIDIAN_VAULT` in `frontend/.env.local` and run the Vite development server. This file is ignored by Git. The graph API is enabled only in development and accepts loopback requests with a local Host and same origin. It does not expose a browser-selectable filesystem path or note bodies.
+For localhost development, set `JARVIS_OBSIDIAN_VAULT` in `frontend/.env.local` and run the Vite development server. This file is ignored by Git. The graph API is enabled only in development and accepts loopback requests with a local Host and same origin. It does not expose a browser-selectable filesystem path. Global graph manifests/chunks remain metadata-only. The separate knowledge search and neighborhood endpoints use the same approved Vault, and a user-selected `readNote` request returns a source-bound excerpt of at most 6,000 characters with line numbers; it never reads an arbitrary path. Adding an excerpt to Agent prepares a draft and does not transmit it until Send.
 
 The development bridge builds `host/Jarvis.GraphPreview` with .NET 8 and keeps its process alive until Vite closes. This console project directly compiles the native host's `ObsidianGraphService` and `ObsidianVaultWatcher`; there is no second Markdown parser. The regular graph refresh checks manifests, the watcher invalidates changed notes, and the Rescan button requests a full reparse. Errors are shown instead of silently substituting mock data.
 

@@ -86,6 +86,22 @@ export function createWindowsPlatform(webview) {
     kind: "windows",
     isNative: true,
     events: { subscribe },
+    configuration: {
+      read: () => request("configuration.read"),
+      write: (params) => request("configuration.write", params),
+      listSnapshots: () => request("configuration.snapshots.list"),
+      createSnapshot: (params) => request("configuration.snapshots.create", params),
+      readSnapshot: (params) => request("configuration.snapshots.read", params),
+      deleteSnapshot: (params) => request("configuration.snapshots.delete", params),
+      restoreSnapshot: (params) => request("configuration.snapshots.restore", params),
+    },
+    agentConversations: {
+      list: () => request("agentConversations.list"),
+      read: (conversationId) => request("agentConversations.read", { conversationId }),
+      save: (conversation) => request("agentConversations.save", { conversation }),
+      rename: (conversationId, title) => request("agentConversations.rename", { conversationId, title }),
+      delete: (conversationId) => request("agentConversations.delete", { conversationId }),
+    },
     graphVisualSettings: {
       read: () => request("graphVisual.read"),
       write: (params) => request("graphVisual.write", params),
@@ -121,6 +137,10 @@ export function createWindowsPlatform(webview) {
       requestAccess: () => request("notifications.requestAccess"),
     },
     knowledgeGraph: {
+      search: (params) => request("knowledgeGraph.search", params, 30_000),
+      neighborhood: (params) => request("knowledgeGraph.neighborhood", params, 30_000),
+      readNote: (params) => request("knowledgeGraph.readNote", params, 30_000),
+      openNote: (params) => request("knowledgeGraph.openNote", params),
       getDefaultSource: () => request("knowledgeGraph.getDefaultSource", {}, 30_000),
       getDefaultManifest: (options = {}) => request(
         "knowledgeGraph.getDefaultManifest",

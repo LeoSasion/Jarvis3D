@@ -29,6 +29,8 @@ import {
   undoGraphVisualSettings,
 } from "../graphics/graph/graph-visual-settings.js";
 import "./graph-profile-manager.css";
+import { ConfigurationSettingsPanel } from "../settings/ConfigurationSettingsPanel.jsx";
+import { flushWorkspaceConfiguration } from "../settings/workspace-configuration.js";
 
 function createScope(vaultName, mode) {
   return mode === "vault" && vaultName ? `vault:${vaultName}` : "global";
@@ -59,6 +61,7 @@ export function GraphProfileManager({ vaultName = "", onToast }) {
   const [name, setName] = useState("");
   const [scopeMode, setScopeMode] = useState(vaultName ? "vault" : "global");
   const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
   const fileInputRef = useRef(null);
   const scope = createScope(vaultName, scopeMode);
   const visibleProfiles = useMemo(
@@ -71,16 +74,18 @@ export function GraphProfileManager({ vaultName = "", onToast }) {
     onToast?.(nextMessage);
   };
 
-  const save = () => {
+  const save = async () => {
+    setBusy(true);
     try {
       const profile = saveGraphVisualProfile(name, settings, scope);
+      await flushWorkspaceConfiguration();
       setName("");
       report(t("graph.profileManager.toast.saved", { profile: profile.label }));
     } catch (error) {
       setMessage(t("graph.profileManager.error.saveFailed", {
         message: error.message,
       }));
-    }
+    } finally { setBusy(false); }
   };
 
   const applyProfile = (profile) => {
@@ -88,21 +93,28 @@ export function GraphProfileManager({ vaultName = "", onToast }) {
     report(t("graph.profileManager.toast.applied", { profile: profile.label }));
   };
 
-  const removeProfile = (profile) => {
-    deleteGraphVisualProfile(profile.id);
-    report(t("graph.profileManager.toast.deleted", { profile: profile.label }));
+  const removeProfile = async (profile) => {
+    setBusy(true);
+    try {
+      deleteGraphVisualProfile(profile.id);
+      await flushWorkspaceConfiguration();
+      report(t("graph.profileManager.toast.deleted", { profile: profile.label }));
+    } catch (error) { setMessage(t("graph.profileManager.error.saveFailed", { message: error.message })); }
+    finally { setBusy(false); }
   };
 
   const importProfiles = async (event) => {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
     if (!file) return;
+    setBusy(true);
     try {
       if (file.size > 256 * 1_024) {
         setMessage(t("graph.profileManager.error.fileTooLarge"));
         return;
       }
       const imported = importGraphVisualProfileDocument(await file.text(), scope);
+      await flushWorkspaceConfiguration();
       report(t(imported.length === 1
         ? "graph.profileManager.toast.imported.one"
         : "graph.profileManager.toast.imported.other", {
@@ -112,7 +124,7 @@ export function GraphProfileManager({ vaultName = "", onToast }) {
       setMessage(t("graph.profileManager.error.importFailed", {
         message: error.message,
       }));
-    }
+    } finally { setBusy(false); }
   };
 
   const exportProfiles = () => {
@@ -182,7 +194,7 @@ export function GraphProfileManager({ vaultName = "", onToast }) {
             onChange={(event) => setName(event.currentTarget.value)}
           />
         </label>
-        <button type="submit" disabled={!name.trim()}>
+        <button type="submit" disabled={busy || !name.trim()}>
           <SaveRegular />{t("graph.profileManager.action.saveCurrent")}
         </button>
       </form>
@@ -201,6 +213,7 @@ export function GraphProfileManager({ vaultName = "", onToast }) {
             </button>
             <button
               type="button"
+              disabled={busy}
               aria-label={t("graph.profileManager.action.deleteAria", {
                 profile: profile.label,
               })}
@@ -216,7 +229,7 @@ export function GraphProfileManager({ vaultName = "", onToast }) {
         <button type="button" disabled={!canUndoGraphVisualSettings()} onClick={undo}>
           <ArrowUndoRegular />{t("graph.profileManager.action.undo")}
         </button>
-        <button type="button" onClick={() => fileInputRef.current?.click()}>
+        <button type="button" disabled={busy} onClick={() => fileInputRef.current?.click()}>
           <ArrowImportRegular />{t("graph.profileManager.action.import")}
         </button>
         <button
@@ -239,6 +252,7 @@ export function GraphProfileManager({ vaultName = "", onToast }) {
           ? t("graph.profileManager.error.library", { message: library.error })
           : message}
       </p>
+      <ConfigurationSettingsPanel />
     </section>
   );
 }

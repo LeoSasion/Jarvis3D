@@ -265,7 +265,7 @@
   background: var(--structure);
 }
 
-.graph-visual-settings__layer-grid > button {
+.graph-visual-settings__layer-control > button:first-child {
   min-width: 0;
   min-height: 42px;
   display: flex;
@@ -279,37 +279,37 @@
   text-align: left;
 }
 
-.graph-visual-settings__layer-grid > button strong {
+.graph-visual-settings__layer-control > button:first-child strong {
   min-width: 0;
   color: inherit;
   font: 600 var(--graph-settings-label-size)/1.15 var(--font-data);
   letter-spacing: 0.055em;
 }
 
-.graph-visual-settings__layer-grid > button > span {
+.graph-visual-settings__layer-control > button:first-child > span {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   color: inherit;
 }
 
-.graph-visual-settings__layer-grid > button svg {
+.graph-visual-settings__layer-control > button:first-child svg {
   width: 15px;
   height: 15px;
 }
 
-.graph-visual-settings__layer-grid > button code {
+.graph-visual-settings__layer-control > button:first-child code {
   font: var(--graph-settings-meta-size)/1 var(--font-data);
 }
 
-.graph-visual-settings__layer-grid > button:hover,
-.graph-visual-settings__layer-grid > button:focus-visible,
-.graph-visual-settings__layer-grid > button.is-enabled {
+.graph-visual-settings__layer-control > button:first-child:hover,
+.graph-visual-settings__layer-control > button:first-child:focus-visible,
+.graph-visual-settings__layer-control > button:first-child.is-enabled {
   color: var(--ink-1);
   background: var(--signal-fill-strong);
 }
 
-.graph-visual-settings__layer-grid > button.is-enabled {
+.graph-visual-settings__layer-control > button:first-child.is-enabled {
   box-shadow: 0 -1px var(--signal-hot) inset;
 }
 
@@ -872,7 +872,7 @@
   display: none;
 }
 
-.graph-visual-settings__layer-grid > button {
+.graph-visual-settings__layer-control > button:first-child {
   min-height: 40px;
   padding: 8px 10px;
   border: 1px solid var(--shell-border);
@@ -880,22 +880,22 @@
   color: var(--shell-muted);
 }
 
-.graph-visual-settings__layer-grid > button.is-enabled {
+.graph-visual-settings__layer-control > button:first-child.is-enabled {
   color: var(--shell-text);
   background: transparent;
   box-shadow: none;
 }
 
-.graph-visual-settings__layer-grid > button.is-enabled > span {
+.graph-visual-settings__layer-control > button:first-child.is-enabled > span {
   color: var(--shell-accent);
 }
 
-.graph-visual-settings__layer-grid > button:hover {
+.graph-visual-settings__layer-control > button:first-child:hover {
   border-color: var(--shell-border-strong);
   background: var(--shell-hover);
 }
 
-.graph-visual-settings__layer-grid > button :where(strong, code) {
+.graph-visual-settings__layer-control > button:first-child :where(strong, code) {
   font: 12px/1.4 var(--shell-font);
   letter-spacing: 0;
 }
@@ -1130,3 +1130,90 @@
     appearance: auto;
   }
 }
+
+
+.graph-visual-settings__editor-tools {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--shell-border);
+  color: var(--shell-muted);
+  font: 12px/1.5 var(--shell-font);
+}
+
+.graph-visual-settings__editor-tools > input {
+  min-width: 0;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--shell-border);
+  color: var(--shell-text);
+  background: var(--shell-bg);
+  font: inherit;
+}
+
+.graph-visual-settings__editor-tools label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.graph-visual-settings__editor-tools input[type="checkbox"] {
+  accent-color: var(--shell-accent);
+}
+
+.graph-visual-settings__comparison { grid-column: 1 / -1; }
+.graph-visual-settings__comparison summary { cursor: pointer; }
+.graph-visual-settings__comparison p { margin: 6px 0 0; }
+.graph-visual-settings__comparison-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-block: 9px;
+}
+
+.graph-visual-settings__comparison-actions button {
+  min-height: 30px;
+  border: 1px solid var(--shell-border);
+  padding: 3px 9px;
+  color: var(--shell-text);
+  background: var(--shell-bg);
+  font: inherit;
+}
+
+.graph-visual-settings__comparison-actions button[aria-pressed="true"] {
+  border-color: var(--shell-accent);
+  background: var(--shell-selection);
+}
+
+.graph-visual-settings__range { grid-template-columns: minmax(0, 1fr) auto 28px; }
+.graph-visual-settings__layer-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  background: var(--shell-bg);
+}
+.graph-visual-settings__color { grid-template-columns: minmax(0, 1fr) var(--graph-settings-control-size) 28px; }
+.graph-visual-settings__color > span { grid-column: 1 / -1; }
+.graph-visual-settings__color code { grid-column: 1; }
+.graph-visual-settings__parameter-reset {
+  width: 28px;
+  min-height: 28px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  color: var(--shell-muted);
+  background: transparent;
+  vertical-align: middle;
+}
+.graph-visual-settings__parameter-reset svg { width: 15px; height: 15px; }
+.graph-visual-settings__parameter-reset:disabled { opacity: 0.25; cursor: default; }
+.graph-visual-settings__parameter-reset:not(:disabled):hover { color: var(--shell-accent); }
+.graph-visual-settings__empty { color: var(--shell-muted); font: 12px/1.6 var(--shell-font); }
+.graph-visual-settings__content:has(.graph-settings-control) > .graph-visual-settings__empty,
+.graph-visual-settings__content.is-filtering .graph-visual-settings__group:not(:has(.graph-settings-control)),
+.graph-visual-settings__content.is-filtering .graph-visual-settings__fx-category:not(:has(.graph-settings-control)),
+.graph-visual-settings__layer-grid:not(:has(.graph-settings-control)) { display: none; }
+.graph-visual-settings__content[inert] { opacity: 0.6; }

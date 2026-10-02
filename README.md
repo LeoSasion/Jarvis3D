@@ -53,11 +53,21 @@ activation, filament and signal appearance, idle emission, Bloom, layout, and
 scene visibility. The active profile is shared or independent across idle, 2D,
 and 3D according to the selected mode.
 
+Search parameters across all categories, show only changed values, or reset a single
+control. **A / B** captures a temporary reference and previews it without overwriting
+the current configuration. Freeze the camera and signal time for a steady comparison;
+closing the editor ends the comparison. Actual quality, automatic adjustment reasons,
+and recent active-frame interval statistics appear in the performance controls.
+After sustained headroom, adaptive quality recovers gradually with a cooldown to avoid
+repeated switching. Static redraws and paused animations do not count as slow frames.
+
 The active graph configuration is saved in `%LOCALAPPDATA%\JARVIS\Settings\graph-visual-settings.json`.
 The Windows Host and the loopback Vite development/preview server use the same file. Visible browser
 pages check for changes every 1.5 seconds and refresh on focus, so different browsers share current
-node, connection, signal, glow, layout and view parameters. Saved preset-library entries and unrelated
-shell preferences remain separate.
+node, connection, signal, glow, layout and view parameters. Named graph presets, themes,
+custom colors, language, interface preferences, audio and screen effects share the
+neighboring `workspace-preferences.json` file. Operational Windows preferences remain
+under their existing dedicated services.
 
 On first use, an absent file imports the opening browser's existing visual configuration. Once the file
 exists, it takes precedence over browser storage. Saves use atomic replacement, keep the previous file
@@ -65,6 +75,33 @@ as `.json.bak`, and merge locally edited fields after a revision conflict instea
 settings with a stale browser snapshot. The visual menu reports pending saves and failures; a malformed
 file is preserved for recovery. Browser previews require the local Vite server and .NET 8 SDK; static
 web hosting alone cannot write this file.
+
+**Settings → Interface → Local configuration & recovery** shows save state and build
+identity, copies a diagnostic without personal paths or configuration contents, and
+keeps up to eight named snapshots. A restore first saves the current configuration as
+another snapshot, then restores both preference files together. Concurrent changes
+are checked by revision; an interrupted restore is rolled back before the next read.
+Keep one snapshot slot free to allow this recovery copy.
+
+### Knowledge and Agent workflow
+
+Open **Explore** to search note titles, paths, aliases and tags, follow incoming or
+outgoing links, or display a one- or two-hop neighborhood. The search index can find
+notes beyond the global rendering budget; the local view remains bounded. The native
+Host can open a selected note through its registered Windows application.
+
+Choose **Read excerpt locally** to inspect a bounded note snapshot with its source
+path and line range. Add at most two excerpts of 6,000 characters each, then choose
+summary, comparison or a question. Agent shows the prepared context and waits for
+**Send** before sharing it with the selected provider. Global graph payloads remain
+metadata-only. Explorer links remain metadata-only, and the Pi adapter remains
+chat-only with tools disabled.
+
+Completed conversations are saved locally and can be named and continued from the
+Agent conversation library after a restart. Storage is bounded to 40 conversations,
+100 messages and 40,000 characters per conversation. Continuing sends at most 8,000
+characters of prior dialogue on the next message; it does not silently reattach old
+note bodies. These local files may contain the excerpts the user chose to send.
 
 ## Current scope
 
@@ -86,7 +123,7 @@ web hosting alone cannot write this file.
 - Truthful Windows notification-history readiness reporting; history remains disabled until a signed MSIX identity and user consent are available
 - Windows-native system telemetry and on-demand process/hardware inspection
 - Integrated PowerShell, Command Prompt, and WSL sessions through ConPTY
-- A source-bounded local Obsidian knowledge graph with 2D/3D neuron views, a porous neuron sphere at idle, shared or independent visual profiles, and metadata-only renderer contracts
+- A source-bounded local Obsidian knowledge graph with 2D/3D neuron views, a porous neuron sphere at idle, searchable local neighborhoods, and explicit bounded note excerpts for Agent
 - Configurable conservative, enhanced, and experimental immersive window styling
 - Layered low-glare HUD themes and optional local interaction sounds
 - Per-user installer and startup registration
@@ -147,6 +184,18 @@ notice bounds, and Reduced Motion, then exits automatically. The gate refuses to
 start while JARVIS is already running and verifies that the native Windows
 taskbar remains visible. Run both cultures from an interactive Windows desktop
 as a pre-release gate; hosted CI does not claim this desktop-only coverage.
+
+To also measure the native idle, focused 3D and focused 2D scenes, use:
+
+```powershell
+.\scripts\verify-renderer-smoke.ps1 -Culture en-US -MeasurePerformance
+```
+
+This optional gate uses a visible, non-activating 1280×720 window, an isolated
+96-note synthetic Vault and configuration directory, and a full-motion override.
+It writes a JSON report with active frame intervals, process CPU, summed working
+sets and sampling completeness. Frame intervals are not GPU timings; process
+working sets can contain shared pages. No taskbar replacement is enabled.
 
 Run the controlled native lifecycle gates only when the desktop can briefly
 yield to JARVIS:

@@ -1,6 +1,7 @@
 import {
   getVisualThemeDefinition,
 } from "./theme-system.js";
+import { isConfigurationFileConnected } from "./settings/configuration-authority.js";
 
 const STORAGE_KEY = "jarvis.interface-preferences.v1";
 const MOTION_VALUES = new Set(["system", "reduced", "full"]);
@@ -89,6 +90,7 @@ function persistAndEmit() {
 }
 
 export function initializeInterfacePreferences() {
+  if (initialized && isConfigurationFileConnected()) { applyPreferences(); return; }
   preferences = readPreferences();
   applyPreferences();
   if (initialized || typeof window === "undefined") return;

@@ -54,14 +54,16 @@ export function chargeSignalContacts(state, contacts, previous, next, speed, per
   }
 }
 
-export function updateNodeActivation(state, options, enabled = true) {
+export function updateNodeActivation(state, options, enabled = true, preserveHistory = false) {
   state.active = false;
   state.changed = state.colorChanged;
   state.colorChanged = false;
   for (let node = 0; node < state.levels.length; node += 1) {
     const age = state.time - state.hits[node];
     const level = enabled ? sampleNodeActivation(age, state.starts[node], options) : 0;
-    if (!enabled || age >= options.chargeTime + options.holdTime + options.decayTime) state.hits[node] = -Infinity;
+    // A frozen comparison may hide activation or shorten its envelope. Keep the
+    // arrival history so switching back can resample the same frozen instant.
+    if (!preserveHistory && (!enabled || age >= options.chargeTime + options.holdTime + options.decayTime)) state.hits[node] = -Infinity;
     const previous = state.levels[node];
     state.levels[node] = level;
     state.changed ||= previous !== state.levels[node];

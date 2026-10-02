@@ -25,6 +25,8 @@ import {
 import { useLanguage } from "../i18n/language-system.js";
 import { formatTime } from "../i18n/locale-format.js";
 import { SystemNotice } from "./SystemNotice.jsx";
+import { AgentConversationLibrary } from "./AgentConversationLibrary.jsx";
+import { getNoteSources, getUserDirective } from "../agent-conversation-library.js";
 
 const STATUS_COPY_KEYS = Object.freeze({
   unavailable: "agent.status.offline",
@@ -128,12 +130,17 @@ function messageLabel(role, providerLabel, t) {
 
 function messageDisplayText(message) {
   const text = String(message?.text ?? "");
-  if (message?.role !== "user" || !text.startsWith("[JARVIS FILE CONTEXT — METADATA ONLY]")) {
-    return text;
-  }
-  const marker = "[USER DIRECTIVE]";
-  const markerIndex = text.indexOf(marker);
-  return markerIndex < 0 ? text : text.slice(markerIndex + marker.length).trim();
+  return message?.role === "user" ? getUserDirective(text) : text;
+}
+
+function SourceExcerpts({ sources, t, pending = false }) {
+  if (!sources.length) return null;
+  return <details className="agent-source-excerpts"><summary>{t(pending ? "knowledge.agent.pendingSources" : "knowledge.agent.sources")} ({sources.length})</summary>
+    {sources.map((source, index) => <details key={`${source.path}-${index}`}>
+      <summary>[S{index + 1}] {source.title ?? source.name} · {source.path} · L{source.startLine}–{source.endLine}</summary>
+      <pre>{source.text}</pre>
+    </details>)}
+  </details>;
 }
 
 function MessageAvatar({ role }) {
@@ -197,11 +204,11 @@ function LinkedContextEvent({
   return (
     <section
       className={`agent-linked-context is-${phase}`}
-      aria-label={t("agent.context.linked.aria", { status: copy.label })}
+      aria-label={t(items.some((item) => item.excerpt) ? "knowledge.agent.contextAria" : "agent.context.linked.aria", { status: copy.label })}
     >
       <span className="agent-flow-node" aria-hidden="true"><DocumentRegular /></span>
       <span className="agent-linked-context__identity">
-        <small>{t("agent.context.linked.metadataLabel")}</small>
+        <small>{t(items.some((item) => item.excerpt) ? "knowledge.agent.contentLabel" : "agent.context.linked.metadataLabel")}</small>
         <strong>
           {items.length === 1
             ? items[0].name
@@ -212,6 +219,10 @@ function LinkedContextEvent({
             ? items[0].path
             : t("agent.context.linked.snapshots", { count: items.length })}
         </code>
+        {items.some((item) => item.excerpt) ? <>
+          <p>{t("knowledge.agent.scope")}</p>
+          <SourceExcerpts t={t} pending={phase === "staged"} sources={items.filter((item) => item.excerpt).map((item) => ({ title: item.name, path: item.path, ...item.excerpt }))} />
+        </> : null}
       </span>
       <span className="agent-linked-context__state" role="status">
         <strong>{copy.label}</strong>
@@ -235,6 +246,7 @@ export function AgentConversationWindow({
   canMaximize = true,
   state,
   messages,
+  library,
   historyError,
   sessionTransitioning,
   draft,
@@ -461,6 +473,7 @@ export function AgentConversationWindow({
           </button>
         </header>
 
+
         <div
           ref={transcriptRef}
           className="agent-transcript"
@@ -470,6 +483,7 @@ export function AgentConversationWindow({
           aria-label={t("agent.accessibility.transcript")}
         >
           <SystemNotice notice={notice} onDismiss={onDismissNotice} placement="inline" />
+          <AgentConversationLibrary library={library} busy={isRunning || sessionTransitioning} />
           {state?.error || historyErrorText ? (
             <div ref={alertRef} className="agent-alert-region has-alert" role="alert">
               {state?.error ? (
@@ -510,6 +524,7 @@ export function AgentConversationWindow({
                 <div className="agent-message__group">
                   <div className="agent-message__bubble">
                     <p>{messageDisplayText(message)}</p>
+                    {message.role === "user" ? <SourceExcerpts sources={getNoteSources(message.text)} t={t} /> : null}
                   </div>
                   <footer className="agent-message__meta">
                     <span>{messageLabel(message.role, providerLabel, t)}</span>
@@ -545,10 +560,10 @@ export function AgentConversationWindow({
               <span className="agent-empty-state__copy">
                 <BotRegular className="agent-empty-state__icon" aria-hidden="true" />
                 <strong>{channelReady && !errorView && linkedContext?.items?.length
-                  ? t("agent.start.linked.heading")
+                  ? t(linkedContext.items.some((item) => item.excerpt) ? "knowledge.agent.readyHeading" : "agent.start.linked.heading")
                   : emptyCopy.heading}</strong>
                 <p>{channelReady && !errorView && linkedContext?.items?.length
-                  ? t("agent.start.linked.detail")
+                  ? t(linkedContext.items.some((item) => item.excerpt) ? "knowledge.agent.readyDetail" : "agent.start.linked.detail")
                   : emptyCopy.detail}</p>
               </span>
               {channelReady && !errorView ? (
@@ -598,7 +613,7 @@ export function AgentConversationWindow({
           ) : null}
           <label className="sr-only" htmlFor="jarvis-agent-prompt">
             {linkedDirectiveArmed
-              ? t("agent.composer.accessibility.linkedMessage")
+              ? t(linkedContext.items.some((item) => item.excerpt) ? "knowledge.agent.composerAria" : "agent.composer.accessibility.linkedMessage")
               : t("agent.composer.accessibility.message")}
           </label>
           <div className="agent-composer__input-row">

@@ -6,6 +6,9 @@ the native Explorer taskbar and desktop.
 
 ## Evidence kept in this repository
 
+- [October 2 workflow validation](workflow-validation-2026-10-02.md) records
+  shared configuration and rollback, knowledge excerpts and saved conversations,
+  visual comparison, actual browser interactions, and native performance samples.
 - [Current browser preview stills](../design/references/jarvis-operator-hud-overview.png)
   show the idle desktop; [3D Explore](neuron-radiance-3d-preview.png) and
   [2D Explore](neuron-radiance-2d-preview.png) were captured on 2026-09-30.

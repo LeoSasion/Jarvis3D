@@ -1,5 +1,6 @@
 import { processes, resources, shortcuts } from "../data.js";
 import { createMockObsidianGraph } from "../graph/mock-obsidian-graph.js";
+import { searchKnowledgeNodes, getKnowledgeNeighborhood } from "../graph/knowledge-browser-model.js";
 import { normalizeWindowAppearanceProcessName } from "../window-appearance-model.js";
 
 const DECIMAL_MB = 1_000_000;
@@ -1290,6 +1291,16 @@ export function createMockPlatform() {
       },
     },
     knowledgeGraph: {
+      async search(params) { return searchKnowledgeNodes(createMockObsidianGraph(), params); },
+      async neighborhood(params) { return getKnowledgeNeighborhood(createMockObsidianGraph(), params); },
+      async readNote({ nodeId, startLine = 1 }) {
+        const graph = createMockObsidianGraph();
+        const node = graph.nodes.find((value) => value.id === nodeId);
+        if (!node) throw new Error("Unknown simulated note.");
+        const text = `# ${node.title}\n\nThis is simulated preview content. No local file was read.\n这是演示摘录，没有读取本地文件。`;
+        return { nodeId, title: node.title, relativePath: node.relativePath, revision: graph.source.revision,
+          startLine, endLine: startLine + 3, text, truncated: false, digest: "simulated-content", simulation: true };
+      },
       async getDefaultSource() {
         return createMockObsidianGraph();
       },

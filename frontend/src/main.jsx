@@ -13,6 +13,7 @@ import { initializeInterfacePreferences } from "./interface-preferences.js";
 import { initializeVisualTheme } from "./theme-system.js";
 import { platform } from "./platform/index.js";
 import { connectGraphVisualSettingsFile } from "./graphics/graph/graph-visual-settings.js";
+import { connectWorkspaceConfiguration, observeGraphConfigurationApi } from "./settings/workspace-configuration.js";
 
 initializeLanguageSystem();
 initializeVisualTheme();
@@ -31,14 +32,17 @@ const loadSurface = surface === "taskbar"
       : import("./App.jsx").then((module) => module.App);
 
 const visualSettingsReady = ["desktop", "orb"].includes(surface)
-  ? connectGraphVisualSettingsFile(platform.graphVisualSettings)
+  ? connectGraphVisualSettingsFile(observeGraphConfigurationApi(platform.graphVisualSettings))
+  : Promise.resolve();
+const configurationReady = surface !== "switcher"
+  ? connectWorkspaceConfiguration(platform.configuration, { readOnly: surface === "taskbar" })
   : Promise.resolve();
 
 if (["desktop", "orb"].includes(surface) && platform.graphVisualSettings) {
   document.getElementById("root").textContent = translate("graphVisualSettings.storage.loading");
 }
 
-Promise.all([loadSurface, visualSettingsReady]).then(([Surface]) => {
+Promise.all([loadSurface, visualSettingsReady, configurationReady]).then(([Surface]) => {
   createRoot(document.getElementById("root")).render(
     <React.StrictMode>
       <Surface />

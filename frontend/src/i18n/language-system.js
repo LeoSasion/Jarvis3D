@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { TRANSLATION_DICTIONARIES } from "./translations.js";
+import { isConfigurationFileConnected } from "../settings/configuration-authority.js";
 
 const STORAGE_KEY = "jarvis.language-preference.v1";
 const STORAGE_VERSION = 1;
@@ -151,6 +152,7 @@ function handleSystemLanguageChange() {
 }
 
 function handleLanguageStorageChange(event) {
+  if (isConfigurationFileConnected()) return;
   if (event.key !== null && event.key !== STORAGE_KEY) return;
   commitLanguage(readStoredLanguagePreference());
 }

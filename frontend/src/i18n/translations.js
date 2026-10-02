@@ -1,5 +1,8 @@
+import { KNOWLEDGE_TRANSLATIONS } from "./knowledge-translations.js";
+
 export const TRANSLATION_DICTIONARIES = Object.freeze({
   "en-US": Object.freeze({
+    ...KNOWLEDGE_TRANSLATIONS["en-US"],
     "agent.draft.refineCompletedResponse":
       "Refine the completed response into a concise, actionable next step.",
     "agent.accessibility.transcript": "Agent transcript",
@@ -2115,6 +2118,7 @@ export const TRANSLATION_DICTIONARIES = Object.freeze({
     "windowSwitcher.title": "Open windows",
   }),
   "zh-CN": Object.freeze({
+    ...KNOWLEDGE_TRANSLATIONS["zh-CN"],
     "agent.draft.refineCompletedResponse": "将已完成的回复整理成简洁、可执行的下一步。",
     "agent.accessibility.transcript": "Agent 对话记录",
     "agent.accessibility.window": "JARVIS Agent",

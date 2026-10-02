@@ -1,4 +1,5 @@
 import { createGraphThemePalette } from "./graphics/graph/graph-theme-palette.js";
+import { isConfigurationFileConnected } from "./settings/configuration-authority.js";
 
 const STORAGE_KEY = "jarvis.visual-theme.v2";
 const LEGACY_STORAGE_KEY = "jarvis.visual-theme.v1";
@@ -389,6 +390,7 @@ function commitThemeChange({ persist = true } = {}) {
 }
 
 function handleStorage(event) {
+  if (isConfigurationFileConnected()) return;
   if (event.key !== STORAGE_KEY && event.key !== LEGACY_STORAGE_KEY &&
       event.key !== CUSTOM_PALETTE_STORAGE_KEY) return;
   const nextPalette = readStoredCustomPalette();
@@ -411,6 +413,7 @@ function handleStorage(event) {
 }
 
 export function initializeVisualTheme() {
+  if (initialized && isConfigurationFileConnected()) return activeThemeId;
   customPalette = readStoredCustomPalette();
   customTheme = createTheme({
     id: CUSTOM_THEME_ID,
@@ -488,4 +491,12 @@ export function setCustomVisualPalette(nextPalette) {
 
 export function resetCustomVisualPalette() {
   return setCustomVisualPalette(DEFAULT_CUSTOM_PALETTE);
+}
+
+export function replaceVisualThemePreferences({ id, palette }) {
+  const normalized = normalizeCustomVisualPalette(palette);
+  customPalette = getVisualPaletteContrastReport(normalized).passes ? normalized : DEFAULT_CUSTOM_PALETTE;
+  customTheme = createTheme({ id: CUSTOM_THEME_ID, label: "Custom", description: "Your complete workspace palette.", palette: customPalette });
+  activeThemeId = id === CUSTOM_THEME_ID || themeById.has(id) ? id : DEFAULT_THEME_ID;
+  commitThemeChange({ persist: false });
 }

@@ -1,3 +1,4 @@
+import { resolveGraphVisualPreview, subscribeGraphVisualPreview } from "./graph-visual-preview.js";
 import {
   DEFAULT_GRAPH_FX_PROFILES,
   normalizeGraphFxProfiles,
@@ -1018,6 +1019,10 @@ if (import.meta.hot) import.meta.hot.dispose(() => {
   window.removeEventListener("pagehide", flushGraphVisualSettingsPersistence);
 });
 
+export function getGraphVisualRenderSettingsSnapshot() {
+  return resolveGraphVisualPreview(settings);
+}
+
 export function getGraphVisualSettingsSnapshot() {
   return settings;
 }
@@ -1033,7 +1038,8 @@ export function selectGraphDimensionSettings(value, dimension) {
 
 export function subscribeGraphVisualSettings(listener) {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  const unsubscribePreview = subscribeGraphVisualPreview(listener);
+  return () => { listeners.delete(listener); unsubscribePreview(); };
 }
 
 export function setGraphSharedNeuronStyle(enabled) {
@@ -1187,9 +1193,10 @@ export function undoGraphVisualSettings() {
 }
 
 export function flushGraphVisualSettingsPersistence() {
+  if (fileSync) { cancelPendingPersistence(); return fileSync.flush(); }
   if (persistTimer !== null) {
     cancelPendingPersistence();
-    persistSettings();
+    return persistSettings();
   }
 }
 

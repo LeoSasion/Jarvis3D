@@ -1,3 +1,5 @@
+import { isConfigurationFileConnected } from "../settings/configuration-authority.js";
+
 const STORAGE_KEY = "jarvis.visual-effects.v1";
 const SCHEMA_VERSION = 1;
 const CADENCE_VALUES = new Set(["economy", "balanced"]);
@@ -216,11 +218,13 @@ function commitPreferences(nextValue, { persist = true, force = false } = {}) {
 }
 
 function handleStorage(event) {
+  if (isConfigurationFileConnected()) return;
   if (event.key !== STORAGE_KEY) return;
   commitPreferences(parseStoredValue(event.newValue), { persist: false });
 }
 
 export function initializeVisualEffects() {
+  if (isConfigurationFileConnected()) { applyMetadata(); return; }
   preferences = readPreferences();
   applyMetadata();
   if (initialized || typeof window === "undefined") return;
@@ -271,3 +275,5 @@ export function setVisualEffectsCadence(cadence) {
 export function resetVisualEffects() {
   return commitPreferences(DEFAULT_VISUAL_EFFECTS, { force: true });
 }
+
+export function replaceVisualEffects(value) { return commitPreferences(value, { persist: false }); }
