@@ -144,5 +144,5 @@ export function useAgentConversationLibrary(liveMessages, agentState) {
   }, [refresh]);
 
   return { available, current, messages, entries, status, error, transitioning, busyRef,
-    resumeMessages: current.restored, change, rename, remove, refresh, save, saveCopy };
+    resumeMessages: current.restored, change, rename, remove, save, saveCopy };
 }

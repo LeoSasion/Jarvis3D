@@ -155,5 +155,3 @@ export function reduceAdaptivePerformanceState(state, event, policyOverrides = {
     lastChangeAt: now,
   });
 }
-
-export const adaptivePerformancePolicy = DEFAULT_ADAPTIVE_POLICY;

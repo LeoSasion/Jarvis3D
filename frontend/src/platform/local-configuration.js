@@ -1,13 +1,7 @@
+import { createLocalCommandRequest } from "./local-command-request.js";
+
 export function createLocalConfiguration(fetcher = globalThis.fetch) {
-  const request = async (method, params = {}) => {
-    const response = await fetcher("/__jarvis/configuration", {
-      method: "POST", cache: "no-store", credentials: "same-origin",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ method, ...params }),
-      signal: AbortSignal.timeout(35_000),
-    });
-    if (!response.ok) throw new Error("LOCAL_CONFIGURATION_UNAVAILABLE");
-    return response.json();
-  };
+  const request = createLocalCommandRequest("/__jarvis/configuration", "LOCAL_CONFIGURATION_UNAVAILABLE", fetcher);
   return {
     read: () => request("configuration.read"),
     write: (params) => request("configuration.write", params),

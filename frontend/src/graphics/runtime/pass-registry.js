@@ -56,5 +56,3 @@ export function createGraphicsPassRegistry({
 export function getGraphicsPass(registry, passId) {
   return registry.passes.find((pass) => pass.id === passId) ?? null;
 }
-
-export const graphicsPassDefinitions = PASS_DEFINITIONS;

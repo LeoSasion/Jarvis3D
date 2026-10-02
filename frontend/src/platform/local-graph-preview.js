@@ -1,3 +1,5 @@
+import { translate } from "../i18n/language-system.js";
+
 export function createLocalGraphPreview(fetchGraph = globalThis.fetch.bind(globalThis)) {
   const request = async (method, params = {}) => {
     const response = await fetchGraph(`/__jarvis/graph/${method}?${new URLSearchParams(params)}`, { cache: "no-store" });
@@ -17,4 +19,3 @@ export function createLocalGraphPreview(fetchGraph = globalThis.fetch.bind(globa
     getDefaultChunk: (params) => request("chunk", params),
   };
 }
-import { translate } from "../i18n/language-system.js";

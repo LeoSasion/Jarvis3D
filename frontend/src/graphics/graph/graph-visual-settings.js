@@ -28,7 +28,6 @@ let initialized = false;
 let historyKey = null;
 let historyTimer = null;
 let persistTimer = null;
-let persistenceError = null;
 let fileSync = null;
 let fileSyncCleanup = null;
 let persistenceState = "browser";
@@ -874,9 +873,7 @@ function persistSettings() {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     }
-    persistenceError = null;
-  } catch (error) {
-    persistenceError = String(error?.message ?? "Graph visual settings could not be saved.");
+  } catch {
     // Keep the current renderer session usable when storage is unavailable.
   }
 }
@@ -980,9 +977,8 @@ export async function connectGraphVisualSettingsFile(api) {
       if (remote) { closeHistoryGroup(); history.length = 0; }
       commitSettings(value, { persist: false, record: false });
     },
-    onStatus(state, error) {
+    onStatus(state) {
       persistenceState = state;
-      persistenceError = error;
       notifyListeners();
     },
   });
@@ -1074,10 +1070,6 @@ export function updateGraphVisualSettingsSection(section, patch) {
       ...patch,
     },
   }, { historyKey: `section:${section}` });
-}
-
-export function updateGraphVisualSettings(section, patch) {
-  return updateGraphVisualSettingsSection(section, patch);
 }
 
 export function setGraphVisualSetting(section, setting, value) {
@@ -1200,18 +1192,5 @@ export function flushGraphVisualSettingsPersistence() {
   }
 }
 
-export function getGraphVisualSettingsPersistenceError() {
-  return persistenceError;
-}
-
 export const GRAPH_VISUAL_SETTINGS_STORAGE_KEY = STORAGE_KEY;
-export const PREVIOUS_GRAPH_VISUAL_SETTINGS_STORAGE_KEY = PREVIOUS_STORAGE_KEY;
-export const SECOND_PREVIOUS_GRAPH_VISUAL_SETTINGS_STORAGE_KEY = SECOND_PREVIOUS_STORAGE_KEY;
-export const THIRD_PREVIOUS_GRAPH_VISUAL_SETTINGS_STORAGE_KEY = THIRD_PREVIOUS_STORAGE_KEY;
-export const FOURTH_PREVIOUS_GRAPH_VISUAL_SETTINGS_STORAGE_KEY = FOURTH_PREVIOUS_STORAGE_KEY;
 export const LEGACY_GRAPH_VISUAL_SETTINGS_STORAGE_KEY = LEGACY_STORAGE_KEY;
-export const graphVisualSettingsPersistencePolicy = Object.freeze({
-  historyEntries: MAX_HISTORY_ENTRIES,
-  historyCoalesceMs: HISTORY_COALESCE_MS,
-  persistDelayMs: PERSIST_DELAY_MS,
-});

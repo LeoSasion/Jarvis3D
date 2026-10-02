@@ -1,6 +1,8 @@
-export const MAX_SAVED_MESSAGES = 100;
-export const MAX_SAVED_CHARACTERS = 40_000;
-export const MAX_RESUMED_CHARACTERS = 8_000;
+import { MAX_AGENT_CONTENT_CHARACTERS, MAX_AGENT_CONTENT_ITEMS } from "./agent-context-model.js";
+
+const MAX_SAVED_MESSAGES = 100;
+const MAX_SAVED_CHARACTERS = 40_000;
+const MAX_RESUMED_CHARACTERS = 8_000;
 
 export function createConversationId() {
   return (globalThis.crypto?.randomUUID?.() ?? "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx".replace(/x/gu,
@@ -22,8 +24,8 @@ export function getNoteSources(text) {
   const sourceLine = value.slice(index + marker.length).split("\n")[2];
   try {
     const sources = JSON.parse(sourceLine);
-    return Array.isArray(sources) ? sources.slice(0, 2).filter((source) => source && typeof source.text === "string"
-      && source.text.length <= 6000 && typeof source.path === "string") : [];
+    return Array.isArray(sources) ? sources.slice(0, MAX_AGENT_CONTENT_ITEMS).filter((source) => source && typeof source.text === "string"
+      && source.text.length <= MAX_AGENT_CONTENT_CHARACTERS && typeof source.path === "string") : [];
   } catch { return []; }
 }
 

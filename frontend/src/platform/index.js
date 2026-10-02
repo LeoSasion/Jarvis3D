@@ -20,5 +20,3 @@ export const platform = basePlatform.kind !== "windows"
   ? { ...graphPlatform, graphVisualSettings: createLocalVisualSettings(), configuration: createLocalConfiguration(),
       agentConversations: createLocalAgentConversations() }
   : graphPlatform;
-
-export const isWindowsHost = platform.kind === "windows";

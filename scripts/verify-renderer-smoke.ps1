@@ -92,17 +92,11 @@ try {
             Get-Content -LiteralPath $receiptPath -Raw -Encoding UTF8
         }
         else {
-            $logPath = Join-Path $dataRoot 'Logs\jarvis-host.log'
-            if (Test-Path -LiteralPath $logPath -PathType Leaf) {
-                (Get-Content -LiteralPath $logPath -Tail 40 -Encoding UTF8) -join [Environment]::NewLine
-            }
-            else {
-                'No renderer receipt or isolated Host log was produced.'
-            }
+            'No renderer receipt was produced.'
         }
         $failureLog = Join-Path $dataRoot 'Logs\jarvis-host.log'
-        if (Test-Path -LiteralPath $failureLog) {
-            $diagnostic += "`n" + ((Get-Content -LiteralPath $failureLog -Tail 20 -Encoding UTF8) -join "`n")
+        if (Test-Path -LiteralPath $failureLog -PathType Leaf) {
+            $diagnostic += "`n" + ((Get-Content -LiteralPath $failureLog -Tail 40 -Encoding UTF8) -join "`n")
         }
         throw "Renderer smoke host exited with code $($process.ExitCode).`n$diagnostic"
     }

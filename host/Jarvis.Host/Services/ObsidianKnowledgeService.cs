@@ -70,10 +70,9 @@ internal sealed partial class ObsidianGraphService
         selected = nodes.Select(node => node.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var edgeCandidates = catalog.Edges.Where(edge => selected.Contains(edge.Source) && selected.Contains(edge.Target)).ToArray();
         var edges = TakeBoundedPage(edgeCandidates, 0, MaximumEdgeChunkSize, (MaximumChunkPayloadBytes - 32_000) / 2);
-        var matchingEdges = catalog.Edges.Count(edge => selected.Contains(edge.Source) && selected.Contains(edge.Target));
         return new KnowledgeNeighborhood(catalog.Revision,
             nodes, edges,
-            truncated || matchingEdges > edges.Count, hops);
+            truncated || edgeCandidates.Length > edges.Count, hops);
     }
 
     public KnowledgeExcerpt ReadKnowledgeNote(
@@ -94,7 +93,6 @@ internal sealed partial class ObsidianGraphService
             using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
             var content = new StringBuilder();
             var line = 1;
-            var lineStart = 1;
             var lastLine = startLine;
             var truncated = false;
             while (reader.Read() is var value && value >= 0)
@@ -108,9 +106,8 @@ internal sealed partial class ObsidianGraphService
                     lastLine = line;
                 }
                 if (character == '\n') line++;
-                lineStart = line;
             }
-            if (startLine > lineStart && content.Length == 0) throw new ArgumentException("The requested line is past the end of the note.");
+            if (startLine > line && content.Length == 0) throw new ArgumentException("The requested line is past the end of the note.");
             var body = content.ToString();
             var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(body)));
             return new KnowledgeExcerpt(node.Id, node.Title, node.RelativePath, catalog.Revision,

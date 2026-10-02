@@ -291,15 +291,9 @@ export function getGraphFxSettingRange(profileId, path) {
   return supportsPath(profileId, path) ? graphFxSettingRanges[path] ?? null : null;
 }
 
-export function isGraphFxBooleanSetting(profileId, path) {
-  return supportsPath(profileId, path) && getBooleanPaths(profileId).includes(path);
-}
-
 export function withGraphFxProfileSetting(profiles, profileId, path, value) {
   if (!supportsPath(profileId, path)) return normalizeGraphFxProfiles(profiles);
   const nextProfiles = cloneValue(normalizeGraphFxProfiles(profiles));
   setPathValue(nextProfiles[profileId], path, value);
   return normalizeGraphFxProfiles(nextProfiles);
 }
-
-export const graphFxProfileIds = PROFILE_IDS;

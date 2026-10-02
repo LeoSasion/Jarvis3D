@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "../i18n/language-system.js";
 import { platform } from "../platform/index.js";
+import { MAX_AGENT_CONTENT_ITEMS } from "../agent-context-model.js";
 import {
-  createKnowledgeContextItem, createNeighborhoodScene, KNOWLEDGE_PAGE_SIZE, MAX_KNOWLEDGE_EXCERPTS,
+  createKnowledgeContextItem, createNeighborhoodScene, KNOWLEDGE_PAGE_SIZE,
 } from "./knowledge-browser-model.js";
 import "./knowledge-browser.css";
 
@@ -83,7 +84,7 @@ export function KnowledgeBrowser({ graph, selectedNodeId, onSelectNode, onNeighb
   const stage = () => {
     const item = createKnowledgeContextItem(excerpt);
     if (!item) return;
-    setBasket((items) => [...items.filter((entry) => entry.id !== item.id), item].slice(-MAX_KNOWLEDGE_EXCERPTS));
+    setBasket((items) => [...items.filter((entry) => entry.id !== item.id), item].slice(-MAX_AGENT_CONTENT_ITEMS));
   };
   const ask = async (intent) => {
     setBusy(true);
@@ -149,7 +150,7 @@ export function KnowledgeBrowser({ graph, selectedNodeId, onSelectNode, onNeighb
           <p>{t("knowledge.excerpt.range", { start: excerpt.startLine, end: excerpt.endLine, count: excerpt.text.length })}</p>
           <pre>{excerpt.text}</pre>
           {excerpt.truncated ? <small>{t("knowledge.excerpt.truncated")}</small> : null}
-          <button type="button" disabled={basket.length >= MAX_KNOWLEDGE_EXCERPTS && !basket.some((item) => item.id === excerpt.nodeId)}
+          <button type="button" disabled={basket.length >= MAX_AGENT_CONTENT_ITEMS && !basket.some((item) => item.id === excerpt.nodeId)}
             onClick={stage}>{t("knowledge.excerpt.add")}</button>
         </div> : null}
       </section> : null}

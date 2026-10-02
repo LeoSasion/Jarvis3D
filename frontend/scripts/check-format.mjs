@@ -4,7 +4,7 @@ import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const extensions = new Set([".js", ".jsx", ".css", ".html", ".json"]);
+const extensions = new Set([".js", ".jsx", ".mjs", ".css", ".html", ".json"]);
 const ignoredDirectories = new Set(["dist", "node_modules"]);
 const failures = [];
 
@@ -27,6 +27,9 @@ async function inspect(directory) {
     });
     if (content && !content.endsWith("\n")) {
       failures.push(`${relative(root, path)} missing final newline`);
+    }
+    if (/\n\s*\r?\n$/u.test(content)) {
+      failures.push(`${relative(root, path)} extra blank line at EOF`);
     }
   }));
 }

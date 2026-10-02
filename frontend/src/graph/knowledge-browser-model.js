@@ -1,6 +1,6 @@
+import { MAX_AGENT_CONTENT_CHARACTERS } from "../agent-context-model.js";
+
 export const KNOWLEDGE_PAGE_SIZE = 40;
-export const MAX_KNOWLEDGE_EXCERPTS = 2;
-export const MAX_KNOWLEDGE_EXCERPT_CHARACTERS = 6_000;
 
 export function searchKnowledgeNodes(graph, { query = "", tag = "", offset = 0, limit = KNOWLEDGE_PAGE_SIZE } = {}) {
   const words = query.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
@@ -42,7 +42,7 @@ export function getKnowledgeNeighborhood(graph, { nodeId, hops = 1 }) {
 }
 
 export function createKnowledgeContextItem(excerpt) {
-  if (!excerpt || typeof excerpt.text !== "string" || excerpt.text.length > MAX_KNOWLEDGE_EXCERPT_CHARACTERS
+  if (!excerpt || typeof excerpt.text !== "string" || excerpt.text.length > MAX_AGENT_CONTENT_CHARACTERS
     || !excerpt.nodeId || !excerpt.relativePath || !excerpt.revision || !excerpt.digest) return null;
   return {
     id: excerpt.nodeId, path: excerpt.relativePath, name: excerpt.title, kind: "note", typeLabel: "Markdown",

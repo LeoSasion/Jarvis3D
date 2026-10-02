@@ -1792,7 +1792,6 @@ export function GraphScene({
     () => (labelAtlas ? createLabelMaterial(labelAtlas.texture, scenePlan.labels.opacity) : null),
     [labelAtlas, scenePlan.labels.opacity],
   );
-  const lastVisibleLabelCountRef = useRef(-1);
   const labelAtlasDisposalRef = useRef(null);
 
   useEffect(() => {
@@ -2168,7 +2167,6 @@ export function GraphScene({
     labelNodeIndicesRef.current = nextIndices;
     labelRectAttribute.needsUpdate = true;
     labelColorAttribute.needsUpdate = true;
-    lastVisibleLabelCountRef.current = -1;
   }, [
     hoveredNodeId,
     labelAtlas,
@@ -3064,7 +3062,6 @@ export function GraphScene({
       }
     }
     const visibleCount = getLabelLodCount();
-    lastVisibleLabelCountRef.current = visibleCount;
     updateLabelMatrices(positionsRef.current, visibleCount);
     if (!frozen && shouldContinueGraphFrame({
       dimensionChanged,

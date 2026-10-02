@@ -53,5 +53,3 @@ export function subscribeGraphicsDiagnostics(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
-
-export const graphicsDiagnosticsEmptySnapshot = EMPTY_SNAPSHOT;

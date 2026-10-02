@@ -51,7 +51,7 @@ const RENDERER_FAULT_PARAMETER_NAMES = new Set([
 const RENDERER_FAULT_TITLE_MAX_LENGTH = 160;
 const RENDERER_FAULT_DETAIL_MAX_LENGTH = 320;
 const RENDERER_FAULT_DUPLICATE_WINDOW_MS = 30_000;
-export const mockPreviewProvenance = Object.freeze({
+const mockPreviewProvenance = Object.freeze({
   kind: "browser-preview",
   dataClass: "simulated-fixture",
   simulated: true,
@@ -392,7 +392,7 @@ export const mockTaskbarSnapshot = {
   foregroundWindowId: "0x10001",
 };
 
-export const mockExplorerSnapshot = {
+const mockExplorerSnapshot = {
   simulation: true,
   provenance: mockPreviewProvenance,
   currentPath: "D:\\Projects\\JARVIS",
@@ -478,10 +478,6 @@ function mockBreadcrumbs(path) {
       return { label: segment, path: current };
     }),
   ];
-}
-
-function normalizeOpenParams(value) {
-  return typeof value === "string" ? { target: value } : value;
 }
 
 function normalizeRendererFaultText(value, name, maximumLength, required) {
@@ -1931,7 +1927,7 @@ export function createMockPlatform() {
         return { opened: false, mock: true, applicationId };
       },
       async open(value) {
-        return { opened: false, mock: true, ...normalizeOpenParams(value) };
+        return { opened: false, mock: true, ...(typeof value === "string" ? { target: value } : value) };
       },
     },
     lifecycle: {

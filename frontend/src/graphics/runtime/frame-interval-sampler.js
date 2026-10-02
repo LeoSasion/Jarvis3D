@@ -80,7 +80,3 @@ export function readFrameIntervalSample(state, {
   state.longGapCandidateMs = 0;
   return accumulateFrameInterval(state, frameIntervalMs, boundedSampleInterval);
 }
-
-export const frameIntervalSamplingPolicy = Object.freeze({
-  minimumIdleGapMs: MIN_IDLE_GAP_MS,
-});

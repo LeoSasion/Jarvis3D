@@ -170,7 +170,7 @@
 .graph-visual-settings__group > summary {
   min-height: 44px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 0 12px;
@@ -195,10 +195,6 @@
   color: var(--signal-hot);
 }
 
-.graph-visual-settings__group > summary {
-  grid-template-columns: 12px minmax(0, 1fr) auto;
-}
-
 .graph-visual-settings__group > summary strong {
   font: 650 var(--graph-settings-label-size)/1 var(--font-data);
   letter-spacing: 0.075em;
@@ -213,49 +209,6 @@
 .graph-visual-settings__control-grid {
   display: grid;
   gap: 8px;
-}
-
-.graph-visual-settings__profile-intro {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
-  border-left: var(--stroke) solid var(--signal-hot);
-  background: var(--signal-fill-strong);
-}
-
-.graph-visual-settings__profile-intro > span {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.graph-visual-settings__profile-intro strong {
-  color: var(--ink-1);
-  font: 650 var(--graph-settings-label-size)/1 var(--font-data);
-  letter-spacing: 0.075em;
-}
-
-.graph-visual-settings__profile-intro > button {
-  min-height: var(--graph-settings-control-size);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 9px;
-  border: var(--stroke) solid var(--structure-strong);
-  color: var(--ink-2);
-  background: var(--void);
-  font: 600 var(--graph-settings-label-size)/1 var(--font-data);
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-}
-
-.graph-visual-settings__profile-intro > button:hover,
-.graph-visual-settings__profile-intro > button:focus-visible {
-  border-color: var(--signal-hot);
-  color: var(--signal-hot);
 }
 
 .graph-visual-settings__layer-grid {
@@ -311,16 +264,6 @@
 
 .graph-visual-settings__layer-control > button:first-child.is-enabled {
   box-shadow: 0 -1px var(--signal-hot) inset;
-}
-
-@media (max-width: 420px) {
-  .graph-visual-settings__profile-intro {
-    grid-template-columns: 1fr;
-  }
-
-  .graph-visual-settings__profile-intro > button {
-    justify-self: start;
-  }
 }
 
 .graph-visual-settings__fx-category {

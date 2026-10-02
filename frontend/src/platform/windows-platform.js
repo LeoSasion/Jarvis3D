@@ -21,10 +21,6 @@ function toBridgeError(error, method) {
   return bridgeError;
 }
 
-function normalizeOpenParams(value) {
-  return typeof value === "string" ? { target: value } : value;
-}
-
 export function createWindowsPlatform(webview) {
   let requestSequence = 0;
   const pendingRequests = new Map();
@@ -234,7 +230,7 @@ export function createWindowsPlatform(webview) {
       listApplications: () => request("shell.listApplications"),
       refreshApplications: () => request("shell.refreshApplications", {}, 30_000),
       openApplication: (applicationId) => request("shell.openApplication", { applicationId }),
-      open: (value) => request("shell.open", normalizeOpenParams(value)),
+      open: (value) => request("shell.open", typeof value === "string" ? { target: value } : value),
     },
     lifecycle: {
       getRuntimeInfo: () => request("lifecycle.getRuntimeInfo"),

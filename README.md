@@ -130,6 +130,9 @@ note bodies. These local files may contain the excerpts the user chose to send.
 
 JarvisV1 is under active development. The experimental immersive mode can alter the appearance of eligible application windows, but it does not replace the Windows sign-in or secure desktop. `Ctrl+Shift+Q` is the global recovery shortcut for returning to the native Windows shell.
 
+The [next-stage priorities](docs/next-stage.md) focus on real Agent workflows,
+repeatable rendering validation, and an installable release candidate.
+
 ## Architecture
 
 - `frontend/` — React and Vite interface rendered by WebView2

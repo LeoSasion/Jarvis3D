@@ -34,5 +34,6 @@ while keeping layouts and cameras separate; previous settings are backed up.
 See the [implementation notes](concepts/3d-neuron-volume-notes.md).
 
 The [shared filament study](concepts/neuron-filament-notes.md) compares both
-selected references and records the tapered ribbon material, translucency,
-current parameters and live captures for sphere, 3D and 2D.
+selected references and records the September 16 material, parameters and live
+captures for sphere, 3D and 2D. Later approved changes live in
+[`frontend/AGENTS.md`](../../frontend/AGENTS.md); its dated values are historical.

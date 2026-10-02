@@ -1,13 +1,7 @@
+import { createLocalCommandRequest } from "./local-command-request.js";
+
 export function createLocalAgentConversations(fetcher = globalThis.fetch) {
-  const request = async (method, params = {}) => {
-    const response = await fetcher("/__jarvis/agent-conversations", {
-      method: "POST", cache: "no-store", credentials: "same-origin",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ method, ...params }),
-      signal: AbortSignal.timeout(35_000),
-    });
-    if (!response.ok) throw new Error("LOCAL_CONVERSATIONS_UNAVAILABLE");
-    return response.json();
-  };
+  const request = createLocalCommandRequest("/__jarvis/agent-conversations", "LOCAL_CONVERSATIONS_UNAVAILABLE", fetcher);
   return {
     list: () => request("agentConversations.list"),
     read: (conversationId) => request("agentConversations.read", { conversationId }),
