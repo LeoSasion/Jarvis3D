@@ -59,8 +59,7 @@ internal sealed class HostStartupSafetySession : IDisposable
     {
         using var process = Process.GetCurrentProcess();
         var stateDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "JARVIS",
+            HostDataPaths.Root,
             "State");
         var ledgerPath = Path.Combine(
             stateDirectory,

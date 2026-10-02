@@ -1,0 +1,28 @@
+{
+  "status": "ATTENTION",
+  "failure": "Timed out waiting for Host log pattern: taskbar surface suppressed for primary-monitor fullscreen foreground",
+  "fullReplacementReady": true,
+  "fullscreenSuppressed": false,
+  "taskbarHiddenDuringFullscreen": false,
+  "taskbarRestoredAfterFullscreen": false,
+  "probeForeground": false,
+  "probeFrameAndMonitorBounds": [
+    0,
+    0,
+    2560,
+    1440,
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "forcedCleanup": false,
+  "final": {
+    "explorerAlive": true,
+    "nativeTaskbarVisible": true,
+    "jarvisProcessCount": 0,
+    "startupLedgerClean": true,
+    "testSettingRemoved": true,
+    "probeProcessClosed": true
+  }
+}

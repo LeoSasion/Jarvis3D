@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'native-validation-common.ps1')
 
 if ($TimeoutSeconds -lt 20 -or $TimeoutSeconds -gt 90) {
     throw 'TimeoutSeconds must be between 20 and 90.'
@@ -152,8 +153,8 @@ function Request-SafeExit {
 function Get-StartupLedger {
     param([int]$SessionId)
 
-    $path = Join-Path $env:LOCALAPPDATA (
-        'JARVIS\State\startup-health-session-{0}.json' -f $SessionId)
+    $path = Join-Path $dataRoot (
+        'State\startup-health-session-{0}.json' -f $SessionId)
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         return $null
     }
@@ -172,7 +173,8 @@ if (-not (Test-NativeTaskbarVisible)) {
     throw 'The native Explorer taskbar must be visible before crash recovery verification.'
 }
 
-$settingsPath = Join-Path $env:LOCALAPPDATA 'JARVIS\Settings\taskbar-mode.json'
+$dataRoot = New-NativeValidationDataRoot
+$settingsPath = Join-Path $dataRoot 'Settings\taskbar-mode.json'
 if (Test-Path -LiteralPath $settingsPath) {
     throw 'Crash recovery verification will not overwrite a taskbar preference.'
 }
@@ -183,7 +185,7 @@ if ($null -ne $startingLedger -and $null -ne $startingLedger.activeRunId) {
     throw 'Crash recovery verification requires a clean startup health ledger.'
 }
 
-$script:logPath = Join-Path $env:LOCALAPPDATA 'JARVIS\Logs\jarvis-host.log'
+$script:logPath = Join-Path $dataRoot 'Logs\jarvis-host.log'
 $fullHost = $null
 $safeHost = $null
 $failure = $null
@@ -200,7 +202,7 @@ try {
     '{"mode":"full"}' | Set-Content -LiteralPath $settingsPath -Encoding UTF8
 
     Reset-LogCursor
-    $fullHost = Start-Process -FilePath $resolvedHost -PassThru
+    $fullHost = Start-NativeValidationHost -HostPath $resolvedHost -DataRoot $dataRoot
     Wait-HostLog -Pattern 'Primary Windows taskbar replacement is active' `
         -Seconds $TimeoutSeconds
     Wait-HostLog -Pattern 'JARVIS taskbar surface revealed' -Seconds 10
@@ -230,7 +232,7 @@ try {
     }
 
     Reset-LogCursor
-    $safeHost = Start-Process -FilePath $resolvedHost -PassThru
+    $safeHost = Start-NativeValidationHost -HostPath $resolvedHost -DataRoot $dataRoot
     Wait-HostLog `
         -Pattern 'Host startup safety mode enabled; native Windows shell surfaces will remain active.*previous host run did not complete cleanly' `
         -Seconds $TimeoutSeconds
@@ -323,6 +325,8 @@ if (-not [string]::IsNullOrWhiteSpace($OutputPath)) {
     $json | Set-Content -LiteralPath $resolvedOutput -Encoding UTF8
 }
 $json
+
+Remove-NativeValidationDataRoot -DataRoot $dataRoot
 
 if (-not $ready) {
     exit 1

@@ -27,6 +27,8 @@ internal static class LifecycleProbeRunner
         var piRuntimeValidated = false;
         try
         {
+            HostDataPaths.UseRendererSmokeRoot(options.DataRoot);
+            ValidationEnvironment.Apply(options.DataRoot);
             Directory.CreateDirectory(options.DataRoot);
 
             var frontendPath = Path.Combine(AppContext.BaseDirectory, "frontend", "index.html");
@@ -44,16 +46,24 @@ internal static class LifecycleProbeRunner
 
             var webViewDataRoot = Path.Combine(options.DataRoot, "WebView2");
             Directory.CreateDirectory(webViewDataRoot);
-            _ = await CoreWebView2Environment.CreateAsync(
+            var environment = await CoreWebView2Environment.CreateAsync(
                     browserExecutableFolder: null,
                     userDataFolder: webViewDataRoot)
                 .ConfigureAwait(true);
+            ValidationEnvironment.VerifyWebViewDataDirectory(environment.UserDataFolder, webViewDataRoot);
 
             var agentOptions = PiAgentOptions.FromEnvironment();
             if (!agentOptions.IsConfigured)
             {
                 throw new InvalidDataException(
                     agentOptions.ConfigurationIssue ?? "The packaged Pi runtime is unavailable.");
+            }
+            var bundledPrefix = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "AgentRuntime"))
+                .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (agentOptions.ExecutableIdentity?.RuntimeTree is null ||
+                !Path.GetFullPath(agentOptions.ExecutablePath!).StartsWith(bundledPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("The lifecycle probe must validate the bundled Pi runtime.");
             }
             using (agentOptions.OpenVerifiedRuntime())
             {

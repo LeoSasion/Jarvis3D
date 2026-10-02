@@ -59,6 +59,33 @@ function Assert-ChildPath {
         throw "Refusing to modify a path outside the expected release root: $fullPath"
     }
 
+    # Lexical containment is insufficient if an existing directory in the path
+    # is a junction, or the generated tree contains one before a recursive reset.
+    $ancestor = $fullPath
+    while (-not [string]::IsNullOrEmpty($ancestor)) {
+        try {
+            if ([IO.File]::GetAttributes($ancestor) -band [IO.FileAttributes]::ReparsePoint) {
+                throw "Refusing to modify a path through a reparse point: $ancestor"
+            }
+        }
+        catch [IO.FileNotFoundException] { }
+        catch [IO.DirectoryNotFoundException] { }
+        $ancestor = [IO.Path]::GetDirectoryName($ancestor.TrimEnd('\'))
+    }
+    if ([IO.Directory]::Exists($fullPath)) {
+        $pending = [Collections.Generic.Stack[string]]::new()
+        $pending.Push($fullPath)
+        while ($pending.Count -gt 0) {
+            foreach ($entry in [IO.Directory]::EnumerateFileSystemEntries($pending.Pop())) {
+                $attributes = [IO.File]::GetAttributes($entry)
+                if ($attributes -band [IO.FileAttributes]::ReparsePoint) {
+                    throw "Refusing to modify a generated tree containing a reparse point: $entry"
+                }
+                if ($attributes -band [IO.FileAttributes]::Directory) { $pending.Push($entry) }
+            }
+        }
+    }
+
     return $fullPath
 }
 
@@ -170,7 +197,9 @@ else {
         'package.json',
         'package-lock.json',
         'index.html',
+        'graphics-regression.html',
         'vite.config.mjs',
+        'scripts',
         'src',
         'public'
     )) {
@@ -192,8 +221,9 @@ else {
         -WorkingDirectory $repositoryRoot
 
     $stagedFrontendDist = Join-Path $frontendBuildRoot 'dist'
-    if (-not (Test-Path -LiteralPath (Join-Path $stagedFrontendDist 'index.html'))) {
-        throw 'Staged frontend build completed without dist\index.html.'
+    if (-not (Test-Path -LiteralPath (Join-Path $stagedFrontendDist 'index.html')) -or
+        -not (Test-Path -LiteralPath (Join-Path $stagedFrontendDist 'graphics-regression.html'))) {
+        throw 'Staged frontend build completed without its required HTML entry points.'
     }
     $frontendDist = Reset-ChildDirectory -Path $frontendDist -Parent $frontendRoot
     Copy-Item -Path (Join-Path $stagedFrontendDist '*') -Destination $frontendDist -Recurse -Force
@@ -203,8 +233,9 @@ else {
         Remove-Item -LiteralPath (Assert-ChildPath -Path $buildRoot -Parent $artifactsRoot) -Force
     }
 }
-if (-not (Test-Path -LiteralPath (Join-Path $frontendDist 'index.html'))) {
-    throw 'Frontend build completed without dist\index.html.'
+if (-not (Test-Path -LiteralPath (Join-Path $frontendDist 'index.html')) -or
+    -not (Test-Path -LiteralPath (Join-Path $frontendDist 'graphics-regression.html'))) {
+    throw 'Frontend build completed without its required HTML entry points.'
 }
 $frontendLicenseReceipt = Join-Path $frontendLicenseBuildRoot 'FRONTEND-RUNTIME-LICENSES.json'
 if (-not (Test-Path -LiteralPath $frontendLicenseReceipt -PathType Leaf)) {

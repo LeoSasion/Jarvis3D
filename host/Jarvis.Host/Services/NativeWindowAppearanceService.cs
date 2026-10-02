@@ -73,8 +73,7 @@ internal sealed class NativeWindowAppearanceService : IDisposable
     };
 
     private static readonly string SettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "JARVIS",
+        HostDataPaths.Root,
         "Settings",
         "window-appearance.json");
 

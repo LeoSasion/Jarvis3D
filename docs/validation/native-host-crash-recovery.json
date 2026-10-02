@@ -1,0 +1,17 @@
+{
+  "status": "READY",
+  "failure": null,
+  "forcedHostKilled": true,
+  "watchdogRestoredTaskbar": true,
+  "abnormalLedgerArmed": true,
+  "automaticSafeModeObserved": true,
+  "finalSafeExitCompleted": true,
+  "emergencyCleanup": false,
+  "final": {
+    "explorerAlive": true,
+    "nativeTaskbarVisible": true,
+    "jarvisProcessCount": 0,
+    "startupLedgerClean": true,
+    "testSettingRemoved": true
+  }
+}

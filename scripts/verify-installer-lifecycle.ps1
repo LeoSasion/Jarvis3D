@@ -1,15 +1,23 @@
+#Requires -Version 7.0
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$')]
     [string]$Version = '0.1.0',
 
+    [Parameter(Mandatory)]
+    [ValidatePattern('\A[0-9a-f]{40}\z')]
+    [string]$ExpectedCommit,
+
     [string]$InstallerPath,
+
+    [string]$OutputPath,
 
     [switch]$SkipRepair
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'native-validation-common.ps1')
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $lifecycleRoot = Join-Path $repositoryRoot 'tmp\installer-lifecycle'
@@ -31,6 +39,23 @@ $installedPiRuntime = Join-Path $installDirectory 'AgentRuntime'
 $piTrustManifestPath = Join-Path $repositoryRoot 'third_party\pi\runtime.json'
 $piLicensePath = Join-Path $repositoryRoot 'third_party\pi\LICENSE-Pi.txt'
 $expectedStartupValue = "`"$installedExecutable`" --startup"
+$expectedInformationalVersion = $null
+$result = $null
+
+function Assert-InstalledReleaseProvenance {
+    param([string]$Directory, [string]$ReleaseVersion, [string]$SourceCommit)
+    $manifest = Get-Content -LiteralPath (Join-Path $Directory 'version.json') -Raw | ConvertFrom-Json
+    if ($manifest.product -cne 'JARVIS' -or $manifest.version -cne $ReleaseVersion -or
+        $manifest.sourceCommit -cne $SourceCommit -or $manifest.sourceDirty -isnot [bool] -or
+        $manifest.sourceDirty -ne $false) {
+        throw 'The installed release does not identify the requested clean source commit and version.'
+    }
+    $informationalVersion = "$ReleaseVersion+$($SourceCommit.Substring(0, 12))"
+    if ((Get-Item -LiteralPath (Join-Path $Directory 'Jarvis.Host.exe')).VersionInfo.ProductVersion -cne $informationalVersion) {
+        throw 'The installed executable version does not match the requested release provenance.'
+    }
+    return [pscustomobject]@{ manifest = $manifest; informationalVersion = $informationalVersion }
+}
 
 function Assert-ChildPath {
     param(
@@ -42,6 +67,30 @@ function Assert-ChildPath {
     $fullParent = [System.IO.Path]::GetFullPath($Parent).TrimEnd('\') + '\'
     if (-not $fullPath.StartsWith($fullParent, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing lifecycle modification outside the expected test root: $fullPath"
+    }
+    $ancestor = $fullPath
+    while (-not [string]::IsNullOrEmpty($ancestor)) {
+        try {
+            if ([IO.File]::GetAttributes($ancestor) -band [IO.FileAttributes]::ReparsePoint) {
+                throw 'Refusing lifecycle modification through a reparse point.'
+            }
+        }
+        catch [IO.FileNotFoundException] { }
+        catch [IO.DirectoryNotFoundException] { }
+        $ancestor = [IO.Path]::GetDirectoryName($ancestor.TrimEnd('\'))
+    }
+    if ([IO.Directory]::Exists($fullPath)) {
+        $pending = [Collections.Generic.Stack[string]]::new()
+        $pending.Push($fullPath)
+        while ($pending.Count -gt 0) {
+            foreach ($entry in [IO.Directory]::EnumerateFileSystemEntries($pending.Pop())) {
+                $attributes = [IO.File]::GetAttributes($entry)
+                if ($attributes -band [IO.FileAttributes]::ReparsePoint) {
+                    throw 'Refusing lifecycle modification of a directory containing a reparse point.'
+                }
+                if ($attributes -band [IO.FileAttributes]::Directory) { $pending.Push($entry) }
+            }
+        }
     }
     return $fullPath
 }
@@ -74,7 +123,11 @@ function Invoke-ProcessChecked {
         throw "Windows did not start $FilePath."
     }
     try {
-        $process.WaitForExit()
+        if (-not $process.WaitForExit(240000)) {
+            $process.Kill($true)
+            $process.WaitForExit(10000) | Out-Null
+            throw 'The owned installer or uninstaller exceeded its four-minute deadline.'
+        }
         if ($process.ExitCode -ne 0) {
             throw "$FilePath exited with code $($process.ExitCode)."
         }
@@ -264,7 +317,7 @@ function Assert-LifecycleReceipt {
         -not $receipt.nonce.Equals($ExpectedNonce, [System.StringComparison]::Ordinal)) {
         throw 'The lifecycle probe receipt nonce does not match this invocation.'
     }
-    if (-not $receipt.version.Equals($Version, [System.StringComparison]::Ordinal)) {
+    if (-not $receipt.version.Equals($expectedInformationalVersion, [System.StringComparison]::Ordinal)) {
         throw 'The lifecycle probe receipt version does not match the installed release.'
     }
     if (-not (Test-PathsEqual -Left $receipt.executablePath -Right $installedExecutable)) {
@@ -420,6 +473,12 @@ if (Test-Path -LiteralPath $uninstallKey) {
 if (-not [string]::IsNullOrWhiteSpace((Get-StartupValue))) {
     throw 'A JARVIS startup registration already exists. Lifecycle verification will not overwrite it.'
 }
+$existingStartup = Get-ItemProperty -LiteralPath $startupKey -ErrorAction SilentlyContinue
+if ($null -ne $existingStartup -and
+    ($null -ne $existingStartup.PSObject.Properties['JARVIS Night Shell'] -or
+     $null -ne $existingStartup.PSObject.Properties['NightShell'])) {
+    throw 'A legacy NightShell startup registration exists. Lifecycle verification will not overwrite it.'
+}
 if (Test-Path -LiteralPath $defaultInstallDirectory) {
     throw "The default JARVIS install directory already exists: $defaultInstallDirectory"
 }
@@ -456,9 +515,9 @@ try {
         -not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) {
         throw 'The installer completed without the host executable or uninstaller.'
     }
-    if ((Get-Item -LiteralPath $installedExecutable).VersionInfo.ProductVersion -ne $Version) {
-        throw 'The installed executable version does not match the requested release.'
-    }
+    $installedProvenance = Assert-InstalledReleaseProvenance -Directory $installDirectory -ReleaseVersion $Version -SourceCommit $ExpectedCommit
+    $installedVersion = $installedProvenance.manifest
+    $expectedInformationalVersion = $installedProvenance.informationalVersion
     Assert-InstalledPiRuntime
 
     if ((Get-StartupValue) -ne $expectedStartupValue) {
@@ -487,6 +546,7 @@ try {
     $probeStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $probeStartInfo.FileName = $installedExecutable
     $probeStartInfo.UseShellExecute = $false
+    Set-ValidationProcessEnvironment -StartInfo $probeStartInfo -DataRoot $safeHostDataRoot
     foreach ($argument in @(
         '--lifecycle-probe',
         "--lifecycle-data-root=$safeHostDataRoot",
@@ -552,6 +612,7 @@ try {
             throw 'Repair/reinstall did not remove a stale Pi runtime file.'
         }
         Assert-InstalledPiRuntime
+        Assert-InstalledReleaseProvenance -Directory $installDirectory -ReleaseVersion $Version -SourceCommit $ExpectedCommit | Out-Null
     }
     else {
         Write-Host '[3/5] Repair/reinstall verification skipped by request.'
@@ -595,8 +656,11 @@ try {
         throw 'Windows recovery state is invalid after lifecycle verification.'
     }
 
-    [pscustomobject]@{
+    $result = [pscustomobject]@{
         Version = $Version
+        InformationalVersion = $expectedInformationalVersion
+        SourceCommit = $installedVersion.sourceCommit
+        SourceDirty = $installedVersion.sourceDirty
         Install = 'passed'
         LifecycleProbe = 'passed'
         Repair = if ($SkipRepair) { 'skipped' } else { 'passed' }
@@ -606,7 +670,7 @@ try {
         ExplorerProcessesBefore = $explorerCountBefore
         ExplorerProcessesAfter = $explorerCountAfter
         JarvisProcessesAfter = $jarvisProcessesAfter
-    } | ConvertTo-Json
+    }
 }
 finally {
     $cleanupFailures = [System.Collections.Generic.List[string]]::new()
@@ -703,7 +767,8 @@ finally {
     try {
         if ((Test-Path -LiteralPath $lifecycleRoot) -and
             (Get-ChildItem -LiteralPath $lifecycleRoot -Force | Measure-Object).Count -eq 0) {
-            Remove-Item -LiteralPath $lifecycleRoot -Force -ErrorAction Stop
+            $safeLifecycleRoot = Assert-ChildPath -Path $lifecycleRoot -Parent (Join-Path $repositoryRoot 'tmp')
+            Remove-Item -LiteralPath $safeLifecycleRoot -Force -ErrorAction Stop
         }
     }
     catch {
@@ -714,3 +779,11 @@ finally {
         throw "Lifecycle cleanup was incomplete: $($cleanupFailures -join ' | ')"
     }
 }
+
+$json = $result | ConvertTo-Json
+if (-not [string]::IsNullOrWhiteSpace($OutputPath)) {
+    $resolvedOutput = [IO.Path]::GetFullPath($OutputPath)
+    New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($resolvedOutput)) -Force | Out-Null
+    [IO.File]::WriteAllText($resolvedOutput, $json)
+}
+$json

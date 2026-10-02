@@ -27,6 +27,8 @@ import { formatTime } from "../i18n/locale-format.js";
 import { SystemNotice } from "./SystemNotice.jsx";
 import { AgentConversationLibrary } from "./AgentConversationLibrary.jsx";
 import { getNoteSources, getUserDirective } from "../agent-conversation-library.js";
+import { getAnswerSources } from "../agent-answer-model.js";
+import { AgentAnswer } from "./AgentAnswer.jsx";
 
 const STATUS_COPY_KEYS = Object.freeze({
   unavailable: "agent.status.offline",
@@ -137,7 +139,7 @@ function SourceExcerpts({ sources, t, pending = false }) {
   if (!sources.length) return null;
   return <details className="agent-source-excerpts"><summary>{t(pending ? "knowledge.agent.pendingSources" : "knowledge.agent.sources")} ({sources.length})</summary>
     {sources.map((source, index) => <details key={`${source.path}-${index}`}>
-      <summary>[S{index + 1}] {source.title ?? source.name} · {source.path} · L{source.startLine}–{source.endLine}</summary>
+      <summary>[{source.source ?? `S${index + 1}`}] {source.title ?? source.name} · {source.path} · L{source.startLine}–{source.endLine}</summary>
       <pre>{source.text}</pre>
     </details>)}
   </details>;
@@ -272,6 +274,7 @@ export function AgentConversationWindow({
   const alertRef = useRef(null);
   const messageStatusesRef = useRef(new Map());
   const [transcriptAnnouncement, setTranscriptAnnouncement] = useState(null);
+  const answerSources = useMemo(() => getAnswerSources(messages), [messages]);
   const status = state?.status ?? "unavailable";
   const errorView = useMemo(
     () => errorPresentation(state?.error, t),
@@ -523,7 +526,9 @@ export function AgentConversationWindow({
                 </span>
                 <div className="agent-message__group">
                   <div className="agent-message__bubble">
-                    <p>{messageDisplayText(message)}</p>
+                    {message.role === "assistant"
+                      ? <AgentAnswer message={message} sources={answerSources.get(message.id)} t={t} />
+                      : <p>{messageDisplayText(message)}</p>}
                     {message.role === "user" ? <SourceExcerpts sources={getNoteSources(message.text)} t={t} /> : null}
                   </div>
                   <footer className="agent-message__meta">

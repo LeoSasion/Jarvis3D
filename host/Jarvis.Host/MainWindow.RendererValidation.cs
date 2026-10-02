@@ -75,6 +75,10 @@ public partial class MainWindow
             {
                 error = "one or more renderer assertions failed";
             }
+            else if (_rendererSmokeOptions.MeasureGraphicsRegression)
+            {
+                await RunGraphicsRegressionAsync();
+            }
         }
         catch (Exception exception)
         {

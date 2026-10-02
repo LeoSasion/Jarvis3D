@@ -75,10 +75,11 @@ public partial class MainWindow : Window
         if (_rendererSmokeOptions is not null)
         {
             ShowActivated = false;
-            Width = _rendererSmokeOptions.MeasurePerformance ? 1280 : 1040;
+            var visibleValidation = _rendererSmokeOptions.MeasurePerformance || _rendererSmokeOptions.MeasureGraphicsRegression;
+            Width = visibleValidation ? 1280 : 1040;
             Height = 720;
-            Left = _rendererSmokeOptions.MeasurePerformance ? 40 : -32000;
-            Top = _rendererSmokeOptions.MeasurePerformance ? 40 : -32000;
+            Left = visibleValidation ? 40 : -32000;
+            Top = visibleValidation ? 40 : -32000;
         }
         _taskbarReplacement.ReplacementLost += OnTaskbarReplacementLost;
         _taskbarReplacement.NativeRestoreVerified += OnNativeTaskbarRestoreVerified;
@@ -330,7 +331,8 @@ public partial class MainWindow : Window
             var result = await WebView.CoreWebView2.ExecuteScriptAsync(
                 "Boolean(document.querySelector('.jarvis-shell'));"
             );
-            if (string.Equals(result, "true", StringComparison.OrdinalIgnoreCase))
+            if (!HostDataPaths.ForceStartupTimeout &&
+                string.Equals(result, "true", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }

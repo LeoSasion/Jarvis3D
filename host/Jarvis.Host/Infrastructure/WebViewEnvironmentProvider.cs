@@ -25,20 +25,24 @@ internal static class WebViewEnvironmentProvider
         _isolatedUserDataDirectory = Path.GetFullPath(directory);
     }
 
-    private static Task<CoreWebView2Environment> CreateEnvironmentAsync()
+    private static async Task<CoreWebView2Environment> CreateEnvironmentAsync()
     {
         var userDataDirectory = _isolatedUserDataDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "JARVIS",
+            HostDataPaths.Root,
             "WebView2");
         Directory.CreateDirectory(userDataDirectory);
         var options = new CoreWebView2EnvironmentOptions
         {
             Language = CultureInfo.CurrentUICulture.Name,
         };
-        return CoreWebView2Environment.CreateAsync(
+        var environment = await CoreWebView2Environment.CreateAsync(
             browserExecutableFolder: null,
             userDataFolder: userDataDirectory,
             options: options);
+        if (HostDataPaths.IsValidation || _isolatedUserDataDirectory is not null)
+        {
+            ValidationEnvironment.VerifyWebViewDataDirectory(environment.UserDataFolder, userDataDirectory);
+        }
+        return environment;
     }
 }

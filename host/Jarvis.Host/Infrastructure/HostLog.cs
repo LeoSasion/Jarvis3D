@@ -9,8 +9,7 @@ internal static class HostLog
 
     private static readonly object Gate = new();
     private static string _logPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "JARVIS",
+        HostDataPaths.Root,
         "Logs",
         "jarvis-host.log");
     private static bool _hasWritten;

@@ -17,6 +17,14 @@ export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, fileURLToPath(new URL(".", import.meta.url)), "JARVIS_");
   const vault = command === "serve" ? env.JARVIS_OBSIDIAN_VAULT : "";
   return {
+    build: {
+      rollupOptions: {
+        input: {
+          app: fileURLToPath(new URL("./index.html", import.meta.url)),
+          graphicsRegression: fileURLToPath(new URL("./graphics-regression.html", import.meta.url)),
+        },
+      },
+    },
     define: {
       "import.meta.env.JARVIS_LOCAL_GRAPH": JSON.stringify(Boolean(vault)),
       "import.meta.env.JARVIS_BUILD": JSON.stringify(buildIdentity()),

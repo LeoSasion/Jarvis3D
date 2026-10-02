@@ -21,6 +21,21 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        if (!HostDataPaths.TryConfigure(e.Args))
+        {
+            Shutdown(64);
+            return;
+        }
+
+        if (HostDataPaths.IsValidation)
+        {
+            ValidationEnvironment.Apply(HostDataPaths.Root);
+            Directory.CreateDirectory(HostDataPaths.Root);
+            var fixtureVault = Path.Combine(HostDataPaths.Root, "FixtureVault");
+            Directory.CreateDirectory(fixtureVault);
+            Environment.SetEnvironmentVariable(ObsidianGraphService.VaultEnvironmentVariable, fixtureVault);
+        }
+
         if (LifecycleProbeOptions.IsRequested(e.Args))
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -46,6 +61,11 @@ public partial class App : Application
             }
 
             Directory.CreateDirectory(_rendererSmokeOptions!.DataRoot);
+            HostDataPaths.UseRendererSmokeRoot(_rendererSmokeOptions.DataRoot);
+            ValidationEnvironment.Apply(_rendererSmokeOptions.DataRoot);
+            var smokeVault = Path.Combine(_rendererSmokeOptions.DataRoot, "FixtureVault");
+            Directory.CreateDirectory(smokeVault);
+            Environment.SetEnvironmentVariable(ObsidianGraphService.VaultEnvironmentVariable, smokeVault);
             ConfigurationPreferencesStore.UseIsolatedDirectory(Path.Combine(_rendererSmokeOptions.DataRoot, "Settings"));
             HostLog.UseIsolatedLogDirectory(Path.Combine(_rendererSmokeOptions.DataRoot, "Logs"));
             var smokeCulture = CultureInfo.GetCultureInfo(_rendererSmokeOptions.CultureName);
@@ -134,7 +154,10 @@ public partial class App : Application
             HostLog.Info("JARVIS was launched by the current-user Windows startup registration.");
         }
 
-        ConfigureDiagnostics(e.Args);
+        if (!HostDataPaths.IsValidation && _rendererSmokeOptions is null)
+        {
+            ConfigureDiagnostics(e.Args);
+        }
 
         _mayRestoreTaskbar = _rendererSmokeOptions is null;
         HostLog.Info("JARVIS native host starting; the per-user taskbar mode will be evaluated after renderer readiness.");

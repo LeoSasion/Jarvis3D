@@ -1171,6 +1171,7 @@ function createNodeScreenIndex({
 }
 
 export function GraphScene({
+  animationClock = null,
   cameraCommand = null,
   graph,
   dimension = 2,
@@ -1192,7 +1193,7 @@ export function GraphScene({
   const viewportSize = useThree((state) => state.size);
   const runtime = useGraphicsRuntimeContext();
   const { frozen } = useSyncExternalStore(subscribeGraphVisualPreview, getGraphVisualPreviewSnapshot);
-  const comparisonClock = useMemo(createGraphComparisonClock, []);
+  const comparisonClock = useMemo(() => animationClock ?? createGraphComparisonClock(), [animationClock]);
   const pendingLayoutPositionsRef = useRef(null);
   const coarsePointer = useCoarsePointer();
   const scenePlan = useMemo(

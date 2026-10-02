@@ -22,8 +22,7 @@ internal enum TaskbarTransitionStatus
 internal sealed class TaskbarModeService
 {
     private static readonly string SettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "JARVIS",
+        HostDataPaths.Root,
         "Settings",
         "taskbar-mode.json");
 

@@ -9,7 +9,8 @@ internal sealed record RendererSmokeOptions(
     string ReceiptPath,
     string Nonce,
     string CultureName = "en-US",
-    bool MeasurePerformance = false)
+    bool MeasurePerformance = false,
+    bool MeasureGraphicsRegression = false)
 {
     internal const string DefaultCultureName = "en-US";
     private const string SmokeArgument = "--renderer-smoke";
@@ -18,6 +19,7 @@ internal sealed record RendererSmokeOptions(
     private const string NonceArgument = "--renderer-smoke-nonce=";
     private const string CultureArgument = "--renderer-smoke-culture=";
     private const string PerformanceArgument = "--renderer-smoke-performance";
+    private const string GraphicsArgument = "--renderer-smoke-graphics";
 
     private static readonly Regex NoncePattern = new(
         "^[0-9a-fA-F]{32}$",
@@ -41,11 +43,11 @@ internal sealed record RendererSmokeOptions(
             return false;
         }
 
-        if (arguments.Count is < 4 or > 6 ||
+        if (arguments.Count is < 4 or > 7 ||
             arguments.Count(argument =>
                 argument.Equals(SmokeArgument, StringComparison.OrdinalIgnoreCase)) != 1)
         {
-            error = "Renderer smoke requires one marker, three value arguments, and an optional culture.";
+            error = "Renderer smoke requires one marker, three value arguments, and optional culture/measurement flags.";
             return false;
         }
 
@@ -62,8 +64,9 @@ internal sealed record RendererSmokeOptions(
                 argument.StartsWith(CultureArgument, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         var performanceCount = arguments.Count(argument => argument.Equals(PerformanceArgument, StringComparison.OrdinalIgnoreCase));
-        if (cultureMatches.Length > 1 || performanceCount > 1 ||
-            arguments.Count != 4 + cultureMatches.Length + performanceCount)
+        var graphicsCount = arguments.Count(argument => argument.Equals(GraphicsArgument, StringComparison.OrdinalIgnoreCase));
+        if (cultureMatches.Length > 1 || performanceCount > 1 || graphicsCount > 1 ||
+            arguments.Count != 4 + cultureMatches.Length + performanceCount + graphicsCount)
         {
             error = "Renderer smoke culture is duplicated or an unsupported argument was supplied.";
             return false;
@@ -133,6 +136,12 @@ internal sealed record RendererSmokeOptions(
             return false;
         }
 
+        if (!HostDataPaths.IsReparseFreeTree(dataRoot))
+        {
+            error = "Renderer smoke data must not contain or traverse reparse points.";
+            return false;
+        }
+
         if (!NoncePattern.IsMatch(nonceValue))
         {
             error = "Renderer smoke nonce must contain exactly 32 hexadecimal characters.";
@@ -144,7 +153,8 @@ internal sealed record RendererSmokeOptions(
             receiptPath,
             nonceValue.ToLowerInvariant(),
             cultureName,
-            performanceCount == 1);
+            performanceCount == 1,
+            graphicsCount == 1);
         return true;
     }
 

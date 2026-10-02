@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="../Jarvis.Host/Infrastructure/HostDataPaths.cs" Link="HostDataPaths.cs" />
     <Compile Include="../Jarvis.Host/Services/GraphVisualSettingsStore.cs" Link="GraphVisualSettingsStore.cs" />
     <Compile Include="../Jarvis.Host/Services/AtomicJsonSettingsStore.cs" Link="AtomicJsonSettingsStore.cs" />
     <Compile Include="../Jarvis.Host/Services/ConfigurationPreferencesStore.cs" Link="ConfigurationPreferencesStore.cs" />

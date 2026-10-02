@@ -79,7 +79,10 @@ internal sealed class PiRpcClient : IDisposable
             }
 
             Directory.CreateDirectory(_options.AgentDirectory);
-            Directory.CreateDirectory(_options.PackageDirectory);
+            if (!Directory.Exists(_options.PackageDirectory))
+            {
+                throw new DirectoryNotFoundException("The Pi runtime package directory is missing.");
+            }
             Directory.CreateDirectory(_options.WorkingDirectory);
 
             var startInfo = CreateStartInfo(_options);

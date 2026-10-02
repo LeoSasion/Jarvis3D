@@ -1,0 +1,4 @@
+html, body { margin: 0; background: #080808; color: #d6d6d6; font: 12px/1.5 system-ui, sans-serif; }
+main { width: 960px; }
+#graphics-regression-stage { position: relative; overflow: hidden; background: #080808; }
+main > p { margin: 8px 12px; }

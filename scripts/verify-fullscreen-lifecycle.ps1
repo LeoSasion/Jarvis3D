@@ -9,6 +9,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'native-validation-common.ps1')
 
 if ($ProbeMilliseconds -lt 3000 -or $ProbeMilliseconds -gt 15000) {
     throw 'ProbeMilliseconds must be between 3000 and 15000.'
@@ -24,6 +25,19 @@ using System.Text;
 
 public static class JarvisFullscreenLifecycleNative
 {
+    [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct MonitorInfo { public int Size; public Rect Monitor, Work; public uint Flags; }
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+    [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo information);
+    [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out Rect value, int size);
+    public static int[] GetProbeGeometry(IntPtr window)
+    {
+        Rect frame; DwmGetWindowAttribute(window, 9, out frame, Marshal.SizeOf(typeof(Rect)));
+        var monitor = new MonitorInfo { Size = Marshal.SizeOf(typeof(MonitorInfo)) };
+        GetMonitorInfo(MonitorFromWindow(window, 2), ref monitor);
+        return new[] { frame.Left, frame.Top, frame.Right, frame.Bottom, monitor.Monitor.Left, monitor.Monitor.Top, monitor.Monitor.Right, monitor.Monitor.Bottom };
+    }
     public const uint WmHotkey = 0x0312;
     public const int SafetyHotkeyId = 0x4A52;
     public delegate bool EnumWindowsProc(IntPtr window, IntPtr parameter);
@@ -137,6 +151,8 @@ function Start-FullscreenProbe {
     param([int]$DurationMilliseconds)
 
     $probeSource = @"
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class FullscreenProbeDpi { [DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window); }'
+[void][FullscreenProbeDpi]::SetProcessDPIAware()
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 `$form = [System.Windows.Forms.Form]::new()
@@ -150,7 +166,7 @@ Add-Type -AssemblyName System.Drawing
 `$timer = [System.Windows.Forms.Timer]::new()
 `$timer.Interval = $DurationMilliseconds
 `$timer.Add_Tick({ `$timer.Stop(); `$form.Close() })
-`$form.Add_Shown({ `$form.Activate(); `$timer.Start() })
+`$form.Add_Shown({ `$form.Activate(); [void][FullscreenProbeDpi]::SetForegroundWindow(`$form.Handle); `$timer.Start() })
 [void]`$form.ShowDialog()
 "@
     $encoded = [Convert]::ToBase64String(
@@ -160,7 +176,7 @@ Add-Type -AssemblyName System.Drawing
         '-STA',
         '-EncodedCommand',
         $encoded
-    ) -WindowStyle Hidden -PassThru
+    ) -WindowStyle Hidden -PassThru -RedirectStandardError (Join-Path $dataRoot 'probe-error.txt')
 }
 
 $resolvedHost = [System.IO.Path]::GetFullPath($HostPath)
@@ -171,12 +187,13 @@ if (Get-Process -Name 'Jarvis.Host' -ErrorAction SilentlyContinue) {
     throw 'Fullscreen lifecycle verification requires JARVIS to be closed.'
 }
 
-$settingsPath = Join-Path $env:LOCALAPPDATA 'JARVIS\Settings\taskbar-mode.json'
+$dataRoot = New-NativeValidationDataRoot
+$settingsPath = Join-Path $dataRoot 'Settings\taskbar-mode.json'
 if (Test-Path -LiteralPath $settingsPath) {
     throw 'Fullscreen lifecycle verification will not overwrite a taskbar preference.'
 }
 
-$script:logPath = Join-Path $env:LOCALAPPDATA 'JARVIS\Logs\jarvis-host.log'
+$script:logPath = Join-Path $dataRoot 'Logs\jarvis-host.log'
 $script:logLineStart = if (Test-Path -LiteralPath $script:logPath) {
     @(Get-Content -LiteralPath $script:logPath -Encoding UTF8).Count
 }
@@ -199,13 +216,15 @@ $fullReplacementReady = $false
 $fullscreenSuppressed = $false
 $taskbarHiddenDuringFullscreen = $false
 $taskbarRestoredAfterFullscreen = $false
+$probeForeground = $false
+$probeGeometry = $null
 
 try {
     New-Item -ItemType Directory -Path (Split-Path -Parent $settingsPath) -Force |
         Out-Null
     '{"mode":"full"}' | Set-Content -LiteralPath $settingsPath -Encoding UTF8
 
-    $hostProcess = Start-Process -FilePath $resolvedHost -PassThru
+    $hostProcess = Start-NativeValidationHost -HostPath $resolvedHost -DataRoot $dataRoot
     Wait-HostLog -Pattern 'Primary Windows taskbar replacement is active' `
         -Seconds $TimeoutSeconds
     Wait-HostLog -Pattern 'JARVIS taskbar surface revealed' -Seconds 10
@@ -219,6 +238,23 @@ try {
     }
 
     $probe = Start-FullscreenProbe -DurationMilliseconds $ProbeMilliseconds
+    $probeDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $probeWindow = [JarvisFullscreenLifecycleNative]::FindOwnedWindow(
+            [uint32]$probe.Id, 'JARVIS Fullscreen Acceptance Probe')
+        if ($probe.HasExited -or $probeWindow -ne [IntPtr]::Zero) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $probeDeadline)
+    if ($probeWindow -eq [IntPtr]::Zero) {
+        $probeError = Get-Content -LiteralPath (Join-Path $dataRoot 'probe-error.txt') -Raw -ErrorAction SilentlyContinue
+        throw "The owned fullscreen probe did not create its window. $probeError"
+    }
+    Start-Sleep -Milliseconds 250
+    $probeForeground = [JarvisFullscreenLifecycleNative]::GetForegroundWindow() -eq $probeWindow
+    $probeGeometry = [JarvisFullscreenLifecycleNative]::GetProbeGeometry($probeWindow)
+    if (-not $probeForeground) {
+        throw 'Windows did not give the owned fullscreen probe foreground focus; fullscreen suppression cannot be assessed in this run.'
+    }
     Wait-HostLog `
         -Pattern 'taskbar surface suppressed for primary-monitor fullscreen foreground' `
         -Seconds 15
@@ -292,8 +328,8 @@ if (-not (Test-WindowVisible -Window $nativeTaskbarAfter) -and
 }
 
 $sessionId = (Get-Process -Id $PID).SessionId
-$ledgerPath = Join-Path $env:LOCALAPPDATA (
-    'JARVIS\State\startup-health-session-{0}.json' -f $sessionId)
+$ledgerPath = Join-Path $dataRoot (
+    'State\startup-health-session-{0}.json' -f $sessionId)
 $ledger = if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) {
     Get-Content -LiteralPath $ledgerPath -Raw -Encoding UTF8 | ConvertFrom-Json
 }
@@ -326,6 +362,8 @@ $result = [ordered]@{
     fullscreenSuppressed = $fullscreenSuppressed
     taskbarHiddenDuringFullscreen = $taskbarHiddenDuringFullscreen
     taskbarRestoredAfterFullscreen = $taskbarRestoredAfterFullscreen
+    probeForeground = $probeForeground
+    probeFrameAndMonitorBounds = $probeGeometry
     forcedCleanup = $forcedCleanup
     final = [ordered]@{
         explorerAlive = [bool](Get-Process -Name explorer -ErrorAction SilentlyContinue)
@@ -347,6 +385,8 @@ if (-not [string]::IsNullOrWhiteSpace($OutputPath)) {
     $json | Set-Content -LiteralPath $resolvedOutput -Encoding UTF8
 }
 $json
+
+Remove-NativeValidationDataRoot -DataRoot $dataRoot
 
 if (-not $ready) {
     exit 1

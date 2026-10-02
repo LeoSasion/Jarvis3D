@@ -159,6 +159,7 @@ function RuntimeFrameSampler({
 
 function RuntimeController({
   children,
+  fixedQuality,
   measurementKey,
   readableLabels,
   onDprChange,
@@ -188,13 +189,13 @@ function RuntimeController({
   rendererStatusRef.current = rendererStatus;
 
   const requestedQuality = quality ?? graphicsQualityProfiles.balanced;
-  const effectiveQuality = getDowngradedGraphicsQualityProfile(
+  const effectiveQuality = fixedQuality ? requestedQuality : getDowngradedGraphicsQualityProfile(
     requestedQuality,
     adaptiveTier,
     displayEnvironment.forcedColors,
   );
   const maxTextureSize = Number(gl.capabilities.maxTextureSize) || 4_096;
-  const effectiveDpr = calculateEffectiveGraphicsDpr({
+  const effectiveDpr = fixedQuality ? 1 : calculateEffectiveGraphicsDpr({
     minimumDpr: readableLabels ? 1 : 0,
     adaptiveTier,
     devicePixelRatio: displayEnvironment.devicePixelRatio,
@@ -245,13 +246,14 @@ function RuntimeController({
   useEffect(() => { publishGraphicsDiagnostics(runtimeValue); }, [runtimeValue]);
 
   const handleFrameSample = useCallback((durationMs, now) => {
+    if (fixedQuality) return;
     const nextState = reduceAdaptivePerformanceState(
       adaptiveStateRef.current,
       { durationMs, now, type: "frame-sample" },
       samplingPolicyRef.current,
     );
     commitAdaptiveState(nextState);
-  }, [commitAdaptiveState]);
+  }, [commitAdaptiveState, fixedQuality]);
 
   const handleFrameComplete = useCallback(() => {
     if (rendererStatusRef.current !== "restoring") return;
@@ -382,6 +384,8 @@ export function GraphicsRuntime({
   zoom = 1,
   fallback = null,
   interactive = false,
+  // The isolated regression entry fixes quality/DPR for comparable captures.
+  fixedQuality = false,
   measurementKey = "default",
   readableLabels = false,
   onFault,
@@ -413,6 +417,7 @@ export function GraphicsRuntime({
           style={{ pointerEvents: interactive ? "auto" : "none" }}
         >
           <RuntimeController
+            fixedQuality={fixedQuality}
             measurementKey={measurementKey}
             readableLabels={readableLabels}
             onDprChange={handleDprChange}

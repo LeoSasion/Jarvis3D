@@ -29,6 +29,40 @@ public sealed class AgentConversationStoreTests : IDisposable
     }
 
     [Fact]
+    public void PersistsRunAndClientMessageIdsForSourceBoundAnswers()
+    {
+        var store = new AgentConversationStore(_root);
+        var id = Guid.NewGuid().ToString("N");
+        var document = new AgentConversationDocument(
+            id,
+            "Source-backed conversation",
+            "pi",
+            DateTimeOffset.UtcNow,
+            [new AgentConversationMessage(
+                "assistant-1", "assistant", "The two notes agree [S1] [S2].", "complete", null,
+                RunId: "run-1", ClientMessageId: "user-1")]);
+        store.Save(JsonSerializer.SerializeToElement(document, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        var restored = Assert.Single(new AgentConversationStore(_root).Read(id).Messages);
+        Assert.Equal("run-1", restored.RunId);
+        Assert.Equal("user-1", restored.ClientMessageId);
+
+        var oversized = document with
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Messages = [restored with { RunId = new string('r', 161) }]
+        };
+        Assert.Throws<InvalidDataException>(() => store.Save(
+            JsonSerializer.SerializeToElement(oversized, new JsonSerializerOptions(JsonSerializerDefaults.Web))));
+        var malformed = oversized with
+        {
+            Messages = [restored with { RunId = "run\n2" }]
+        };
+        Assert.Throws<InvalidDataException>(() => store.Save(
+            JsonSerializer.SerializeToElement(malformed, new JsonSerializerOptions(JsonSerializerDefaults.Web))));
+    }
+
+    [Fact]
     public void RejectsTraversalOversizedMessagesAndInvalidRoles()
     {
         var store = new AgentConversationStore(_root);

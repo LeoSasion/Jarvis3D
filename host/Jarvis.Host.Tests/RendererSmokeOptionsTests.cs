@@ -118,6 +118,21 @@ public sealed class RendererSmokeOptionsTests
     }
 
     [Fact]
+    public void GraphicsRegressionRequiresAnExplicitIsolatedFlagAndMayFollowPerformance()
+    {
+        var root = CreateIsolatedRoot();
+        var arguments = CreateArguments(root, Path.Combine(root, "renderer.json"));
+        Assert.True(RendererSmokeOptions.TryParse(arguments, out var ordinary, out _));
+        Assert.False(ordinary!.MeasureGraphicsRegression);
+        Assert.True(RendererSmokeOptions.TryParse([.. arguments, "--renderer-smoke-graphics"], out var graphics, out _));
+        Assert.True(graphics!.MeasureGraphicsRegression);
+        Assert.False(graphics.MeasurePerformance);
+        Assert.True(RendererSmokeOptions.TryParse([.. arguments, "--renderer-smoke-graphics", "--renderer-smoke-performance"], out var both, out _));
+        Assert.True(both!.MeasurePerformance && both.MeasureGraphicsRegression);
+        Assert.False(RendererSmokeOptions.TryParse([.. arguments, "--renderer-smoke-graphics", "--renderer-smoke-graphics"], out _, out _));
+    }
+
+    [Fact]
     public void ReceiptRecordsVerifiedSafeSurfaceResult()
     {
         var root = CreateIsolatedRoot();

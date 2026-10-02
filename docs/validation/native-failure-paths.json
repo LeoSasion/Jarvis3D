@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "scenarios": [
+    {
+      "scenario": "startup-timeout",
+      "passed": true,
+      "nativeTaskbarVisible": true,
+      "cleanExit": true
+    },
+    {
+      "scenario": "webview-browser-crash",
+      "passed": true,
+      "nativeTaskbarVisible": true,
+      "cleanExit": true
+    },
+    {
+      "scenario": "startup-interruption",
+      "passed": true,
+      "nativeTaskbarVisible": true,
+      "cleanExit": true
+    }
+  ],
+  "productionStateUnchanged": true,
+  "hostProcessesAfter": 0
+}

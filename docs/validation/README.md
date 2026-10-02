@@ -6,6 +6,15 @@ the native Explorer taskbar and desktop.
 
 ## Evidence kept in this repository
 
+- [October 2 Agent runtime and source checks](agent-runtime-2026-10-02.md)
+  cover official Pi startup, Host RPC, the no-auth error path, citation snapshots,
+  and the service-provider work still requiring credentials.
+- [October 2 fixed WebGL regression](graphics-regression-2026-10-02.md)
+  compares the same eight synthetic scenes in Edge and native WebView2.
+- [October 2 native failure and candidate checks](native-release-validation-2026-10-02.md)
+  record isolated startup/crash recovery, PowerShell 5.1 and 7 fault checks,
+  the fullscreen foreground prerequisite, and exact-commit package validation.
+
 - [October 2 workflow validation](workflow-validation-2026-10-02.md) records
   shared configuration and rollback, knowledge excerpts and saved conversations,
   visual comparison, actual browser interactions, and native performance samples.

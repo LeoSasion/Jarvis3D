@@ -38,4 +38,6 @@ jobs:
       - run: dotnet test .\host\Jarvis.Host.sln -c Release --no-build
       - name: Test Pi staging safety (synthetic only)
         run: .\scripts\test-pi-runtime-staging.ps1
+      - name: Test release artifact verification (synthetic only)
+        run: .\scripts\test-release-verifiers.ps1
       - run: git diff --check

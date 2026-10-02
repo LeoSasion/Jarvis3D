@@ -269,9 +269,11 @@ setting `JARVIS_ALLOW_EXTERNAL_PI_RUNTIME=1`, `JARVIS_PI_EXECUTABLE` to an
 absolute `.exe` path, and `JARVIS_PI_EXECUTABLE_SHA256` to its expected SHA-256.
 This override is intentionally never an automatic fallback for a damaged bundle.
 Neither path modifies global `PATH`, installs a global package, nor performs
-silent Pi upgrades. Agent state and an empty private package directory are kept
-under `%LOCALAPPDATA%\JARVIS\PiAgent`; provider credentials remain in the native
-runtime environment and are never sent to WebView2. Pi starts in offline mode to
+silent Pi upgrades. Agent state is kept under `%LOCALAPPDATA%\JARVIS\PiAgent`.
+Pi resolves built-in assets from the verified runtime directory while optional
+packages, extensions, skills, tools, and themes remain disabled by launch flags.
+Provider credentials remain in the native runtime environment and are never
+sent to WebView2. Pi starts in offline mode to
 skip model-registry and version refreshes; provider inference still occurs only
 after the user submits a prompt. The child process is created suspended through
 native `CreateProcessW`, assigned to a kill-on-close Windows Job Object before
@@ -312,7 +314,11 @@ repository root:
 The script downloads the exact Pi archive pinned by
 `third_party/pi/runtime.json`, validates both archive and entry-point hashes,
 stages the full distribution, and removes the temporary download after use.
-Only then does it rebuild `frontend/dist`,
+After staging, the local RPC handshake can be checked without credentials or
+model inference using `scripts/verify-pi-runtime-rpc.ps1 -RuntimeDirectory
+<path-to-AgentRuntime>`. It checks `get_state`, `get_messages`, and
+`new_session` with the same chat-only launch flags as the Host.
+The publish script then rebuilds `frontend/dist`,
 publish the native host, create a portable ZIP, write `version.json`,
 `RECOVERY.txt`, and `SHA256SUMS.txt`, and compile `installer/JARVIS.iss` when
 Inno Setup 6 is available. Output is written under `artifacts/release` and
@@ -352,7 +358,7 @@ To validate the compiled installer without touching an existing JARVIS
 installation, run:
 
 ```powershell
-.\scripts\verify-installer-lifecycle.ps1 -Version 0.1.0
+.\scripts\verify-installer-lifecycle.ps1 -Version 0.1.0 -ExpectedCommit (git rev-parse HEAD)
 ```
 
 The verifier refuses to run when an installation, startup registration, or

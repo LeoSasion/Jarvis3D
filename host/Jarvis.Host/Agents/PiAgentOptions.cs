@@ -1,3 +1,4 @@
+using Jarvis.Host.Infrastructure;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -31,8 +32,7 @@ internal sealed record PiAgentOptions(
     public static PiAgentOptions FromEnvironment()
     {
         var localRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "JARVIS",
+            HostDataPaths.Root,
             "PiAgent");
 
         PiRuntimeManifest trustedManifest;
@@ -229,7 +229,10 @@ internal sealed record PiAgentOptions(
             ExecutablePath: executablePath,
             ExecutableIdentity: executableIdentity,
             AgentDirectory: localRoot,
-            PackageDirectory: Path.Combine(localRoot, "Packages"),
+            // Pi resolves its built-in themes and other package assets through
+            // PI_PACKAGE_DIR, even with optional themes and extensions disabled.
+            // The bundled runtime tree is verified before every launch.
+            PackageDirectory: Path.GetDirectoryName(executablePath)!,
             WorkingDirectory: Path.Combine(localRoot, "Runtime"),
             PermissionMode: "chat-only",
             MaximumJsonLineBytes: 1024 * 1024,

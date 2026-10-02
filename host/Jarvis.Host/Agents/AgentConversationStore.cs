@@ -114,7 +114,9 @@ internal sealed class AgentConversationStore
             throw new InvalidDataException("Invalid or oversized conversation.");
         foreach (var message in document.Messages)
             if (message is null || message.Role is not ("user" or "assistant") || message.Id is null || message.Id.Length > 160 ||
-                message.Text is null || message.Text.Length > 16_000 || message.Status is not ("complete" or "error" or "aborted"))
+                message.Text is null || message.Text.Length > 16_000 || message.Status is not ("complete" or "error" or "aborted") ||
+                message.RunId?.Length > 160 || message.ClientMessageId?.Length > 160 ||
+                message.RunId?.Any(char.IsControl) == true || message.ClientMessageId?.Any(char.IsControl) == true)
                 throw new InvalidDataException("Invalid conversation message.");
     }
 
@@ -124,5 +126,12 @@ internal sealed class AgentConversationStore
 
 internal sealed record AgentConversationDocument(string Id, string Title, string Provider, DateTimeOffset UpdatedAtUtc,
     IReadOnlyList<AgentConversationMessage> Messages, bool Truncated = false, long Revision = 0);
-internal sealed record AgentConversationMessage(string Id, string Role, string Text, string Status, string? CreatedAt);
+internal sealed record AgentConversationMessage(
+    string Id,
+    string Role,
+    string Text,
+    string Status,
+    string? CreatedAt,
+    string? RunId = null,
+    string? ClientMessageId = null);
 internal sealed record AgentConversationInfo(string Id, string Title, string Provider, DateTimeOffset UpdatedAtUtc, int MessageCount, bool Truncated, long Revision);

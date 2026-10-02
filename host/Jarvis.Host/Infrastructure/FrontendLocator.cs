@@ -5,19 +5,27 @@ namespace Jarvis.Host.Infrastructure;
 internal static class FrontendLocator
 {
     private const string OverrideVariable = "JARVIS_FRONTEND_DIST";
+    internal static string? LastResolvedSource { get; private set; }
 
     public static string FindDistributionDirectory()
     {
         var overridePath = Environment.GetEnvironmentVariable(OverrideVariable);
         if (!string.IsNullOrWhiteSpace(overridePath))
         {
+            LastResolvedSource = "override";
             return Validate(overridePath, $"environment variable {OverrideVariable}");
         }
 
         var packagedPath = Path.Combine(AppContext.BaseDirectory, "frontend");
         if (HasIndex(packagedPath))
         {
+            LastResolvedSource = "packaged";
             return Path.GetFullPath(packagedPath);
+        }
+
+        if (ValidationEnvironment.IsActive && File.Exists(Path.Combine(AppContext.BaseDirectory, "version.json")))
+        {
+            throw new DirectoryNotFoundException("The release is missing its packaged frontend entry point.");
         }
 
         foreach (var startPath in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory })
@@ -28,6 +36,7 @@ internal static class FrontendLocator
                 var candidate = Path.Combine(current.FullName, "frontend", "dist");
                 if (HasIndex(candidate))
                 {
+                    LastResolvedSource = "development";
                     return Path.GetFullPath(candidate);
                 }
             }

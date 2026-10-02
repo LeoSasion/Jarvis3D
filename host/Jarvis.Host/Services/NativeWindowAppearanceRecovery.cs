@@ -18,8 +18,7 @@ internal static class NativeWindowAppearanceRecovery
     };
 
     private static readonly string RecoveryPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "JARVIS",
+        HostDataPaths.Root,
         "Recovery",
         "window-appearance.json");
 

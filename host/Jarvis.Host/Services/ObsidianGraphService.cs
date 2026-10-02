@@ -1,3 +1,4 @@
+using Jarvis.Host.Infrastructure;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -1031,8 +1032,7 @@ internal sealed partial class ObsidianGraphService : IDisposable
     }
 
     private static string GetConfigurationFilePath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Jarvis",
+        HostDataPaths.Root,
         "obsidian-vault.txt");
 
     private void PersistConfiguredVault(string vaultRoot)

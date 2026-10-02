@@ -96,6 +96,12 @@ internal sealed record LifecycleProbeOptions(
             return false;
         }
 
+        if (!HostDataPaths.IsReparseFreeTree(dataRoot))
+        {
+            error = "Lifecycle probe data must not contain or traverse reparse points.";
+            return false;
+        }
+
         if (!NoncePattern.IsMatch(nonceValue))
         {
             error = "Lifecycle probe nonce must contain exactly 32 hexadecimal characters.";

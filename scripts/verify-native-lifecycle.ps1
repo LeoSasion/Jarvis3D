@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'native-validation-common.ps1')
 
 if ($AllowDisruptive) {
     Write-Warning "Disruptive Explorer, display, lock, sleep, and network tests require explicit interactive coordination and are not automated by this script."
@@ -15,6 +16,7 @@ if ($AllowDisruptive) {
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 public static class JarvisLifecycleNativeMethods
 {
     public const uint WM_HOTKEY = 0x0312;
@@ -35,6 +37,9 @@ public static class JarvisLifecycleNativeMethods
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern int GetWindowText(IntPtr window, StringBuilder value, int maximum);
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool PostMessage(
@@ -50,6 +55,13 @@ public static class JarvisLifecycleNativeMethods
         {
             GetWindowThreadProcessId(window, out uint ownerProcessId);
             if (ownerProcessId != expectedProcessId)
+            {
+                return true;
+            }
+
+            var title = new StringBuilder(128);
+            GetWindowText(window, title, title.Capacity);
+            if (!String.Equals(title.ToString(), "JARVIS", StringComparison.Ordinal))
             {
                 return true;
             }
@@ -129,10 +141,9 @@ if ($LaunchSafeMode) {
         throw "LaunchSafeMode requires an existing -JarvisExecutable."
     }
 
-    $previous = $env:JARVIS_KEEP_NATIVE_TASKBAR
+    $dataRoot = New-NativeValidationDataRoot
     try {
-        $env:JARVIS_KEEP_NATIVE_TASKBAR = "1"
-        $launch = Start-Process -FilePath $JarvisExecutable -PassThru -WindowStyle Hidden
+        $launch = Start-NativeValidationHost -HostPath $JarvisExecutable -DataRoot $dataRoot -SafeMode
         $launchSessionId = $launch.SessionId
         Start-Sleep -Milliseconds 2500
         if ($launch.HasExited) {
@@ -158,12 +169,11 @@ if ($LaunchSafeMode) {
                 }
             }
         }
-        $env:JARVIS_KEEP_NATIVE_TASKBAR = $previous
     }
 
     if (-not $failure -and $null -ne $launchSessionId) {
-        $ledgerPath = Join-Path $env:LOCALAPPDATA (
-            "JARVIS\State\startup-health-session-{0}.json" -f $launchSessionId)
+        $ledgerPath = Join-Path $dataRoot (
+            "State\startup-health-session-{0}.json" -f $launchSessionId)
         try {
             if (-not (Test-Path -LiteralPath $ledgerPath -PathType Leaf)) {
                 $failure = "The safe-mode JARVIS run did not persist its startup health ledger."
@@ -185,6 +195,8 @@ if ($LaunchSafeMode) {
         }
     }
 }
+
+if ($LaunchSafeMode) { Remove-NativeValidationDataRoot -DataRoot $dataRoot }
 
 $after = Get-LifecycleSnapshot
 $result = [ordered]@{

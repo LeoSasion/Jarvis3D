@@ -107,6 +107,10 @@ internal static class TaskbarWatchdog
             }
 
             AddArgument(startInfo, ModeArgument);
+            if (HostDataPaths.IsValidation)
+            {
+                startInfo.ArgumentList.Add(HostDataPaths.ValidationArgument + HostDataPaths.Root);
+            }
             AddArgument(startInfo, PidArgument, current.Id.ToString(CultureInfo.InvariantCulture));
             AddArgument(
                 startInfo,

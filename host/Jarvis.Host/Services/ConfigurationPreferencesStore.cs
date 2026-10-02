@@ -1,3 +1,4 @@
+using Jarvis.Host.Infrastructure;
 using System.IO;
 using System.Text.Json;
 
@@ -8,7 +9,7 @@ internal sealed class ConfigurationPreferencesStore
     public const int MaximumBytes = 192 * 1024;
     private static string? _isolatedDirectory;
     internal static string DefaultDirectory => _isolatedDirectory ?? Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JARVIS", "Settings");
+        HostDataPaths.Root, "Settings");
     internal static void UseIsolatedDirectory(string directory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);

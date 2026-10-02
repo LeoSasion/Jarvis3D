@@ -1,14 +1,20 @@
 param(
-    [string]$HostPath = (Join-Path $PSScriptRoot '..\host\Jarvis.Host\bin\Debug\net8.0-windows\Jarvis.Host.exe'),
+    [string]$HostPath,
     [int]$TimeoutSeconds = 45,
     [ValidateSet('en-US', 'zh-CN')]
     [string]$Culture = 'en-US',
     [switch]$MeasurePerformance,
-    [string]$ReportPath
+    [string]$ReportPath,
+    [switch]$GraphicsRegression,
+    [string]$GraphicsReportPath
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'native-validation-common.ps1')
+if ([string]::IsNullOrWhiteSpace($HostPath)) {
+    $HostPath = Join-Path $PSScriptRoot '..\host\Jarvis.Host\bin\Debug\net8.0-windows\Jarvis.Host.exe'
+}
 
 Add-Type -TypeDefinition @'
 using System;
@@ -56,6 +62,7 @@ try {
     $startInfo.FileName = $resolvedHost
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
+    Set-ValidationProcessEnvironment -StartInfo $startInfo -DataRoot $dataRoot
     # Windows PowerShell 5.1 exposes the .NET Framework ProcessStartInfo shape,
     # which does not have ArgumentList. These generated paths cannot contain a
     # quote, so quoting each value keeps the command line safe on both 5.1 and 7.
@@ -79,6 +86,14 @@ try {
         }
         $startInfo.EnvironmentVariables['JARVIS_OBSIDIAN_VAULT'] = $fixtureVault
     }
+    if ($GraphicsRegression) {
+        $TimeoutSeconds = [Math]::Max($TimeoutSeconds, 240)
+        $startInfo.Arguments += ' --renderer-smoke-graphics'
+        if ([string]::IsNullOrWhiteSpace($GraphicsReportPath)) {
+            $GraphicsReportPath = Join-Path ([IO.Path]::GetTempPath()) "jarvis-native-graphics-$nonce"
+        }
+        if (Test-Path -LiteralPath $GraphicsReportPath) { throw 'Refusing to overwrite an existing graphics report directory.' }
+    }
 
     $process = [System.Diagnostics.Process]::Start($startInfo)
     if ($null -eq $process) {
@@ -86,6 +101,13 @@ try {
     }
     if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
         throw "Renderer smoke exceeded the ${TimeoutSeconds}s timeout."
+    }
+    if ($GraphicsRegression) {
+        $graphicsArtifacts = Join-Path $dataRoot 'receipts\graphics-regression'
+        if (Test-Path -LiteralPath $graphicsArtifacts -PathType Container) {
+            Copy-Item -LiteralPath $graphicsArtifacts -Destination $GraphicsReportPath -Recurse
+            Write-Output "Native graphics regression artifacts: $GraphicsReportPath"
+        }
     }
     if ($process.ExitCode -ne 0) {
         $diagnostic = if (Test-Path -LiteralPath $receiptPath -PathType Leaf) {
@@ -112,8 +134,14 @@ try {
         $receipt.success -ne $true -or
         $receipt.mainWindowCreated -ne $true -or
         $receipt.taskbarTouched -ne $false -or
+        $receipt.webViewDataIsolated -ne $true -or
         $null -ne $receipt.error) {
         throw 'Renderer smoke receipt metadata is invalid.'
+    }
+    $releaseManifest = Join-Path (Split-Path -Parent $resolvedHost) 'version.json'
+    if (($receipt.frontend -notin @('packaged', 'development')) -or
+        ((Test-Path -LiteralPath $releaseManifest) -and $receipt.frontend -ne 'packaged')) {
+        throw 'Renderer smoke did not use the expected packaged or development frontend.'
     }
 
     $requiredAssertions = @(
@@ -148,10 +176,18 @@ try {
         Copy-Item -LiteralPath $performanceReport -Destination $ReportPath
         Write-Output "Native performance report: $ReportPath"
     }
+    if ($GraphicsRegression) {
+        $graphicsReportFile = Join-Path $GraphicsReportPath 'report.json'
+        if (-not (Test-Path -LiteralPath $graphicsReportFile -PathType Leaf)) { throw 'Native graphics regression report was not produced.' }
+        $graphicsReport = Get-Content -LiteralPath $graphicsReportFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($graphicsReport.success -ne $true -or $graphicsReport.samples.Count -ne 8) { throw 'Native graphics regression did not pass all eight cases.' }
+    }
 }
 finally {
     if ($null -ne $process -and -not $process.HasExited) {
-        $process.Kill($true)
+        # Kill(bool) does not exist on Windows PowerShell 5.1's .NET Framework.
+        # Restrict cleanup to the isolated process we started and its child tree.
+        & (Join-Path $env:SystemRoot 'System32\taskkill.exe') /PID $process.Id /T /F | Out-Null
         $process.WaitForExit(5000) | Out-Null
     }
 
@@ -168,6 +204,7 @@ finally {
                 break
             }
             try {
+                Assert-ValidationCleanupTree -Path $resolvedDataRoot
                 Remove-Item -LiteralPath $resolvedDataRoot -Recurse -Force -ErrorAction Stop
                 $removed = $true
                 break

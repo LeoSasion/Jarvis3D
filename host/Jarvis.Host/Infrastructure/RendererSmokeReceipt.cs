@@ -87,6 +87,8 @@ internal static class RendererSmokeReceipt
             Culture: options.CultureName,
             MainWindowCreated: mainWindowCreated,
             TaskbarTouched: false,
+            Frontend: FrontendLocator.LastResolvedSource,
+            WebViewDataIsolated: ValidationEnvironment.WebViewDataIsolated,
             result,
             Error: string.IsNullOrWhiteSpace(error) ? null : error);
         var payload = JsonSerializer.Serialize(receipt, JsonOptions) + Environment.NewLine;
@@ -122,6 +124,8 @@ internal static class RendererSmokeReceipt
         string Culture,
         bool MainWindowCreated,
         bool TaskbarTouched,
+        string? Frontend,
+        bool WebViewDataIsolated,
         RendererSmokeResult? Result,
         string? Error);
 }
