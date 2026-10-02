@@ -1,0 +1,26 @@
+{
+  "status": "READY",
+  "failure": null,
+  "safeModeLaunchRequested": true,
+  "disruptiveTestsExecuted": false,
+  "before": {
+    "capturedAt": "2026-10-02T23:26:55.0411260+08:00",
+    "windowsVersion": "10.0.26200.0",
+    "windowsBuild": 26200,
+    "explorerProcessCount": 1,
+    "explorerAlive": true,
+    "nativeTaskbarHandle": "0x101B0",
+    "nativeTaskbarVisible": true,
+    "jarvisProcessCount": 0
+  },
+  "after": {
+    "capturedAt": "2026-10-02T23:27:04.0547875+08:00",
+    "windowsVersion": "10.0.26200.0",
+    "windowsBuild": 26200,
+    "explorerProcessCount": 1,
+    "explorerAlive": true,
+    "nativeTaskbarHandle": "0x101B0",
+    "nativeTaskbarVisible": true,
+    "jarvisProcessCount": 0
+  }
+}

@@ -78,3 +78,29 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-renderer-
 The native command first completes ordinary shell smoke assertions, then runs the independent graphics entry, captures browser-composited WebView PNGs, crops/resizes the stage to 960 × 640, writes its report and exits. The wrapper keeps the native taskbar visible, uses an isolated profile/data root, preserves produced graphics artifacts on failure, refuses to overwrite an output directory, and cleans up its own process tree. It was exercised through Windows PowerShell 5.1.
 
 Validation also passed: frontend ESLint, 14 focused clock/fixture/editor/runtime tests, 17 Host smoke-option tests, frontend production build, and Host Release build with zero warnings/errors. Large Vault scales, other GPUs/drivers, mixed-DPI capture and adaptive performance are outside this fixed 96-node gate; they should retain separate results rather than being inferred from this baseline.
+
+## Final release candidate: 76d22a0
+
+The packaged `0.1.0-rc.20261002` frontend passed all eight cases in Edge and native WebView2. Both runtime reports identify revision `76d22a020fe320319dd4094a5b85941cecb97328`, `dirty: false`, and frontend build time `2026-10-02T15:21:15.981Z`; both report browser version `154.0.4258.48`. The packaged `version.json` agrees on version, source commit and clean state, with package build time `2026-10-02T15:20:14.5824963+00:00`.
+
+Every case has exactly matching camera matrices, simulation/shader times, position and signal digests, canvas/context state, scene metadata, and complete render/memory counters across Edge and WebView2. The fixture manifest also matches. Draw calls are 13 and textures are 10 throughout; geometries are six except for the recorded seventh geometry during reentry. Edge additionally matches the earlier clean `3d9ee38` packaged baseline and production-browser baseline in all eight scene/resource records and PNG hashes. Within each runtime, B changes the image, restoring A reproduces its exact PNG, and context restoration reproduces the reentry PNG.
+
+| Case | Differing decoded pixels, WebView2 versus Edge | Edge / WebView2 P95 |
+| --- | ---: | ---: |
+| `idle` | 0 | 4.6 / 4.7 ms |
+| `explore-2d` | 504 (0.08203125%) | 4.6 / 4.6 ms |
+| `explore-3d` | 389 (0.0633138%) | 4.6 / 4.6 ms |
+| `frozen-a` | 389 (0.0633138%) | 4.6 / 4.6 ms |
+| `frozen-b` | 389 (0.0633138%) | 4.6 / 4.6 ms |
+| `frozen-a-restored` | 389 (0.0633138%) | 4.6 / 4.6 ms |
+| `reentry` | 389 (0.0633138%) | 4.7 / 4.8 ms |
+| `context-restored` | 389 (0.0633138%) | 4.7 / 4.8 ms |
+
+All captures are 960 × 640 pixels. Cross-runtime PNG file hashes differ, including the pixel-identical idle capture, because capture/encoding differs. Decoded differences in the focused scenes are confined to label glyph regions, consistent with text rasterization variance; maximum channel differences are 156/255 in 2D and 94/255 in the other six captures. The node/edge scene pixels agree.
+
+P95 describes actual active frame callback intervals while simulation advances in fixed 1/60-second steps. Each runtime records 179 interval samples for the first six cases and 297 for the final two; frozen cases retain the preceding active sample window. These values do not measure GPU execution time, presented display FPS or general application performance. The observed cross-runtime difference is 0–0.1 ms.
+
+Final-candidate evidence:
+
+- Tracked native [report and build identity](candidate-native-graphics-2026-10-02/report.json), with all eight PNGs in the same directory.
+- Edge report and eight PNGs: `C:\Users\Administrator\AppData\Local\Temp\jarvis-graphics-packaged-76d22a0-20261002-a\report.json` (`%TEMP%\jarvis-graphics-packaged-76d22a0-20261002-a`). The same directory contains `production-baseline-comparison.json` and `packaged-build-identity.json`, including the complete packaged asset SHA-256 inventory.

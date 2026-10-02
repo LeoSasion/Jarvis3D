@@ -16,4 +16,12 @@
 
 第三项将当前开发版本推进到日常使用。兼容范围与实际已测范围应分别记录，硬件不足的项目继续留在验收表中。
 
+## 2026-10-02 执行进展
+
+第一项已补齐回答来源快照回看与 Markdown 导出，并用合成笔记验证了恢复会话后的引用归属。官方 Pi 0.83.0 的本地 RPC 和 Host 通路可启动；本机没有可用的服务商认证，真实回答、流式输出与服务商端故障体验仍需在配置认证后用非敏感笔记验收。[详细记录](validation/agent-runtime-2026-10-02.md)。
+
+第二项已形成固定的 96 节点场景。Edge 与 WebView2 在八个场景的镜头、时间、图状态、绘制与资源计数一致，冻结 A/B 和上下文恢复通过；帧间隔单独记录，不当作 GPU 耗时。[图形回归记录](validation/graphics-regression-2026-10-02.md)。
+
+第三项已从干净提交 `76d22a020fe320319dd4094a5b85941cecb97328` 构建 `0.1.0-rc.20261002` 候选，并在现有 Windows 11 设备完成包校验、安装、修复、卸载、原生故障与 Safe Mode 恢复。Windows 10、多屏混合 DPI、真实锁屏与睡眠唤醒仍缺实机证据，不能据此宣称覆盖。[原生候选记录](validation/native-release-validation-2026-10-02.md)。
+
 依据：[本轮工作流验证](validation/workflow-validation-2026-10-02.md)、[硬件与发布缺口](validation/README.md)、[Agent 与发布边界](../host/README.md)。

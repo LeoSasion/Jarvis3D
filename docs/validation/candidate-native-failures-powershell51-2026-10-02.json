@@ -1,0 +1,35 @@
+{
+    "schemaVersion":  1,
+    "status":  "PASS",
+    "hostVersion":  "0.1.0-rc.20261002+76d22a020fe3",
+    "windowsBuild":  26200,
+    "powershellVersion":  "5.1.26100.9444",
+    "scenarios":  [
+                      {
+                          "scenario":  "startup-timeout",
+                          "passed":  true,
+                          "nativeTaskbarVisible":  true,
+                          "cleanExit":  true
+                      },
+                      {
+                          "scenario":  "webview-browser-crash",
+                          "passed":  true,
+                          "nativeTaskbarVisible":  true,
+                          "cleanExit":  true
+                      },
+                      {
+                          "scenario":  "full-mode-webview-browser-crash",
+                          "passed":  true,
+                          "nativeTaskbarVisible":  true,
+                          "cleanExit":  true
+                      },
+                      {
+                          "scenario":  "startup-interruption",
+                          "passed":  true,
+                          "nativeTaskbarVisible":  true,
+                          "cleanExit":  true
+                      }
+                  ],
+    "productionStateUnchanged":  true,
+    "hostProcessesAfter":  0
+}

@@ -1,0 +1,15 @@
+{
+  "Version": "0.1.0-rc.20261002",
+  "InformationalVersion": "0.1.0-rc.20261002+76d22a020fe3",
+  "SourceCommit": "76d22a020fe320319dd4094a5b85941cecb97328",
+  "SourceDirty": false,
+  "Install": "passed",
+  "LifecycleProbe": "passed",
+  "Repair": "passed",
+  "Uninstall": "passed",
+  "StartupCleanup": "passed",
+  "PiRuntimeLifecycle": "passed",
+  "ExplorerProcessesBefore": 1,
+  "ExplorerProcessesAfter": 1,
+  "JarvisProcessesAfter": 0
+}

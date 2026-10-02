@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "version": "0.1.0-rc.20261002",
+  "sourceCommit": "76d22a020fe320319dd4094a5b85941cecb97328",
+  "sourceDirty": false,
+  "hostProductVersion": "0.1.0-rc.20261002+76d22a020fe3",
+  "checkedPackageFiles": 786,
+  "checkedPortableFiles": 787,
+  "packages": [
+    {
+      "kind": "portable",
+      "fileName": "JARVIS-0.1.0-rc.20261002-win-x64.zip",
+      "sizeBytes": 122871189,
+      "sha256": "372fc400d504cec503b1a2965d17501eff023152b94607a27be2ec959e2cc629"
+    },
+    {
+      "kind": "installer",
+      "fileName": "JARVIS-Setup-0.1.0-rc.20261002-win-x64.exe",
+      "sizeBytes": 83819955,
+      "sha256": "d0797267a23486f7d29454001fdc6208d25583babb26b9c91eafad55a74298be"
+    }
+  ],
+  "portableContentsVerified": true
+}
