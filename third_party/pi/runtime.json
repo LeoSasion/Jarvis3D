@@ -2,45 +2,45 @@
   "schemaVersion": 1,
   "id": "pi-coding-agent",
   "displayName": "Pi Coding Agent",
-  "version": "0.83.0",
+  "version": "1.0.0",
   "runtime": "win-x64",
   "architecture": "x64",
   "source": {
     "repository": "https://github.com/earendil-works/pi",
-    "revision": "v0.83.0",
-    "commit": "845d6ff1f6643aba440341cce877ce1c43ebbc39",
+    "revision": "v1.0.0",
+    "commit": "a13d35a742c6ef8462812a28fbe1d8c8b7431c32",
     "package": "@earendil-works/pi-coding-agent"
   },
   "release": {
-    "id": 362082362,
-    "tag": "v0.83.0",
-    "publishedAtUtc": "2026-07-29T14:30:33Z",
-    "url": "https://github.com/earendil-works/pi/releases/tag/v0.83.0",
-    "checksumsUrl": "https://github.com/earendil-works/pi/releases/download/v0.83.0/SHA256SUMS",
-    "checksumsSha256": "68b50900fe1dde6d8c6063ca01a0c8685a567e0031c440847a017e3daac1e7e8"
+    "id": 401260174,
+    "tag": "v1.0.0",
+    "publishedAtUtc": "2026-10-01T19:20:55Z",
+    "url": "https://github.com/earendil-works/pi/releases/tag/v1.0.0",
+    "checksumsUrl": "https://github.com/earendil-works/pi/releases/download/v1.0.0/SHA256SUMS",
+    "checksumsSha256": "a5ad1b04be1723aae688b2a56b280fb54c6e4bc739c0351c7bd9ec7b9b0f4a22"
   },
   "sourceArchive": {
-    "fileName": "pi-0.83.0-source.tar.gz",
-    "url": "https://github.com/earendil-works/pi/releases/download/v0.83.0/pi-0.83.0-source.tar.gz",
-    "sizeBytes": 5854451,
-    "sha256": "f225b87ec3b4825dd5b94e922a8629558addca31a1b4d2c206ae598a8e2692c0"
+    "fileName": "pi-1.0.0-source.tar.gz",
+    "url": "https://github.com/earendil-works/pi/releases/download/v1.0.0/pi-1.0.0-source.tar.gz",
+    "sizeBytes": 7567394,
+    "sha256": "89089c82d41759b800124a77e212adaa867caaa9d1269d8012ef0df9bc86b92e"
   },
   "archive": {
     "fileName": "pi-windows-x64.zip",
-    "url": "https://github.com/earendil-works/pi/releases/download/v0.83.0/pi-windows-x64.zip",
-    "sizeBytes": 45963301,
-    "sha256": "7bda7993553a0d556f1eed53d96dd4a83e183332475265fb87c79ff269bf357d",
-    "entryCount": 250,
-    "fileCount": 217,
-    "uncompressedBytes": 121117630,
+    "url": "https://github.com/earendil-works/pi/releases/download/v1.0.0/pi-windows-x64.zip",
+    "sizeBytes": 45041072,
+    "sha256": "f7dbd39814bf6763f01e7f688ad089615de1d0eb55fc8915a49acdc2088f4404",
+    "entryCount": 243,
+    "fileCount": 214,
+    "uncompressedBytes": 118212235,
     "treeReceiptFile": "RUNTIME-SHA256SUMS.txt",
-    "treeReceiptBytes": 22289,
-    "treeSha256": "819b6d318c20a5d509fa422d420a61732b4ec92e96702db2065004ec3a997caa"
+    "treeReceiptBytes": 21360,
+    "treeSha256": "89e4a41dfc0aa46ea182e5aa543612275ff919337884bd23c583d15638452e51"
   },
   "executable": {
     "relativePath": "pi.exe",
-    "sizeBytes": 111228928,
-    "sha256": "149c84e781334e9266f1a30d4380b50e42768e9880a9324d7fc92f91525cc642",
+    "sizeBytes": 110993920,
+    "sha256": "116c50f3fd36e0348f20d00f06d30eebdc4dd961bf8f89ad3b29f441cba2dfab",
     "peMachine": "amd64",
     "authenticode": "unsigned"
   },
@@ -48,7 +48,7 @@
     "spdx": "MIT",
     "sourcePath": "LICENSE-Pi.txt",
     "stagedFileName": "LICENSE-Pi.txt",
-    "url": "https://github.com/earendil-works/pi/blob/v0.83.0/LICENSE",
+    "url": "https://github.com/earendil-works/pi/blob/v1.0.0/LICENSE",
     "sha256": "4f6a1985796db5225e3b1e59972bd47e07a27a0748427cb3d3c8fbf39f9311f0"
   },
   "limits": {

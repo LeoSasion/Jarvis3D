@@ -462,6 +462,10 @@ internal sealed class PiRpcClient : IDisposable
         JsonElement? data = root.TryGetProperty("data", out var dataElement)
             ? dataElement.Clone()
             : null;
+        if (pending.Command == "prompt" && successElement.GetBoolean())
+        {
+            RequireStartedPromptDisposition(data);
+        }
         var error = root.TryGetProperty("error", out var errorElement) &&
                     errorElement.ValueKind == JsonValueKind.String
             ? errorElement.GetString()
@@ -471,6 +475,21 @@ internal sealed class PiRpcClient : IDisposable
             successElement.GetBoolean(),
             data,
             error));
+    }
+
+    internal static void RequireStartedPromptDisposition(JsonElement? data)
+    {
+        // In Pi 1.0, success also covers prompts queued or consumed by an input handler.
+        // JARVIS owns one visible run per prompt and disables extensions and tools, so
+        // only a newly started run can safely be presented as accepted.
+        if (data is not JsonElement { ValueKind: JsonValueKind.Object } value ||
+            !value.TryGetProperty("disposition", out var disposition) ||
+            disposition.ValueKind != JsonValueKind.String ||
+            !disposition.ValueEquals("started"))
+        {
+            throw new PiRpcProtocolException(
+                "Pi RPC did not start the expected chat-only prompt run.");
+        }
     }
 
     private void Fault(PiRpcFailure failure)

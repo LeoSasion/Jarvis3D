@@ -6,6 +6,9 @@ the native Explorer taskbar and desktop.
 
 ## Evidence kept in this repository
 
+- [October 3 Pi 1.0.0 adaptation](pi-1.0.0-adaptation-2026-10-03.md)
+  records the updated upstream pin, tree verification, RPC disposition handling,
+  isolated Host handshake, and deterministic loopback response.
 - [October 2 Agent runtime and source checks](agent-runtime-2026-10-02.md)
   cover official Pi startup, Host RPC, the no-auth error path, citation snapshots,
   and the service-provider work still requiring credentials.

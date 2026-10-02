@@ -336,7 +336,7 @@ function Read-PinnedManifest {
         'https://github.com/earendil-works/pi' -or
         (Assert-StringValue $manifest.source.revision 'source.revision' '\Av\d+\.\d+\.\d+\z') -ne "v$version" -or
         (Assert-StringValue $manifest.source.commit 'source.commit' '\A[0-9a-f]{40}\z') -ne
-        '845d6ff1f6643aba440341cce877ce1c43ebbc39' -or
+        'a13d35a742c6ef8462812a28fbe1d8c8b7431c32' -or
         (Assert-StringValue $manifest.source.package 'source.package' '\A@earendil-works/pi-coding-agent\z') -ne
         '@earendil-works/pi-coding-agent') {
         throw 'Pi runtime source identity is inconsistent with the pinned version.'
@@ -345,10 +345,10 @@ function Read-PinnedManifest {
     $publishedAtUtc = ConvertTo-CanonicalUtcTimestamp `
         -Value $manifest.release.publishedAtUtc `
         -Label 'release.publishedAtUtc'
-    if ((Assert-IntegerValue $manifest.release.id 'release.id' 1 ([long]::MaxValue)) -ne 362082362 -or
+    if ((Assert-IntegerValue $manifest.release.id 'release.id' 1 ([long]::MaxValue)) -ne 401260174 -or
         (Assert-StringValue $manifest.release.tag 'release.tag' '\Av\d+\.\d+\.\d+\z') -ne "v$version" -or
-        $publishedAtUtc -ne '2026-07-29T14:30:33Z') {
-        throw 'Pi release identity does not match the audited v0.83.0 release.'
+        $publishedAtUtc -ne '2026-10-01T19:20:55Z') {
+        throw 'Pi release identity does not match the audited v1.0.0 release.'
     }
     $manifest.release.publishedAtUtc = $publishedAtUtc
     $releaseUri = Assert-HttpsUri `

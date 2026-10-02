@@ -25,8 +25,8 @@ The original license is available at https://github.com/GitSquared/edex-ui/blob/
 - Package: `@earendil-works/pi-coding-agent`
 - Copyright: Copyright (c) 2025 Mario Zechner
 - Source: https://github.com/earendil-works/pi
-- Pinned release: `v0.83.0`
-- Pinned commit: `845d6ff1f6643aba440341cce877ce1c43ebbc39`
+- Pinned release: `v1.0.0`
+- Pinned commit: `a13d35a742c6ef8462812a28fbe1d8c8b7431c32`
 - License: MIT
 - Use in JARVIS: separately executed, privately bundled JSONL RPC runtime for the embedded chat surface. JARVIS V1 disables Pi tools, extensions, skills, prompt templates, project context, themes, approvals, and Pi-managed sessions.
 
@@ -34,10 +34,10 @@ Release packages retain the complete upstream Windows x64 distribution together
 with `AgentRuntime/LICENSE-Pi.txt`, `AgentRuntime/runtime.json`, and provenance.
 The official upstream release provides SHA-256 checksums but no Authenticode or
 detached release signature. JARVIS pins the exact archive and entry point,
-derives a deterministic receipt for all 217 upstream files, verifies that full
+derives a deterministic receipt for all 214 upstream files, verifies that full
 runtime tree before launch, and does not silently update the runtime.
 
-The original license is available at https://github.com/earendil-works/pi/blob/v0.83.0/LICENSE.
+The original license is available at https://github.com/earendil-works/pi/blob/v1.0.0/LICENSE.
 
 ## Microsoft WebView2
 

@@ -395,24 +395,24 @@ public sealed class AgentProtocolTests
     {
         var executable = new PiRuntimeExecutable(
             "pi.exe",
-            111228928,
-            "149c84e781334e9266f1a30d4380b50e42768e9880a9324d7fc92f91525cc642");
+            110993920,
+            "116c50f3fd36e0348f20d00f06d30eebdc4dd961bf8f89ad3b29f441cba2dfab");
         var trusted = new PiRuntimeManifest(
             1,
             "pi-coding-agent",
-            "0.83.0",
+            "1.0.0",
             "win-x64",
             "x64",
             "https://github.com/earendil-works/pi",
-            "v0.83.0",
-            "845d6ff1f6643aba440341cce877ce1c43ebbc39",
+            "v1.0.0",
+            "a13d35a742c6ef8462812a28fbe1d8c8b7431c32",
             "@earendil-works/pi-coding-agent",
             new PiRuntimeArchive(
-                217,
-                121117630,
+                214,
+                118212235,
                 "RUNTIME-SHA256SUMS.txt",
-                22289,
-                "819b6d318c20a5d509fa422d420a61732b4ec92e96702db2065004ec3a997caa"),
+                21360,
+                "89e4a41dfc0aa46ea182e5aa543612275ff919337884bd23c583d15638452e51"),
             executable,
             new PiRuntimePolicies(
                 "full-archive",
@@ -424,7 +424,7 @@ public sealed class AgentProtocolTests
 
         Assert.True(trusted.MatchesPackagedRuntime(trusted));
         Assert.False(trusted.MatchesPackagedRuntime(
-            trusted with { Version = "0.83.1" }));
+            trusted with { Version = "1.0.1" }));
         Assert.False(trusted.MatchesPackagedRuntime(
             trusted with { Runtime = "win-arm64" }));
         Assert.False(trusted.MatchesPackagedRuntime(
@@ -433,6 +433,26 @@ public sealed class AgentProtocolTests
             trusted with { Executable = executable with { Sha256 = new string('0', 64) } }));
         Assert.False(trusted.MatchesPackagedRuntime(
             trusted with { DocumentSha256 = new string('f', 64) }));
+    }
+
+    [Theory]
+    [InlineData("{\"disposition\":\"handled\"}")]
+    [InlineData("{\"disposition\":\"queued\"}")]
+    [InlineData("{\"disposition\":\"unknown\"}")]
+    [InlineData("{}")]
+    [InlineData("null")]
+    public void PiPromptAcceptsOnlyStartedDisposition(string responseData)
+    {
+        using var document = JsonDocument.Parse(responseData);
+        Assert.Throws<PiRpcProtocolException>(() =>
+            PiRpcClient.RequireStartedPromptDisposition(document.RootElement));
+    }
+
+    [Fact]
+    public void PiPromptStartedDispositionKeepsOneRun()
+    {
+        using var document = JsonDocument.Parse("{\"disposition\":\"started\"}");
+        PiRpcClient.RequireStartedPromptDisposition(document.RootElement);
     }
 
     [Fact]
