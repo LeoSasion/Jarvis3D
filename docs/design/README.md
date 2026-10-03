@@ -4,6 +4,10 @@ The durable visual contract lives in [`DESIGN.md`](../../DESIGN.md). This
 directory keeps only the smallest useful raster set for composition review;
 runtime behavior, accessibility, and Host-backed state remain authoritative.
 
+The [interaction UI improvement plan](ui-interaction-plan-2026-10-03.md)
+prioritizes source-truthful Agent handoff, native recovery feedback, graph
+navigation, and settings discoverability.
+
 ## Current reference set
 
 - `references/jarvis-operator-hud-overview.png` — current 1280×720 browser-
