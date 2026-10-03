@@ -6,6 +6,8 @@ the native Explorer taskbar and desktop.
 
 ## Evidence kept in this repository
 
+- [October 3 PC layout review](pc-layout-2026-10-03.md) records 1024–2560 pixel
+  desktop checks, Knowledge → Agent placement, rail toggling, and screenshots.
 - [October 3 Knowledge → Agent handoff review](product-handoff-2026-10-03.md)
   records the Product Design flow capture, source-pane obstruction fix, tall-screen
   result-list improvement, and responsive limitations before hardware testing.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer } from "react";
 import {
   WORKSPACE_LAYOUT_STORAGE_KEY,
   createWorkspaceWindowState,
@@ -34,6 +34,25 @@ function getViewport() {
   };
 }
 
+function measureKnowledgeHandoff() {
+  const workspace = document.querySelector(".desktop-workspace");
+  const source = workspace?.querySelector(".knowledge-browser");
+  if (!source || source.getClientRects().length === 0) return null;
+
+  const sourceRight = source.getBoundingClientRect().right;
+  const rightPanels = [
+    workspace.querySelector(".desktop-tool-rail"),
+    workspace.querySelector(".telemetry-rail:not([hidden])"),
+    workspace.querySelector(".graph-visual-settings.is-overlay"),
+  ];
+  const rightBoundary = rightPanels.reduce((left, panel) => {
+    if (!panel || panel.getClientRects().length === 0) return left;
+    return Math.min(left, panel.getBoundingClientRect().left);
+  }, document.documentElement.clientWidth || window.innerWidth);
+
+  return { sourceRight, rightBoundary };
+}
+
 export function useWorkspaceManager() {
   const [state, dispatch] = useReducer(
     workspaceWindowReducer,
@@ -62,19 +81,33 @@ export function useWorkspaceManager() {
     const reflow = () => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
-        dispatch({ type: "REFLOW", viewport: getViewport() });
+        dispatch({ type: "REFLOW", viewport: getViewport(), knowledgeHandoff: measureKnowledgeHandoff() });
       });
     };
     reflow();
     window.addEventListener("resize", reflow);
+    const workspace = document.querySelector(".desktop-workspace");
+    const panelObserver = workspace ? new MutationObserver(reflow) : null;
+    panelObserver?.observe(workspace, { attributes: true, attributeFilter: ["data-side-panel"] });
     return () => {
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", reflow);
+      panelObserver?.disconnect();
     };
   }, []);
 
+  // Opening Agent changes the desktop layout itself; measure the source and
+  // right rail again after that layout has been committed.
+  useLayoutEffect(() => {
+    if (!state.windows.agent.open || !state.windows.agent.knowledgePlaced) return;
+    dispatch({ type: "REFLOW", viewport: getViewport(), knowledgeHandoff: measureKnowledgeHandoff() });
+  }, [state.windows.agent.open, state.windows.agent.knowledgePlaced]);
+
   const open = useCallback((id) => dispatch({ type: "OPEN", id }), []);
-  const openFromKnowledge = useCallback(() => dispatch({ type: "OPEN_FROM_KNOWLEDGE" }), []);
+  const openFromKnowledge = useCallback(() => dispatch({
+    type: "OPEN_FROM_KNOWLEDGE",
+    knowledgeHandoff: measureKnowledgeHandoff(),
+  }), []);
   const close = useCallback((id) => dispatch({ type: "CLOSE", id }), []);
   const activate = useCallback((id) => dispatch({ type: "ACTIVATE", id }), []);
   const minimize = useCallback((id) => dispatch({ type: "MINIMIZE", id }), []);

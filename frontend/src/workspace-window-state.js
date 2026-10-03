@@ -1,5 +1,6 @@
 export const WORKSPACE_LAYOUT_VERSION = 1;
 export const WORKSPACE_LAYOUT_STORAGE_KEY = "jarvis.workspace.windows.v1";
+const KNOWLEDGE_HANDOFF_MIN_WIDTH = 520;
 
 export const WORKSPACE_WINDOW_DEFINITIONS = Object.freeze({
   agent: Object.freeze({
@@ -87,6 +88,10 @@ function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
+function sameBounds(left, right) {
+  return Boolean(left && right && Object.keys(right).every((key) => left[key] === right[key]));
+}
+
 export function normalizeWorkspaceViewport(viewport = {}) {
   const width = Math.max(320, Math.round(finiteNumber(viewport.width, DEFAULT_VIEWPORT.width)));
   const height = Math.max(240, Math.round(finiteNumber(viewport.height, DEFAULT_VIEWPORT.height)));
@@ -135,7 +140,7 @@ export function getDefaultWindowBounds(id, viewportInput) {
   }, viewport);
 }
 
-export function constrainWindowBounds(id, boundsInput, viewportInput) {
+export function constrainWindowBounds(id, boundsInput, viewportInput, options = {}) {
   const definition = WORKSPACE_WINDOW_DEFINITIONS[id];
   if (!definition) throw new Error(`Unknown workspace window: ${id}`);
   const viewport = normalizeWorkspaceViewport(viewportInput);
@@ -147,7 +152,10 @@ export function constrainWindowBounds(id, boundsInput, viewportInput) {
     height: Math.min(definition.heightLimit, available.height),
   };
   const bounds = boundsInput && typeof boundsInput === "object" ? boundsInput : fallback;
-  const minimumWidth = Math.min(definition.minimumWidth, available.width);
+  const requestedMinimumWidth = Number.isFinite(options.minimumWidth)
+    ? Math.min(definition.minimumWidth, Math.max(1, options.minimumWidth))
+    : definition.minimumWidth;
+  const minimumWidth = Math.min(requestedMinimumWidth, available.width);
   const minimumHeight = Math.min(definition.minimumHeight, available.height);
   const width = clamp(
     Math.round(finiteNumber(bounds.width, fallback.width)),
@@ -192,13 +200,22 @@ function normalizePersistedLayout(value) {
 export function createWorkspaceWindowState(viewportInput, persistedLayout = null) {
   const viewport = normalizeWorkspaceViewport(viewportInput);
   const persistedWindows = normalizePersistedLayout(persistedLayout);
+  const savedViewport = persistedWindows && persistedLayout?.viewport
+    && typeof persistedLayout.viewport === "object"
+    ? normalizeWorkspaceViewport(persistedLayout.viewport)
+    : null;
   const windows = {};
 
   WORKSPACE_WINDOW_IDS.forEach((id) => {
     const definition = WORKSPACE_WINDOW_DEFINITIONS[id];
     const persisted = persistedWindows?.[id];
+    const knowledgePlaced = id === "agent" && persisted?.autoPlacement === "knowledge";
     const defaultBounds = getDefaultWindowBounds(id, viewport);
-    const bounds = constrainWindowBounds(id, persisted?.bounds ?? defaultBounds, viewport);
+    const savedDefault = savedViewport && getDefaultWindowBounds(id, savedViewport);
+    const wasDefault = !knowledgePlaced && !persisted?.maximized
+      && sameBounds(persisted?.bounds, savedDefault);
+    const bounds = constrainWindowBounds(id, wasDefault ? defaultBounds : persisted?.bounds ?? defaultBounds, viewport,
+      knowledgePlaced ? { minimumWidth: KNOWLEDGE_HANDOFF_MIN_WIDTH } : undefined);
     const restoreBounds = persisted?.restoreBounds
       ? constrainWindowBounds(id, persisted.restoreBounds, viewport)
       : null;
@@ -209,7 +226,7 @@ export function createWorkspaceWindowState(viewportInput, persistedLayout = null
       maximized: persisted?.maximized === true,
       bounds,
       restoreBounds,
-      knowledgePlaced: id === "agent" && persisted?.autoPlacement === "knowledge",
+      knowledgePlaced,
       zIndex: definition.order,
     };
   });
@@ -254,12 +271,12 @@ function activateWindow(state, id, patch = {}) {
   };
 }
 
-function placeAgentBesideKnowledge(state) {
+function placeAgentBesideKnowledge(state, handoff) {
   const current = state.windows.agent;
-  if (!current || current.maximized) return state;
+  if (!current || current.maximized || !handoff) return state;
 
-  // The Knowledge browser uses a 330px panel, 24px from the left edge.
-  // Only move the untouched default layout; a manually arranged window wins.
+  // The browser and right-side panels are measured after CSS layout. Only move
+  // the untouched default layout; a manually arranged window wins.
   const defaultBounds = getDefaultWindowBounds("agent", state.viewport);
   if (!current.knowledgePlaced
     && Object.keys(defaultBounds).some((key) => current.bounds[key] !== defaultBounds[key])) {
@@ -267,13 +284,25 @@ function placeAgentBesideKnowledge(state) {
   }
 
   const available = availableWorkspace(state.viewport);
-  const panelRight = available.x + 24 + 330;
   const minimumGap = 24;
   const rightMargin = 24;
-  const targetBounds = current.knowledgePlaced ? defaultBounds : current.bounds;
-  const fitsBesideSource = available.width
-    >= 24 + 330 + minimumGap + targetBounds.width + rightMargin;
-  if (!fitsBesideSource && !current.knowledgePlaced) return state;
+  const sourceRight = Number(handoff.sourceRight);
+  const rightBoundary = Number(handoff.rightBoundary);
+  if (!Number.isFinite(sourceRight) || !Number.isFinite(rightBoundary)) return state;
+  const x = Math.max(available.x + rightMargin, Math.ceil(sourceRight + minimumGap));
+  const fitsBesideSource = x + KNOWLEDGE_HANDOFF_MIN_WIDTH
+    <= Math.min(available.x + available.width, rightBoundary) - rightMargin;
+
+  const sidePanelWidth = Math.max(
+    KNOWLEDGE_HANDOFF_MIN_WIDTH,
+    Math.floor(rightBoundary - x - rightMargin),
+  );
+  const width = Math.min(defaultBounds.width, sidePanelWidth);
+  const focusX = Math.max(available.x + rightMargin,
+    Math.floor(rightBoundary - defaultBounds.width - rightMargin));
+  const focusedBounds = focusX + defaultBounds.width + rightMargin <= rightBoundary
+    ? constrainWindowBounds("agent", { ...defaultBounds, x: focusX }, state.viewport)
+    : defaultBounds;
 
   return {
     ...state,
@@ -281,14 +310,14 @@ function placeAgentBesideKnowledge(state) {
       ...state.windows,
       agent: {
         ...current,
-        knowledgePlaced: fitsBesideSource || current.knowledgePlaced,
+        knowledgePlaced: true,
         bounds: fitsBesideSource
           ? constrainWindowBounds("agent", {
-            ...targetBounds,
-            x: Math.max(panelRight + minimumGap,
-              available.x + available.width - targetBounds.width - rightMargin),
-          }, state.viewport)
-          : defaultBounds,
+            ...defaultBounds,
+            x,
+            width,
+          }, state.viewport, { minimumWidth: KNOWLEDGE_HANDOFF_MIN_WIDTH })
+          : focusedBounds,
       },
     },
   };
@@ -310,16 +339,27 @@ function hideWindow(state, id, patch) {
   };
 }
 
+function activateOrdinaryWindow(state, id) {
+  const current = state.windows[id];
+  if (id === "agent" && !current.open && current.knowledgePlaced) {
+    return activateWindow(state, id, {
+      bounds: getDefaultWindowBounds("agent", state.viewport),
+      knowledgePlaced: false,
+    });
+  }
+  return activateWindow(state, id);
+}
+
 export function workspaceWindowReducer(state, action) {
   const id = action?.id;
   switch (action?.type) {
     case "OPEN":
-      return activateWindow(state, id);
+      return activateOrdinaryWindow(state, id);
     case "OPEN_FROM_KNOWLEDGE":
-      return activateWindow(placeAgentBesideKnowledge(state), "agent");
+      return activateWindow(placeAgentBesideKnowledge(state, action.knowledgeHandoff), "agent");
     case "ACTIVATE":
     case "RESTORE":
-      return activateWindow(state, id);
+      return activateOrdinaryWindow(state, id);
     case "CLOSE":
       return hideWindow(state, id, { open: false, minimized: false });
     case "MINIMIZE":
@@ -330,7 +370,7 @@ export function workspaceWindowReducer(state, action) {
       if (current.open && state.activeId === id && !current.minimized) {
         return hideWindow(state, id, { minimized: true });
       }
-      return activateWindow(state, id);
+      return activateOrdinaryWindow(state, id);
     }
     case "TOGGLE_MAXIMIZE": {
       const current = state.windows[id];
@@ -380,16 +420,23 @@ export function workspaceWindowReducer(state, action) {
       const viewport = normalizeWorkspaceViewport(action.viewport);
       const windows = Object.fromEntries(WORKSPACE_WINDOW_IDS.map((windowId) => {
         const current = state.windows[windowId];
+        const wasDefault = !current.knowledgePlaced && !current.maximized
+          && sameBounds(current.bounds, getDefaultWindowBounds(windowId, state.viewport));
         return [windowId, {
           ...current,
-          bounds: constrainWindowBounds(windowId, current.bounds, viewport),
+          bounds: wasDefault ? getDefaultWindowBounds(windowId, viewport) : constrainWindowBounds(windowId, current.bounds, viewport,
+            windowId === "agent" && current.knowledgePlaced
+              ? { minimumWidth: KNOWLEDGE_HANDOFF_MIN_WIDTH }
+              : undefined),
           restoreBounds: current.restoreBounds
             ? constrainWindowBounds(windowId, current.restoreBounds, viewport)
             : null,
         }];
       }));
       const reflowed = { ...state, viewport, windows };
-      return windows.agent.knowledgePlaced ? placeAgentBesideKnowledge(reflowed) : reflowed;
+      return windows.agent.knowledgePlaced
+        ? placeAgentBesideKnowledge(reflowed, action.knowledgeHandoff)
+        : reflowed;
     }
     case "CYCLE": {
       const visibleIds = Object.values(state.windows)
@@ -412,6 +459,7 @@ export function workspaceWindowReducer(state, action) {
 export function serializeWorkspaceLayout(state) {
   return {
     version: WORKSPACE_LAYOUT_VERSION,
+    viewport: state.viewport,
     windows: Object.fromEntries(WORKSPACE_WINDOW_IDS.map((id) => {
       const windowState = state.windows[id];
       return [id, {

@@ -7,7 +7,9 @@
   max-height: calc(100% - 170px);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
   padding: 14px;
   border: 1px solid var(--shell-border);
   background: var(--shell-surface);
