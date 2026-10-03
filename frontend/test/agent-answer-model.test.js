@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createAgentContextPrompt } from "../src/agent-context-model.js";
 import { boundSavedMessages, createResumePrompt, getNoteSources } from "../src/agent-conversation-library.js";
-import { canExportAnswer, createAnswerMarkdown, getAnswerSources, getUnverifiedCitations, splitAnswerCitations } from "../src/agent-answer-model.js";
+import { canExportAnswer, createAnswerMarkdown, getAnswerSources, getCitationTargetLine, getUnverifiedCitations, splitAnswerCitations } from "../src/agent-answer-model.js";
 
 const note = (id, text = `Frozen ${id}`, overrides = {}) => ({ id, path: `${id}.md`, name: id,
   excerpt: { text, startLine: 2, endLine: 3, revision: `revision-${id}`, digest: `digest-${id}`, truncated: false }, ...overrides });
@@ -85,6 +85,23 @@ test("known references are interactive candidates while absent IDs remain unveri
   assert.equal(parts.map((part) => part.text).join(""), text);
   assert.deepEqual(parts.filter((part) => part.source).map((part) => part.citation), ["S1"]);
   assert.deepEqual(getUnverifiedCitations(parts), ["[S2]", "[S3]", "[S0]", "[S01]"]);
+});
+
+test("citation drawer targets absolute cited lines and falls back to the excerpt start", () => {
+  const source = { source: "S1", startLine: 40, endLine: 46 };
+  for (const [answer, expected] of [
+    ["See L43–L44 [S1] for the claim.", 43],
+    ["The claim [S1] 第45行 explains it.", 45],
+    ["The claim [S1] has no line.", 40],
+    ["See L99 [S1].", 40],
+  ]) {
+    const citation = splitAnswerCitations(answer, [source]).find((part) => part.source);
+    assert.equal(getCitationTargetLine(answer, citation, source), expected);
+  }
+  const answer = "L43 [S1] and L45 [S1]";
+  const citations = splitAnswerCitations(answer, [source]).filter((part) => part.source);
+  assert.notEqual(citations[0].offset, citations[1].offset);
+  assert.deepEqual(citations.map((part) => getCitationTargetLine(answer, part, source)), [43, 45]);
 });
 
 test("Markdown export contains this answer and its exact sent snapshots with safe source formatting", () => {

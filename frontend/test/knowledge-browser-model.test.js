@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createKnowledgeContextItem, getKnowledgeNeighborhood, searchKnowledgeNodes } from "../src/graph/knowledge-browser-model.js";
+import {
+  createKnowledgeContextItem, getKnowledgeNeighborhood, getKnowledgeSearchKey,
+  isKnowledgeBasketItemStale, searchKnowledgeNodes,
+} from "../src/graph/knowledge-browser-model.js";
 import { createAgentContextModel, createAgentPromptForContext } from "../src/agent-context-model.js";
 import { getNoteSources } from "../src/agent-conversation-library.js";
 
@@ -19,6 +22,25 @@ test("knowledge search returns all matching title/alias/tag results and pages th
 test("one and two hop scopes follow existing incoming/outgoing topology", () => {
   assert.deepEqual(getKnowledgeNeighborhood(graph, { nodeId: "b", hops: 1 }).nodes.map((node) => node.id), ["a", "b", "c"]);
   assert.equal(getKnowledgeNeighborhood(graph, { nodeId: "b", hops: 2 }).nodes.length, 4);
+});
+test("search request identity changes with query, page, tag, or source revision", () => {
+  const current = getKnowledgeSearchKey("r1", "alpha", "", 0);
+  assert.notEqual(current, getKnowledgeSearchKey("r1", "beta", "", 0));
+  assert.notEqual(current, getKnowledgeSearchKey("r1", "alpha", "", 40));
+  assert.notEqual(current, getKnowledgeSearchKey("r1", "alpha", "red", 0));
+  assert.notEqual(current, getKnowledgeSearchKey("r2", "alpha", "", 0));
+});
+test("an excerpt remains a frozen snapshot and becomes stale after a new scan", () => {
+  const item = createKnowledgeContextItem({
+    nodeId: "a", title: "Alpha", relativePath: "a.md", revision: "content-r1",
+    startLine: 8, endLine: 10, text: "Exact source text", digest: "digest",
+    capturedAt: "2026-10-03T00:00:00.000Z",
+  });
+  assert.equal(item.capturedAt, "2026-10-03T00:00:00.000Z");
+  // Graph manifests and search/read responses can use different revision domains.
+  assert.equal(isKnowledgeBasketItemStale(item, "content-r1"), false);
+  assert.equal(isKnowledgeBasketItemStale(item, "content-r2"), true);
+  assert.equal(item.excerpt.text, "Exact source text");
 });
 test("explicit note excerpts preserve frozen source ranges and citations only when staged", () => {
   const item = createKnowledgeContextItem({ nodeId: "a", title: "Alpha", relativePath: "a.md", revision: "r1",

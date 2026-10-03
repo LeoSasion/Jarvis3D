@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
@@ -55,6 +56,7 @@ public partial class MainWindow : Window
     private bool _diagnosticPanelShown;
     private bool _diagnosticWindowSwitcherShown;
     private bool _desktopReady;
+    private bool _nativeFailureVisible;
     private bool _windowSwitcherEnabled;
 
     public MainWindow()
@@ -203,7 +205,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             HostLog.Error("WebView2 initialization failed.", ex);
-            StatusText.Text = $"HOST STARTUP FAILED · {ex.Message}";
+            ShowNativeFailure("host-startup", ex.Message);
             CompleteRendererSmokeFailure(ex.GetType().Name);
         }
     }
@@ -230,9 +232,7 @@ public partial class MainWindow : Window
                         return;
                     }
 
-                    DisableTaskbarReplacement();
-                    LoadingOverlay.Visibility = Visibility.Visible;
-                    StatusText.Text = "WEBVIEW PROCESS FAILED · PRESS ESC TO EXIT";
+                    ShowNativeFailure("webview-process", args.ProcessFailedKind.ToString());
                 });
             });
 
@@ -275,7 +275,7 @@ public partial class MainWindow : Window
         if (!e.IsSuccess)
         {
             HostLog.Error($"Desktop surface navigation failed: {e.WebErrorStatus}.");
-            StatusText.Text = $"INTERFACE LOAD FAILED · {e.WebErrorStatus}";
+            ShowNativeFailure("navigation", e.WebErrorStatus.ToString());
             CompleteRendererSmokeFailure($"navigation failed: {e.WebErrorStatus}");
             return;
         }
@@ -286,11 +286,12 @@ public partial class MainWindow : Window
             if (!await WaitForDesktopSurfaceAsync())
             {
                 HostLog.Error("Desktop renderer did not become ready within the startup deadline.");
-                StatusText.Text = "INTERFACE STARTUP TIMED OUT · PRESS ESC TO EXIT";
+                ShowNativeFailure("renderer-timeout", null);
                 CompleteRendererSmokeFailure("desktop renderer readiness timed out");
                 return;
             }
 
+            if (_nativeFailureVisible) return;
             LoadingOverlay.Visibility = Visibility.Collapsed;
             if (_rendererSmokeOptions is not null)
             {
@@ -318,7 +319,7 @@ public partial class MainWindow : Window
             }
 
             HostLog.Error("Desktop renderer readiness check failed.", ex);
-            StatusText.Text = $"INTERFACE STARTUP FAILED · {ex.Message}";
+            ShowNativeFailure("renderer-startup", ex.Message);
             CompleteRendererSmokeFailure(ex.GetType().Name);
         }
     }
@@ -376,7 +377,7 @@ public partial class MainWindow : Window
         PixelRect? notificationAreaBounds,
         bool hybridAvailable)
     {
-        if (_isClosing ||
+        if (_isClosing || _nativeFailureVisible ||
             !_desktopReady ||
             !_taskbarRebindEpoch.IsCurrent(generation) ||
             _taskbarWindow is not null)
@@ -963,7 +964,7 @@ public partial class MainWindow : Window
         TimeSpan delay,
         Action? prepare = null)
     {
-        if (_isClosing || _gracefulExitGate.Requested)
+        if (_isClosing || _nativeFailureVisible || _gracefulExitGate.Requested)
         {
             return;
         }
@@ -1363,11 +1364,26 @@ public partial class MainWindow : Window
         _nativeTaskbarRestoreReason = null;
         CancelNativeTaskbarRestoreRetry();
         CloseTaskbarSurfaceAfterVerifiedNativeRestore();
+        UpdateNativeFailureRecoveryStatus();
+        _bridge?.PublishExitStatus("verified", nativeTaskbarVerified: true);
 
         if (_gracefulExitGate.ConfirmVerifiedRestore())
         {
             HostLog.Info("Native taskbar recovery was verified; completing the pending graceful exit.");
             _ = Dispatcher.BeginInvoke(Close);
+            return;
+        }
+
+        if (_nativeFailureVisible)
+        {
+            SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, reason);
+            ReportTaskbarOutcome(
+                _taskbarRebindEpoch.Current,
+                TaskbarMode.Native,
+                hybridAvailable: false,
+                fallbackReason: "The desktop renderer is unavailable; Windows remains visible.",
+                transitionReason: reason,
+                countFailure: false);
             return;
         }
 
@@ -1454,11 +1470,86 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ShowNativeFailure(string failureKind, string? diagnostic)
+    {
+        if (_isClosing || _nativeFailureVisible)
+        {
+            return;
+        }
+
+        _nativeFailureVisible = true;
+        _desktopReady = false;
+        _taskbarRebindEpoch.Invalidate();
+        CancelPendingTaskbarRebind();
+        CancelTaskbarStabilityConfirmation();
+        var restored = DisableTaskbarReplacement();
+        var chinese = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "zh";
+        NativeFailureTitle.Text = chinese ? "JARVIS 界面无法继续运行" : "JARVIS interface cannot continue";
+        NativeFailureDetail.Text = failureKind switch
+        {
+            "host-startup" => chinese
+                ? $"原生宿主启动失败：{diagnostic}"
+                : $"The native host could not start: {diagnostic}",
+            "webview-process" => chinese
+                ? $"WebView2 进程已退出（{diagnostic}）。"
+                : $"The WebView2 process stopped ({diagnostic}).",
+            "navigation" => chinese
+                ? $"界面加载失败（{diagnostic}）。"
+                : $"The interface could not load ({diagnostic}).",
+            "renderer-timeout" => chinese
+                ? "界面未能在启动时限内响应。"
+                : "The interface did not respond before the startup deadline.",
+            _ => chinese
+                ? $"界面启动失败：{diagnostic}"
+                : $"The interface could not start: {diagnostic}",
+        };
+        NativeFailureExitButton.Content = chinese ? "退出到 Windows" : "Exit to Windows";
+        NativeFailureShortcut.Text = chinese
+            ? "也可按 Esc 或 Ctrl+Shift+Q 安全退出。"
+            : "Press Esc or Ctrl+Shift+Q to exit safely.";
+        // WebView2 owns a child HWND. Hiding the HwndHost is required before
+        // WPF controls can receive mouse input above its airspace.
+        WebView.Visibility = Visibility.Collapsed;
+        LoadingOverlay.Visibility = Visibility.Collapsed;
+        NativeFailureOverlay.Visibility = Visibility.Visible;
+        UpdateNativeFailureRecoveryStatus(restored);
+        HostLog.Warning($"Native failure recovery controls visible: {failureKind}; native taskbar verified: {restored}.");
+        _ = Activate();
+        _ = NativeFailureExitButton.Focus();
+    }
+
+    private void UpdateNativeFailureRecoveryStatus(bool? verified = null)
+    {
+        if (!_nativeFailureVisible) return;
+        var chinese = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "zh";
+        var nativeVisible = verified ??
+            (!_nativeTaskbarRestorePending && NativeTaskbarController.IsPrimaryVisible());
+        NativeFailureRecovery.Text = nativeVisible
+            ? chinese
+                ? "Windows 任务栏已恢复。退出后可从 Windows 重新启动 JARVIS。"
+                : "The Windows taskbar is visible. You can restart JARVIS from Windows after exit."
+            : chinese
+                ? "正在恢复 Windows 任务栏；安全退出将等待恢复验证。"
+                : "Restoring the Windows taskbar. Safe exit will wait for verification.";
+    }
+
+    private void OnNativeFailureExitClick(object sender, RoutedEventArgs e)
+    {
+        NativeFailureExitButton.IsEnabled = false;
+        RequestSafeExit();
+    }
+
     private async void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {
             e.Handled = true;
+            if (_nativeFailureVisible)
+            {
+                NativeFailureExitButton.IsEnabled = false;
+                RequestSafeExit();
+                return;
+            }
             await ForwardEscapeToWebAsync();
             return;
         }
@@ -1502,10 +1593,12 @@ public partial class MainWindow : Window
         if (_gracefulExitGate.WaitingForVerification)
         {
             ScheduleNativeTaskbarRestoreRetry();
+            UpdateNativeFailureRecoveryStatus(false);
             return;
         }
 
         _gracefulExitGate.Request();
+        _bridge?.PublishExitStatus("requested", nativeTaskbarVerified: false);
         Dispatcher.BeginInvoke(Close);
     }
 
@@ -1519,6 +1612,8 @@ public partial class MainWindow : Window
         if (_gracefulExitGate.WaitingForVerification)
         {
             e.Cancel = true;
+            UpdateNativeFailureRecoveryStatus(false);
+            _bridge?.PublishExitStatus("restoring", nativeTaskbarVerified: false);
             return;
         }
 
@@ -1531,11 +1626,14 @@ public partial class MainWindow : Window
             if (!_gracefulExitGate.ObserveRestore(restored))
             {
                 e.Cancel = true;
+                UpdateNativeFailureRecoveryStatus(false);
+                _bridge?.PublishExitStatus("restoring", nativeTaskbarVerified: false);
                 HostLog.Warning(
                     "Graceful exit is waiting for verified Explorer taskbar recovery; " +
                     "the JARVIS taskbar remains available in the meantime.");
                 return;
             }
+            _bridge?.PublishExitStatus("verified", nativeTaskbarVerified: true);
         }
 
         _isClosing = true;

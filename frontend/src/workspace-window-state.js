@@ -173,6 +173,14 @@ export function constrainWindowBounds(id, boundsInput, viewportInput) {
   return { x, y, width, height };
 }
 
+export function moveWorkspaceWindowBounds(id, bounds, deltaX, deltaY, viewport) {
+  return constrainWindowBounds(id, {
+    ...bounds,
+    x: bounds.x + deltaX,
+    y: bounds.y + deltaY,
+  }, viewport);
+}
+
 function normalizePersistedLayout(value) {
   if (!value || typeof value !== "object" || value.version !== WORKSPACE_LAYOUT_VERSION) {
     return null;
@@ -308,6 +316,18 @@ export function workspaceWindowReducer(state, action) {
         restoreBounds: null,
         bounds: constrainWindowBounds(id, action.bounds, state.viewport),
       });
+    }
+    case "RESET_LAYOUT": {
+      const windows = Object.fromEntries(WORKSPACE_WINDOW_IDS.map((windowId) => [
+        windowId,
+        {
+          ...state.windows[windowId],
+          bounds: getDefaultWindowBounds(windowId, state.viewport),
+          restoreBounds: null,
+          maximized: false,
+        },
+      ]));
+      return { ...state, windows };
     }
     case "REFLOW": {
       const viewport = normalizeWorkspaceViewport(action.viewport);

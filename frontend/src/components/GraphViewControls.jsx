@@ -1,4 +1,4 @@
-import { ArrowResetRegular, SettingsRegular, ZoomInRegular, ZoomOutRegular } from "@fluentui/react-icons";
+import { ArrowResetRegular, DismissRegular, SettingsRegular, ZoomInRegular, ZoomOutRegular } from "@fluentui/react-icons";
 import { createPortal } from "react-dom";
 import { useDesktopTools } from "../desktop-tools-context.js";
 import { setGraphVisualSetting } from "../graphics/graph/graph-visual-settings.js";
@@ -12,6 +12,8 @@ export function GraphViewControls({
   onZoom,
   onFit,
   onReset,
+  onClear,
+  clearAction = "clearSelection",
   onOpenVisualSettings,
   visualSettingsOpen,
   visualSettingsTriggerRef,
@@ -43,6 +45,7 @@ export function GraphViewControls({
         <button type="button" onClick={() => onZoom(-0.12)} aria-label={actionLabel(dimension === 3 ? "dollyOut" : "zoomOut")} title={actionLabel(dimension === 3 ? "dollyOut" : "zoomOut")}><ZoomOutRegular aria-hidden="true" /></button>
         <button type="button" onClick={onFit} aria-label={actionLabel("fit")} title={actionLabel("fit")}>{actionLabel("fitShort")}</button>
         <button type="button" onClick={onReset} aria-label={actionLabel("resetView")} title={actionLabel("resetView")}><ArrowResetRegular aria-hidden="true" /></button>
+        {onClear ? <button type="button" onClick={onClear} aria-label={actionLabel(clearAction)} title={actionLabel(clearAction)}><DismissRegular aria-hidden="true" /></button> : null}
       </div>
       <div className="desktop-graph-tools__group">
         <button

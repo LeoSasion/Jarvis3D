@@ -316,6 +316,9 @@ export function KnowledgeGraphWorkspace({
   const [zoom, setZoom] = useState(1);
   const [depth, setDepth] = useState(720);
   const [cameraCommand, setCameraCommand] = useState(null);
+  const [coarsePointer, setCoarsePointer] = useState(
+    () => typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches,
+  );
   const cameraCommandIdRef = useRef(0);
   const canvasRef = useRef(null);
   const visualSettings = useSyncExternalStore(
@@ -353,6 +356,13 @@ export function KnowledgeGraphWorkspace({
     () => [...new Set(selectedConnections.map((connection) => connection.kind))],
     [selectedConnections],
   );
+  useEffect(() => {
+    if (typeof matchMedia === "undefined") return undefined;
+    const media = matchMedia("(pointer: coarse)");
+    const update = () => setCoarsePointer(media.matches);
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
 
   useEffect(() => {
     setQuery("");
@@ -367,10 +377,21 @@ export function KnowledgeGraphWorkspace({
     setZoom((current) => clampKnowledgeGraphZoom(current + delta));
   }, []);
 
-  const issueCameraCommand = useCallback((type) => {
+  const issueCameraCommand = useCallback((type, details = {}) => {
     cameraCommandIdRef.current += 1;
-    setCameraCommand({ id: cameraCommandIdRef.current, type });
+    setCameraCommand({
+      id: cameraCommandIdRef.current,
+      type,
+      dimension: visualSettings.view.dimension,
+      ...details,
+    });
+  }, [visualSettings.view.dimension]);
+  const consumeCameraCommand = useCallback((id) => {
+    setCameraCommand((current) => current?.id === id ? null : current);
   }, []);
+  useEffect(() => {
+    setCameraCommand((current) => current?.dimension === visualSettings.view.dimension ? current : null);
+  }, [visualSettings.view.dimension]);
 
   const toggleExploreMode = useCallback(() => {
     setExploreMode((current) => {
@@ -392,7 +413,8 @@ export function KnowledgeGraphWorkspace({
   const focusNode = useCallback((node) => {
     if (!node) return;
     setSelectedNodeId(node.id);
-  }, []);
+    issueCameraCommand("focus-node", { nodeId: node.id });
+  }, [issueCameraCommand]);
 
   const activateNode = useCallback((node) => {
     if (!node) return;
@@ -403,13 +425,14 @@ export function KnowledgeGraphWorkspace({
   }, [focusNode, toggleGroup]);
 
   const resetView = useCallback(() => {
-    setQuery("");
-    setCollapsedIds([]);
-    setSelectedNodeId(null);
-    setHoveredNodeId(null);
     if (visualSettings.view.dimension === 2) setZoom(1);
     issueCameraCommand("reset");
   }, [issueCameraCommand, visualSettings.view.dimension]);
+  const clearSearchAndSelection = useCallback(() => {
+    setQuery("");
+    setSelectedNodeId(null);
+    setHoveredNodeId(null);
+  }, []);
 
   const selectedContextItem = getKnowledgeGraphNodeContextItem(selectedNode);
   const sourceModeLabel = platformKind === "windows" && !graph.source.simulation
@@ -450,6 +473,15 @@ export function KnowledgeGraphWorkspace({
           <span>{t("graph.workspace.facts.relations", { count: graph.relationCount })}</span>
           <span>{sourceModeLabel}</span>
         </div>
+        <details className="knowledge-workspace__source-badge">
+          <summary>{t("graph.workspace.source.badge", { count: graph.visibleEntryCount })}</summary>
+          <div>
+            <strong>{graph.source.sourceName}</strong>
+            <span>{t("graph.workspace.facts.visible", { count: graph.visibleEntryCount })}</span>
+            <span>{t("graph.workspace.facts.relations", { count: graph.relationCount })}</span>
+            <span>{sourceModeLabel}</span>
+          </div>
+        </details>
         {!exploreMode ? (
           <button
             ref={visualSettingsTriggerRef}
@@ -472,6 +504,7 @@ export function KnowledgeGraphWorkspace({
           ? issueCameraCommand(delta > 0 ? "dolly-in" : "dolly-out") : changeZoom(delta)}
         onFit={() => issueCameraCommand("fit")}
         onReset={resetView}
+        onClear={clearSearchAndSelection}
         onOpenVisualSettings={onOpenVisualSettings}
         visualSettingsOpen={visualSettingsOpen}
         visualSettingsTriggerRef={visualSettingsTriggerRef}
@@ -490,6 +523,7 @@ export function KnowledgeGraphWorkspace({
           <CoreVisualCanvas
             onCameraViewChange={(view) => view.dimension === 2 ? setZoom(view.zoom) : setDepth(view.depth)}
             cameraCommand={cameraCommand}
+            onCameraCommandConsumed={consumeCameraCommand}
             fallback={<GraphFallback />}
             graph={sceneGraph}
             hoveredNodeId={hoveredNodeId}
@@ -556,7 +590,7 @@ export function KnowledgeGraphWorkspace({
       ) : (
         <p className="knowledge-workspace__hint">
           {exploreMode
-            ? t("graph.workspace.hint.explore")
+            ? t(`graph.workspace.hint.${visualSettings.view.dimension}d.${coarsePointer ? "touch" : "pointer"}`)
             : t("graph.workspace.hint.background")}
         </p>
       )}

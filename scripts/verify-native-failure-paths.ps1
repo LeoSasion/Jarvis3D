@@ -24,6 +24,23 @@ public static class JarvisFailureValidationNative
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string className, string title);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr window, uint message, IntPtr word, IntPtr value);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extraInfo);
+    [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extraInfo);
+    public static IntPtr FindOwnedHost(uint expectedProcessId)
+    {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((window, _) => {
+            uint owner; GetWindowThreadProcessId(window, out owner);
+            if (owner != expectedProcessId) return true;
+            var title = new StringBuilder(128); GetWindowText(window, title, title.Capacity);
+            if (title.ToString() != "JARVIS") return true;
+            found = window;
+            return false;
+        }, IntPtr.Zero);
+        return found;
+    }
     public static bool CloseOwnedHost(uint expectedProcessId)
     {
         bool sent = false;
@@ -39,6 +56,39 @@ public static class JarvisFailureValidationNative
     }
 }
 '@
+
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+
+function Invoke-NativeFailureExit {
+    param([uint32]$ProcessId, [ValidateSet('keyboard', 'mouse')][string]$InputMethod)
+    $window = [JarvisFailureValidationNative]::FindOwnedHost($ProcessId)
+    if ($window -eq [IntPtr]::Zero) { throw 'Owned Host window was not found.' }
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($window)
+    $condition = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
+        'NativeFailureExitButton')
+    $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+    if ($null -eq $button -or $button.Current.IsOffscreen) {
+        throw 'Native failure exit button is not visible to Windows accessibility.'
+    }
+    [JarvisFailureValidationNative]::SetForegroundWindow($window) | Out-Null
+    Start-Sleep -Milliseconds 200
+    if ($InputMethod -eq 'keyboard') {
+        [JarvisFailureValidationNative]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero)
+        [JarvisFailureValidationNative]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero)
+        return
+    }
+    $bounds = $button.Current.BoundingRectangle
+    if ($bounds.Width -lt 20 -or $bounds.Height -lt 20) { throw 'Native failure exit button has invalid bounds.' }
+    $x = [int][Math]::Round($bounds.Left + $bounds.Width / 2)
+    $y = [int][Math]::Round($bounds.Top + $bounds.Height / 2)
+    if (-not [JarvisFailureValidationNative]::SetCursorPos($x, $y)) {
+        throw 'Unable to position the cursor over the native failure exit button.'
+    }
+    [JarvisFailureValidationNative]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    [JarvisFailureValidationNative]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+}
 
 function Assert-NativeShell {
     $taskbar = [JarvisFailureValidationNative]::FindWindow('Shell_TrayWnd', $null)
@@ -81,7 +131,7 @@ Assert-NativeShell
 $before = Get-ProductionStateFingerprint
 $results = [Collections.Generic.List[object]]::new()
 
-foreach ($scenario in @('startup-timeout', 'webview-browser-crash', 'full-mode-webview-browser-crash', 'startup-interruption')) {
+foreach ($scenario in @('startup-timeout', 'startup-timeout-mouse', 'webview-browser-crash', 'full-mode-webview-browser-crash', 'startup-interruption')) {
     $dataRoot = New-NativeValidationDataRoot
     $process = $null
     $forcedCleanup = $false
@@ -91,11 +141,18 @@ foreach ($scenario in @('startup-timeout', 'webview-browser-crash', 'full-mode-w
             New-Item -ItemType Directory -Path (Join-Path $dataRoot 'Settings') | Out-Null
             [IO.File]::WriteAllText((Join-Path $dataRoot 'Settings\taskbar-mode.json'), '{"mode":"full"}')
         }
-        $process = Start-NativeValidationHost -HostPath $HostPath -DataRoot $dataRoot -SafeMode:(!$fullMode) -StartupTimeout:($scenario -eq 'startup-timeout')
+        $process = Start-NativeValidationHost -HostPath $HostPath -DataRoot $dataRoot -SafeMode:(!$fullMode) -StartupTimeout:($scenario -like 'startup-timeout*')
         $sessionId = $process.SessionId
         $logPath = Join-Path $dataRoot 'Logs\jarvis-host.log'
-        if ($scenario -eq 'startup-timeout') {
+        if ($scenario -like 'startup-timeout*') {
             Wait-ValidationLog -Path $logPath -Process $process -Pattern 'Desktop renderer did not become ready within the startup deadline'
+            if ($scenario -eq 'startup-timeout-mouse') {
+                $browser = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($process.Id) AND Name='msedgewebview2.exe'" |
+                    Where-Object { $_.CommandLine -notmatch '--type=' })
+                if ($browser.Count -ne 1) { throw 'Expected an owned live WebView2 browser during startup timeout.' }
+                $ownedBrowser = Get-Process -Id $browser[0].ProcessId -ErrorAction Stop
+                if ($ownedBrowser.HasExited) { throw 'WebView2 was not alive for the startup timeout mouse test.' }
+            }
         }
         elseif ($scenario -match 'webview-browser-crash') {
             Wait-ValidationLog -Path $logPath -Process $process -Pattern 'Desktop surface is ready; evaluating the requested taskbar mode'
@@ -126,7 +183,12 @@ foreach ($scenario in @('startup-timeout', 'webview-browser-crash', 'full-mode-w
             Wait-ValidationLog -Path $logPath -Process $process -Pattern 'Desktop window loaded; initializing WebView2'
         }
         Assert-NativeShell
-        if (-not [JarvisFailureValidationNative]::CloseOwnedHost([uint32]$process.Id)) {
+        if ($scenario -ne 'startup-interruption') {
+            Wait-ValidationLog -Path $logPath -Process $process -Pattern 'Native failure recovery controls visible' -Seconds 15
+            $inputMethod = if ($scenario -eq 'startup-timeout') { 'keyboard' } else { 'mouse' }
+            Invoke-NativeFailureExit -ProcessId ([uint32]$process.Id) -InputMethod $inputMethod
+        }
+        elseif (-not [JarvisFailureValidationNative]::CloseOwnedHost([uint32]$process.Id)) {
             throw 'The owned Host did not accept the safety exit request.'
         }
         if (-not $process.WaitForExit(20000)) { throw 'The owned Host exceeded its shutdown deadline.' }
@@ -135,7 +197,7 @@ foreach ($scenario in @('startup-timeout', 'webview-browser-crash', 'full-mode-w
         $ledger = Get-Content -LiteralPath $ledgerPath -Raw | ConvertFrom-Json
         if ($null -ne $ledger.activeRunId -or $null -ne $ledger.activeProcessId) { throw 'Shutdown left an active startup ledger.' }
         Assert-NativeShell
-        $results.Add([ordered]@{ scenario = $scenario; passed = $true; nativeTaskbarVisible = $true; cleanExit = $true })
+        $results.Add([ordered]@{ scenario = $scenario; passed = $true; nativeTaskbarVisible = $true; cleanExit = $true; exitInput = if ($scenario -eq 'startup-interruption') { 'owned-wm-close' } elseif ($scenario -eq 'startup-timeout') { 'keyboard-escape' } else { 'mouse-click' } })
     }
     finally {
         if ($null -ne $process -and -not $process.HasExited) {

@@ -12,8 +12,8 @@ import {
   SquareMultipleRegular,
   SubtractRegular,
 } from "@fluentui/react-icons";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { getLatestAgentRelationMessage } from "../agent-context-model.js";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { getAgentSourceLabelKey, getLatestAgentRelationMessage } from "../agent-context-model.js";
 import { getAgentProviderLabel } from "../agent-provider-model.js";
 import {
   AGENT_CAPABILITIES,
@@ -29,6 +29,8 @@ import { AgentConversationLibrary } from "./AgentConversationLibrary.jsx";
 import { getNoteSources, getUserDirective } from "../agent-conversation-library.js";
 import { getAnswerSources } from "../agent-answer-model.js";
 import { AgentAnswer } from "./AgentAnswer.jsx";
+import { AgentSourceLines } from "./AgentSourceLines.jsx";
+import "./agent-conversation-improvements.css";
 
 const STATUS_COPY_KEYS = Object.freeze({
   unavailable: "agent.status.offline",
@@ -135,13 +137,19 @@ function messageDisplayText(message) {
   return message?.role === "user" ? getUserDirective(text) : text;
 }
 
-function SourceExcerpts({ sources, t, pending = false }) {
+function SourceExcerpts({ sources, t, phase = "complete", onReattach }) {
   if (!sources.length) return null;
-  return <details className="agent-source-excerpts"><summary>{t(pending ? "knowledge.agent.pendingSources" : "knowledge.agent.sources")} ({sources.length})</summary>
-    {sources.map((source, index) => <details key={`${source.path}-${index}`}>
-      <summary>[{source.source ?? `S${index + 1}`}] {source.title ?? source.name} · {source.path} · L{source.startLine}–{source.endLine}</summary>
-      <pre>{source.text}</pre>
-    </details>)}
+  return <details className="agent-source-excerpts" open={phase === "staged" || undefined}>
+    <summary>{t(getAgentSourceLabelKey(phase))} ({sources.length})</summary>
+    <div className="agent-source-excerpts__panel">
+      {onReattach ? <button type="button" onClick={() => onReattach(sources)}>
+        {t("agent.context.action.reattach")}
+      </button> : null}
+      {sources.map((source, index) => <details key={`${source.path}-${index}`}>
+        <summary>[{source.source ?? `S${index + 1}`}] {source.title ?? source.name} · {source.path} · L{source.startLine}–{source.endLine}</summary>
+        <AgentSourceLines source={source} />
+      </details>)}
+    </div>
   </details>;
 }
 
@@ -161,6 +169,7 @@ function LinkedContextEvent({
   selectionItems,
   chatAvailable = true,
   onLinkSelection,
+  onReattach,
   onClear,
   t,
 }) {
@@ -203,33 +212,40 @@ function LinkedContextEvent({
     label: t(copyKeys.label),
     detail: t(copyKeys.detail),
   };
+  const historical = ["complete", "error", "aborted"].includes(phase);
+  const compact = phase !== "staged";
+  const excerpts = items.filter((item) => item.excerpt)
+    .map((item) => ({ title: item.name, path: item.path, ...item.excerpt }));
   return (
     <section
-      className={`agent-linked-context is-${phase}`}
+      className={`agent-linked-context is-${phase}${compact ? " is-compact" : ""}`}
       aria-label={t(items.some((item) => item.excerpt) ? "knowledge.agent.contextAria" : "agent.context.linked.aria", { status: copy.label })}
     >
       <span className="agent-flow-node" aria-hidden="true"><DocumentRegular /></span>
-      <span className="agent-linked-context__identity">
+      <div className="agent-linked-context__identity">
         <small>{t(items.some((item) => item.excerpt) ? "knowledge.agent.contentLabel" : "agent.context.linked.metadataLabel")}</small>
         <strong>
-          {items.length === 1
-            ? items[0].name
-            : t("agent.context.linked.items", { count: items.length })}
+          {compact ? copy.label : items.length === 1
+            ? items[0].name : t("agent.context.linked.items", { count: items.length })}
         </strong>
         <code>
-          {items.length === 1
-            ? items[0].path
-            : t("agent.context.linked.snapshots", { count: items.length })}
+          {compact ? t("agent.context.linked.items", { count: items.length }) : items.length === 1
+            ? items[0].path : t("agent.context.linked.snapshots", { count: items.length })}
         </code>
-        {items.some((item) => item.excerpt) ? <>
+        {!compact && excerpts.length ? <>
           <p>{t("knowledge.agent.scope")}</p>
-          <SourceExcerpts t={t} pending={phase === "staged"} sources={items.filter((item) => item.excerpt).map((item) => ({ title: item.name, path: item.path, ...item.excerpt }))} />
+          <SourceExcerpts t={t} phase="staged" sources={excerpts} />
         </> : null}
-      </span>
-      <span className="agent-linked-context__state" role="status">
-        <strong>{copy.label}</strong>
+      </div>
+      <div className="agent-linked-context__state" role="status">
+        {!compact ? <strong>{copy.label}</strong> : null}
         <small>{copy.detail}</small>
-      </span>
+      </div>
+      {compact && excerpts.length ? <SourceExcerpts t={t} phase={phase} sources={excerpts} /> : null}
+      {historical ? <button type="button" className="agent-linked-context__reattach"
+        onClick={() => onReattach?.(items)} disabled={!chatAvailable}>
+        {t("agent.context.action.reattach")}
+      </button> : null}
       <button
         type="button"
         onClick={onClear}
@@ -272,8 +288,14 @@ export function AgentConversationWindow({
   const transcriptRef = useRef(null);
   const composerRef = useRef(null);
   const alertRef = useRef(null);
+  const sourceDrawerRef = useRef(null);
+  const sourcePanelId = useId();
+  const nearBottomRef = useRef(true);
+  const previousMessageCountRef = useRef(messages.length);
   const messageStatusesRef = useRef(new Map());
   const [transcriptAnnouncement, setTranscriptAnnouncement] = useState(null);
+  const [sourceDrawer, setSourceDrawer] = useState(null);
+  const [newContent, setNewContent] = useState(false);
   const answerSources = useMemo(() => getAnswerSources(messages), [messages]);
   const status = state?.status ?? "unavailable";
   const errorView = useMemo(
@@ -357,8 +379,25 @@ export function AgentConversationWindow({
   useEffect(() => {
     const transcript = transcriptRef.current;
     if (!transcript) return;
-    transcript.scrollTop = transcript.scrollHeight;
+    if (messages.length < previousMessageCountRef.current) {
+      nearBottomRef.current = true;
+      setNewContent(false);
+    }
+    previousMessageCountRef.current = messages.length;
+    if (nearBottomRef.current) transcript.scrollTop = transcript.scrollHeight;
+    else setNewContent(true);
   }, [messages]);
+
+  useEffect(() => {
+    if (!sourceDrawer) return;
+    sourceDrawerRef.current?.focus({ preventScroll: true });
+    sourceDrawerRef.current?.querySelector(`[data-source-line="${sourceDrawer.line}"]`)
+      ?.scrollIntoView({ block: "center" });
+  }, [sourceDrawer]);
+
+  useEffect(() => {
+    setSourceDrawer(null);
+  }, [library?.current.id]);
 
   useEffect(() => {
     if (!state?.error && !historyErrorText) return undefined;
@@ -379,6 +418,11 @@ export function AgentConversationWindow({
     && linkedFlowPhase === "staged";
   const hasLinkedContextControl = Boolean(linkedContext?.items?.length)
     || Boolean(explorerSelection?.length);
+  const closeSourceDrawer = () => {
+    const trigger = sourceDrawer?.trigger;
+    setSourceDrawer(null);
+    window.requestAnimationFrame(() => trigger?.isConnected && trigger.focus({ preventScroll: true }));
+  };
   useEffect(() => {
     if (!linkedContextKey) return;
     window.requestAnimationFrame(() => composerRef.current?.focus());
@@ -403,7 +447,7 @@ export function AgentConversationWindow({
   return (
     <div className="agent-layer">
       <section
-        className="agent-workbench"
+        className={`agent-workbench${sourceDrawer ? " has-source-drawer" : ""}`}
         role="dialog"
         aria-modal="false"
         aria-label={t("agent.accessibility.window")}
@@ -423,6 +467,7 @@ export function AgentConversationWindow({
           <span className={`agent-runtime-state is-${visualStatus}`} role="status">
             <i />{statusCopy}
           </span>
+          <AgentConversationLibrary library={library} busy={isRunning || sessionTransitioning} />
           <button
             type="button"
             data-no-window-drag
@@ -484,9 +529,13 @@ export function AgentConversationWindow({
           aria-live="off"
           data-linked-scroll-viewport="agent"
           aria-label={t("agent.accessibility.transcript")}
+          onScroll={(event) => {
+            const target = event.currentTarget;
+            nearBottomRef.current = target.scrollHeight - target.clientHeight - target.scrollTop < 96;
+            if (nearBottomRef.current) setNewContent(false);
+          }}
         >
           <SystemNotice notice={notice} onDismiss={onDismissNotice} placement="inline" />
-          <AgentConversationLibrary library={library} busy={isRunning || sessionTransitioning} />
           {state?.error || historyErrorText ? (
             <div ref={alertRef} className="agent-alert-region has-alert" role="alert">
               {state?.error ? (
@@ -506,6 +555,7 @@ export function AgentConversationWindow({
           ) : null}
           {messages.length ? messages.map((message, index) => {
             const linkedRelation = message.id === linkedRelationMessageId;
+            const messageSources = message.role === "user" ? getNoteSources(message.text) : [];
             const reusableResult = linkedRelation
               && message.role === "assistant"
               && linkedFlowPhase === "complete";
@@ -527,9 +577,17 @@ export function AgentConversationWindow({
                 <div className="agent-message__group">
                   <div className="agent-message__bubble">
                     {message.role === "assistant"
-                      ? <AgentAnswer message={message} sources={answerSources.get(message.id)} t={t} />
+                      ? <AgentAnswer message={message} sources={answerSources.get(message.id) ?? []} t={t}
+                        sourcePanelId={sourcePanelId} selectedCitation={sourceDrawer}
+                        onOpenSource={(selection) => setSourceDrawer((previous) =>
+                          previous?.messageId === selection.messageId && previous?.offset === selection.offset
+                            ? null : selection)} />
                       : <p>{messageDisplayText(message)}</p>}
-                    {message.role === "user" ? <SourceExcerpts sources={getNoteSources(message.text)} t={t} /> : null}
+                    {message.role === "user" ? <SourceExcerpts sources={messageSources} t={t}
+                      onReattach={supportsChat ? (sources) => onLinkExplorerSelection?.(sources.map((source) => ({
+                        id: source.path, path: source.path, name: source.title, kind: "document",
+                        typeLabel: "Note", excerpt: source,
+                      }))) : undefined} /> : null}
                   </div>
                   <footer className="agent-message__meta">
                     <span>{messageLabel(message.role, providerLabel, t)}</span>
@@ -594,6 +652,20 @@ export function AgentConversationWindow({
             </div>
           )}
         </div>
+        {sourceDrawer ? <aside id={sourcePanelId} ref={sourceDrawerRef} tabIndex={-1}
+          className="agent-source-drawer"
+          aria-label={t("agent.answer.sourceSnapshot", { citation: `[${sourceDrawer.source.source}]` })}
+          onKeyDown={(event) => { if (event.key === "Escape") closeSourceDrawer(); }}>
+          <header>
+            <div><small>{t("agent.context.historicalSources")}</small>
+              <strong>[{sourceDrawer.source.source}] {sourceDrawer.source.title}</strong></div>
+            <button type="button" onClick={closeSourceDrawer}>{t("agent.answer.closeSource")}</button>
+          </header>
+          <p className="agent-source-drawer__path">{sourceDrawer.source.path} · L{sourceDrawer.source.startLine}–{sourceDrawer.source.endLine}</p>
+          <p>{t("agent.answer.snapshotNotice")}</p>
+          {sourceDrawer.source.truncated ? <p>{t("agent.answer.truncated")}</p> : null}
+          <AgentSourceLines source={sourceDrawer.source} targetLine={sourceDrawer.line} />
+        </aside> : null}
         <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
           {transcriptAnnouncement ? (
             <span key={transcriptAnnouncement}>
@@ -603,14 +675,21 @@ export function AgentConversationWindow({
         </div>
 
         <form className="agent-composer" onSubmit={submit}>
+          {newContent ? <button type="button" className="agent-new-content" onClick={() => {
+            const transcript = transcriptRef.current;
+            if (transcript) transcript.scrollTop = transcript.scrollHeight;
+            nearBottomRef.current = true;
+            setNewContent(false);
+          }}>{t("agent.transcript.newContent")}</button> : null}
           {hasLinkedContextControl ? (
-            <div className="agent-composer__attachments">
+            <div className={`agent-composer__attachments${linkedFlowPhase === "staged" ? " is-pending" : ""}`}>
               <LinkedContextEvent
                 context={linkedContext}
                 phase={linkedFlowPhase}
                 selectionItems={explorerSelection}
                 chatAvailable={supportsChat}
                 onLinkSelection={onLinkExplorerSelection}
+                onReattach={onLinkExplorerSelection}
                 onClear={onClearLinkedContext}
                 t={t}
               />

@@ -10,6 +10,8 @@ import { getGraphCameraZoom } from "../graphics-runtime-policy.js";
 import { useGraphicsRuntimeContext } from "../runtime/runtime-context.js";
 
 import { graphWheelDepth, graphWheelPixels, graphWheelZoom } from "./graph-camera-input.js";
+import { consumePendingGraphFocus, shouldApplyGraphCameraCommand } from "./graph-camera-command.js";
+import { getGraphPlanarCameraTarget, getGraphVisibleViewport, measureGraphViewportInsets } from "./graph-camera-viewport.js";
 
 const MIN_POLAR_ANGLE = 0.12;
 const MAX_POLAR_ANGLE = Math.PI - 0.12;
@@ -45,11 +47,14 @@ function copyView(camera, target) {
 export function GraphCameraNavigation({
   command = null,
   dimension = 2,
+  getNodePosition,
   getPositions,
   interactive = false,
+  layoutReady = false,
   frozen = false,
   reducedMotion = false,
   zoom = 1,
+  onCommandConsumed,
   onViewChange,
 }) {
   const { t } = useLanguage();
@@ -85,7 +90,18 @@ export function GraphCameraNavigation({
   });
   const tweenRef = useRef(null);
   const dragRef = useRef(null);
-  const lastCommandIdRef = useRef(command?.id ?? null);
+  const pointersRef = useRef(new Map());
+  const gestureRef = useRef(null);
+  const lastCommandIdRef = useRef(camera.userData.graphLastCommandId ?? null);
+  const consumeCommand = useCallback((id) => {
+    lastCommandIdRef.current = id;
+    camera.userData.graphLastCommandId = id;
+    onCommandConsumed?.(id);
+  }, [camera, onCommandConsumed]);
+  const cancelPendingFocus = useCallback(() => {
+    const consumedId = consumePendingGraphFocus(command, lastCommandIdRef.current, dimension);
+    if (consumedId !== lastCommandIdRef.current) consumeCommand(consumedId);
+  }, [command, consumeCommand, dimension]);
   useEffect(() => {
     if (frozen) { tweenRef.current = null; dragRef.current = null; }
   }, [frozen]);
@@ -115,33 +131,73 @@ export function GraphCameraNavigation({
   const fitGraph = useCallback((animate = true) => {
     const bounds = readBounds(getPositions?.(), dimension);
     if (!bounds) return;
+    const visible = getGraphVisibleViewport(size.width, size.height, measureGraphViewportInsets(gl.domElement));
     const padding = dimension === 3 ? 1.34 : 1.2;
     if (camera.isOrthographicCamera) {
       const spanX = Math.max(80, bounds.size.x * padding);
       const spanY = Math.max(80, bounds.size.y * padding);
       const baseZoom = getGraphCameraZoom(1, size.width, size.height);
-      const fitZoom = Math.max(0.1 * baseZoom, Math.min(8 * baseZoom, size.width / spanX, size.height / spanY));
+      const fitZoom = Math.max(0.1 * baseZoom, Math.min(8 * baseZoom, visible.width / spanX, visible.height / spanY));
+      const { x: centerX, y: centerY } = getGraphPlanarCameraTarget(bounds.center, fitZoom, visible);
       applyView({
-        position: new Vector3(bounds.center.x, bounds.center.y, 700),
-        target: new Vector3(bounds.center.x, bounds.center.y, 0),
+        position: new Vector3(centerX, centerY, 700),
+        target: new Vector3(centerX, centerY, 0),
         zoom: fitZoom,
       }, animate);
       return;
     }
     const radius = Math.max(80, bounds.size.length() * 0.5);
+    const verticalHalfFov = MathUtils.degToRad(camera.fov) * 0.5;
+    const horizontalHalfFov = Math.atan(Math.tan(verticalHalfFov) * size.width / Math.max(1, size.height));
     const distance = Math.min(
       3_200,
-      Math.max(180, (radius / Math.tan(MathUtils.degToRad(camera.fov) * 0.5)) * padding),
+      Math.max(180, radius * padding * Math.max(
+        size.height / (visible.height * Math.tan(verticalHalfFov)),
+        size.width / (visible.width * Math.tan(horizontalHalfFov)),
+      )),
     );
     const direction = camera.position.clone().sub(targetRef.current);
     if (direction.lengthSq() < 0.001) direction.set(0.34, 0.24, 1);
     direction.normalize();
+    const worldPerPixel = 2 * distance * Math.tan(verticalHalfFov) / Math.max(1, size.height);
+    const right = new Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    const up = new Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    const target = bounds.center.clone()
+      .addScaledVector(right, -visible.offsetX * worldPerPixel)
+      .addScaledVector(up, visible.offsetY * worldPerPixel);
     applyView({
-      position: bounds.center.clone().addScaledVector(direction, distance),
-      target: bounds.center,
+      position: target.clone().addScaledVector(direction, distance),
+      target,
       zoom: 1,
     }, animate);
-  }, [applyView, camera, dimension, getPositions, size.height, size.width]);
+  }, [applyView, camera, dimension, getPositions, gl.domElement, size.height, size.width]);
+
+  const focusNode = useCallback((nodeId) => {
+    const point = getNodePosition?.(nodeId);
+    if (!point) return false;
+    const visible = getGraphVisibleViewport(size.width, size.height, measureGraphViewportInsets(gl.domElement));
+    if (camera.isOrthographicCamera) {
+      const { x, y } = getGraphPlanarCameraTarget(point, camera.zoom, visible);
+      applyView({
+        position: new Vector3(x, y, camera.position.z),
+        target: new Vector3(x, y, 0),
+        zoom: camera.zoom,
+      });
+    } else {
+      const direction = camera.position.clone().sub(targetRef.current);
+      const distance = Math.max(80, direction.length());
+      direction.normalize();
+      const worldPerPixel = 2 * distance * Math.tan(MathUtils.degToRad(camera.fov) * 0.5)
+        / Math.max(1, size.height);
+      const right = new Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+      const up = new Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+      const target = new Vector3(point.x, point.y, point.z)
+        .addScaledVector(right, -visible.offsetX * worldPerPixel)
+        .addScaledVector(up, visible.offsetY * worldPerPixel);
+      applyView({ position: target.clone().addScaledVector(direction, distance), target, zoom: camera.zoom });
+    }
+    return true;
+  }, [applyView, camera, getNodePosition, gl.domElement, size.height, size.width, targetRef]);
 
   const resetGraph = useCallback((animate = true) => {
     applyView({
@@ -216,9 +272,15 @@ export function GraphCameraNavigation({
   useEffect(() => { publishView(); }, [publishView]);
 
   useEffect(() => {
-    if (!command || command.id === lastCommandIdRef.current) return;
-    lastCommandIdRef.current = command.id;
-    if (frozen) return;
+    if (!command || frozen) return;
+    if (!shouldApplyGraphCameraCommand(command, lastCommandIdRef.current, dimension, layoutReady)) return;
+    if (command.type === "focus-node") {
+      if (focusNode(command.nodeId)) {
+        consumeCommand(command.id);
+      }
+      return;
+    }
+    consumeCommand(command.id);
     if (command.type === "dolly-in") navigateWheel(-60);
     if (command.type === "dolly-out") navigateWheel(60);
     if (command.type === "fit") fitGraph();
@@ -229,7 +291,7 @@ export function GraphCameraNavigation({
     if (command.type === "pan-down") panBy(0, PAN_STEP);
     if (command.type === "orbit-left") orbitBy(-0.16, 0);
     if (command.type === "orbit-right") orbitBy(0.16, 0);
-  }, [command, fitGraph, frozen, navigateWheel, orbitBy, panBy, resetGraph]);
+  }, [command, consumeCommand, dimension, fitGraph, focusNode, frozen, layoutReady, navigateWheel, orbitBy, panBy, resetGraph]);
 
   useEffect(() => {
     const canvas = gl.domElement;
@@ -242,7 +304,7 @@ export function GraphCameraNavigation({
     canvas.tabIndex = 0;
     canvas.setAttribute(
       "aria-label",
-      t("graph.camera.controls.aria"),
+      t(`graph.camera.controls.${dimension}d.aria`),
     );
     canvas.setAttribute(
       "aria-keyshortcuts",
@@ -251,16 +313,49 @@ export function GraphCameraNavigation({
 
     const handlePointerDown = (event) => {
       if (event.button !== 0 && event.button !== 1 && event.button !== 2) return;
+      cancelPendingFocus();
       tweenRef.current = null;
+      if (event.pointerType === "touch") {
+        pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (pointersRef.current.size === 2) {
+          const [first, second] = [...pointersRef.current.values()];
+          gestureRef.current = {
+            x: (first.x + second.x) * 0.5,
+            y: (first.y + second.y) * 0.5,
+            distance: Math.max(1, Math.hypot(first.x - second.x, first.y - second.y)),
+          };
+          dragRef.current = null;
+        }
+      }
+      if (event.pointerType !== "touch" || pointersRef.current.size === 1) {
       dragRef.current = {
         pointerId: event.pointerId,
         x: event.clientX,
         y: event.clientY,
         mode: dimension === 3 && event.button === 0 && !event.shiftKey ? "orbit" : "pan",
       };
+      }
       canvas.setPointerCapture?.(event.pointerId);
     };
     const handlePointerMove = (event) => {
+      if (event.pointerType === "touch" && pointersRef.current.has(event.pointerId)) {
+        pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (pointersRef.current.size >= 2) {
+          const [first, second] = [...pointersRef.current.values()];
+          const next = {
+            x: (first.x + second.x) * 0.5,
+            y: (first.y + second.y) * 0.5,
+            distance: Math.max(1, Math.hypot(first.x - second.x, first.y - second.y)),
+          };
+          const previous = gestureRef.current;
+          if (previous) {
+            panBy(previous.x - next.x, next.y - previous.y);
+            navigateWheel(Math.max(-240, Math.min(240, -Math.log(next.distance / previous.distance) / 0.002)));
+          }
+          gestureRef.current = next;
+          return;
+        }
+      }
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
       const deltaX = event.clientX - drag.x;
@@ -271,6 +366,18 @@ export function GraphCameraNavigation({
       else panBy(-deltaX, deltaY);
     };
     const handlePointerUp = (event) => {
+      if (event.pointerType === "touch") {
+        pointersRef.current.delete(event.pointerId);
+        gestureRef.current = null;
+        const remaining = [...pointersRef.current.entries()][0];
+        dragRef.current = remaining ? {
+          pointerId: remaining[0], x: remaining[1].x, y: remaining[1].y,
+          mode: dimension === 3 ? "orbit" : "pan",
+        } : null;
+        canvas.releasePointerCapture?.(event.pointerId);
+        publishView();
+        return;
+      }
       if (dragRef.current?.pointerId !== event.pointerId) return;
       dragRef.current = null;
       canvas.releasePointerCapture?.(event.pointerId);
@@ -278,6 +385,10 @@ export function GraphCameraNavigation({
     };
     const handleKeyDown = (event) => {
       const panAmount = event.shiftKey ? PAN_STEP * 2 : PAN_STEP;
+      const navigationKey = event.key.toLowerCase() === "f" || event.key === "0"
+        || ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key);
+      if (!navigationKey) return;
+      cancelPendingFocus();
       if (event.key.toLowerCase() === "f") fitGraph();
       else if (event.key === "0") resetGraph();
       else if (event.altKey && event.key === "ArrowLeft") orbitBy(-0.14, 0);
@@ -294,6 +405,7 @@ export function GraphCameraNavigation({
     const handleWheel = (event) => {
       event.preventDefault();
       event.stopPropagation();
+      cancelPendingFocus();
       navigateWheel(graphWheelPixels(event.deltaY, event.deltaMode, size.height));
     };
     canvas.addEventListener("wheel", handleWheel, { passive: false });
@@ -306,6 +418,8 @@ export function GraphCameraNavigation({
     canvas.addEventListener("contextmenu", preventContextMenu);
     return () => {
       dragRef.current = null;
+      pointersRef.current.clear();
+      gestureRef.current = null;
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointermove", handlePointerMove);
       canvas.removeEventListener("pointerup", handlePointerUp);
@@ -317,7 +431,7 @@ export function GraphCameraNavigation({
       canvas.removeAttribute("aria-label");
       canvas.removeAttribute("aria-keyshortcuts");
     };
-  }, [dimension, fitGraph, frozen, gl, interactive, navigateWheel, orbitBy, panBy, publishView, resetGraph, size.height, t]);
+  }, [cancelPendingFocus, dimension, fitGraph, frozen, gl, interactive, navigateWheel, orbitBy, panBy, publishView, resetGraph, size.height, t]);
 
   useFrame((_, delta) => {
     if (frozen) return;

@@ -98,7 +98,8 @@ test("Runtime settings expose one keyboard-navigable master-detail section at a 
   assert.match(runtimeSource, /activeSection === "settings-graph"/u);
   assert.match(runtimeSource, /activeSection === "settings-recovery"/u);
   assert.match(runtimeSource, /handleSettingsNavigationKeyDown/u);
-  assert.doesNotMatch(runtimeSource, /scrollIntoView/u);
+  assert.match(runtimeSource, /runtimeSettingsSubsections/u);
+  assert.match(runtimeSource, /scrollIntoView/u);
   assert.doesNotMatch(runtimeSource, /handleSettingsScroll/u);
 });
 

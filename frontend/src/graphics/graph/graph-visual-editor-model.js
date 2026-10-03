@@ -26,6 +26,7 @@ export const GRAPH_EDITOR_COPY = Object.freeze({
     reference: "Showing A. Switch to B to edit your current settings.",
     comparing: "A is a temporary reference. Switching views does not save or undo your edits.",
     results: "Search results across all categories", modified: "Parameters changed from the startup defaults",
+    clearFilters: "Clear filters",
     palette: "Color source", theme: "Follow theme", custom: "Custom colors",
   }),
   "zh-CN": Object.freeze({
@@ -36,6 +37,7 @@ export const GRAPH_EDITOR_COPY = Object.freeze({
     reference: "正在显示 A；切回 B 可继续调整当前参数。",
     comparing: "A 是临时参照，切换不会保存参照或撤销你的调整。",
     results: "在全部分类中搜索", modified: "显示与启动默认值不同的参数",
+    clearFilters: "清空筛选",
     palette: "颜色来源", theme: "跟随主题", custom: "自定义颜色",
   }),
 });

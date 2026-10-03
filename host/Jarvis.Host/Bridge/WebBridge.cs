@@ -1996,6 +1996,14 @@ internal sealed class WebBridge : IDisposable
             "The native result exceeded the bounded renderer response limit.");
     }
 
+    public void PublishExitStatus(string phase, bool nativeTaskbarVerified)
+    {
+        if (!_disposed)
+        {
+            PostEvent("lifecycle.exitStatus", new { phase, nativeTaskbarVerified });
+        }
+    }
+
     private void PostEvent(string eventName, object data)
     {
         if (AllowsEvent(eventName))

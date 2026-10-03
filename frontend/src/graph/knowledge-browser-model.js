@@ -2,6 +2,14 @@ import { MAX_AGENT_CONTENT_CHARACTERS } from "../agent-context-model.js";
 
 export const KNOWLEDGE_PAGE_SIZE = 40;
 
+export function getKnowledgeSearchKey(revision, query, tag, offset) {
+  return JSON.stringify([revision, query, tag, offset]);
+}
+
+export function isKnowledgeBasketItemStale(item, revision) {
+  return Boolean(item?.excerpt?.revision && revision && item.excerpt.revision !== revision);
+}
+
 export function searchKnowledgeNodes(graph, { query = "", tag = "", offset = 0, limit = KNOWLEDGE_PAGE_SIZE } = {}) {
   const words = query.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
   const items = (graph?.nodes ?? []).filter((node) => {
@@ -46,7 +54,7 @@ export function createKnowledgeContextItem(excerpt) {
     || !excerpt.nodeId || !excerpt.relativePath || !excerpt.revision || !excerpt.digest) return null;
   return {
     id: excerpt.nodeId, path: excerpt.relativePath, name: excerpt.title, kind: "note", typeLabel: "Markdown",
-    isDirectory: false, isLinked: true,
+    isDirectory: false, isLinked: true, capturedAt: excerpt.capturedAt ?? new Date().toISOString(),
     excerpt: {
       text: excerpt.text, startLine: excerpt.startLine, endLine: excerpt.endLine,
       revision: excerpt.revision, digest: excerpt.digest, truncated: Boolean(excerpt.truncated),

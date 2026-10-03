@@ -47,3 +47,7 @@
 实现切入点：Agent 来源状态在 `frontend/src/agent-context-model.js` 与 `frontend/src/components/AgentConversationWindow.jsx`；搜索、摘录篮在 `frontend/src/graph/KnowledgeBrowser.jsx`；图谱镜头在 `frontend/src/graph/GraphCameraNavigation.jsx`；原生失败与退出在 `host/Jarvis.Host/MainWindow.xaml.cs`。对应验证优先扩充现有前端状态测试、`scripts/verify-native-failure-paths.ps1` 和双语 `scripts/verify-renderer-smoke.ps1`。
 
 先完成 P0 的状态与恢复承诺，再把 P1 的「搜索 → 摘录 → 回答 → 核对」做成连续路径；P2 在这条路径稳定后处理设置密度、输入方式与首次使用。每个改良包应独立提交和验证，避免大规模换肤掩盖交互回归。
+
+## 实施状态 · 2026-10-03
+
+P0.1–P2.3 的界面与状态实现已完成。逐项行为、前端/Host 测试、浏览器与原生图谱回归、五种原生失败退出场景见[实施验收记录](../validation/ui-interaction-2026-10-03.md)。实体触屏、Windows 10、系统级 200% 缩放、混合 DPI、多屏与睡眠恢复仍需对应设备验收；当前合成预览不能替代真实服务商回答。

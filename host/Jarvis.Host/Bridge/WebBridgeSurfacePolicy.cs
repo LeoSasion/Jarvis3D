@@ -128,6 +128,7 @@ internal static class WebBridgeSurfacePolicy
         "explorer.transferChanged",
         "feed.snapshot",
         "knowledgeGraph.changed",
+        "lifecycle.exitStatus",
         "shell.applicationsChanged",
         "system.snapshot",
         "taskbar.snapshot",

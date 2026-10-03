@@ -11,6 +11,7 @@ const sources = Object.fromEntries(await Promise.all([
   new URL(`../src/components/${name}.jsx`, import.meta.url),
   "utf8",
 )])));
+const bootChecks = await readFile(new URL("../src/boot-checks.js", import.meta.url), "utf8");
 
 test("secondary shell surfaces subscribe to the shared language runtime", () => {
   Object.values(sources).forEach((source) => {
@@ -27,7 +28,7 @@ test("system notices translate chrome while preserving dynamic notice payloads",
 });
 
 test("boot checks and workspace controls use semantic copy keys", () => {
-  assert.match(sources.BootSequence, /labelKey: "boot\.check\.runtime\.label"/u);
+  assert.match(bootChecks, /labelKey: "boot\.check\.runtime\.label"/u);
   assert.match(sources.BootSequence, /t\(`boot\.state\.\$\{state\}`\)/u);
   assert.doesNotMatch(sources.BootSequence, /state\.toUpperCase\(\)/u);
   assert.match(sources.ManagedWorkspaceWindow, /DIRECTION_KEYS/u);

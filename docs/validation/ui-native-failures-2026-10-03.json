@@ -1,0 +1,46 @@
+{
+    "schemaVersion":  1,
+    "status":  "PASS",
+    "hostVersion":  "0.1.0+8adfeb8507a7bcec506d52ea51b2f250b912ee0c",
+    "windowsBuild":  26200,
+    "powershellVersion":  "5.1.26100.9444",
+    "scenarios":  [
+                      {
+                          "scenario":  "startup-timeout",
+                          "passed":  true,
+                          "nativeTaskbarVisible":  true,
+                          "cleanExit":  true,
+                          "exitInput":  "keyboard-escape"
+                      },
+                      {
+                          "scenario":  "startup-timeout-mouse",
+                          "passed":  true,
+                          "nativeTaskbarVisible":  true,
+                          "cleanExit":  true,
+                          "exitInput":  "mouse-click"
+                      },
+                      {
+                          "scenario":  "webview-browser-crash",
+                          "passed":  true,
+                          "nativeTaskbarVisible":  true,
+                          "cleanExit":  true,
+                          "exitInput":  "mouse-click"
+                      },
+                      {
+                          "scenario":  "full-mode-webview-browser-crash",
+                          "passed":  true,
+                          "nativeTaskbarVisible":  true,
+                          "cleanExit":  true,
+                          "exitInput":  "mouse-click"
+                      },
+                      {
+                          "scenario":  "startup-interruption",
+                          "passed":  true,
+                          "nativeTaskbarVisible":  true,
+                          "cleanExit":  true,
+                          "exitInput":  "owned-wm-close"
+                      }
+                  ],
+    "productionStateUnchanged":  true,
+    "hostProcessesAfter":  0
+}

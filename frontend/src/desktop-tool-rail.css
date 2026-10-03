@@ -189,10 +189,14 @@
 @media (max-width: 720px) {
   .jarvis-shell.is-layout-desktop .desktop-workspace .knowledge-workspace__toolbar {
     right: 0;
-    grid-template-columns: auto minmax(80px, 1fr) auto;
+    grid-template-columns: auto minmax(80px, 1fr) auto auto;
   }
 
   .knowledge-workspace__facts {
     display: none;
   }
+}
+
+@media (pointer: coarse) {
+  .desktop-tool-rail button { min-height: 44px; }
 }

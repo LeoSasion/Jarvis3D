@@ -1,8 +1,9 @@
-import { PowerRegular, SearchRegular, StopRegular } from "@fluentui/react-icons";
+import { AlertRegular, PowerRegular, SearchRegular, StopRegular } from "@fluentui/react-icons";
 import { getAgentProviderLabel, hasAgentProviderFault } from "../agent-provider-model.js";
-import { usePlatformClock } from "../hooks/usePlatformData.js";
+import { usePlatformClock, useTaskbarModeState } from "../hooks/usePlatformData.js";
 import { useLanguage } from "../i18n/language-system.js";
 import { formatClockPresentation } from "../i18n/locale-format.js";
+import { getTaskbarAttention } from "../taskbar-mode-model.js";
 import { JarvisMark } from "./VectorMarks.jsx";
 import { ScreenRecordingButton } from "./ScreenRecordingButton.jsx";
 
@@ -21,10 +22,15 @@ export function TopStatusBar({
   agentState,
   onOpenDateTime,
   onPower,
+  onOpenTaskbarSettings,
+  startupDegraded = [],
+  onOpenStartupStatus,
   onFeedback,
 }) {
   const { language, t } = useLanguage();
   const clock = usePlatformClock();
+  const taskbarMode = useTaskbarModeState();
+  const taskbarAttention = getTaskbarAttention(taskbarMode);
   const localizedClock = formatClockPresentation(clock.dateTime, language);
   const agentStatus = agentState?.status ?? "unavailable";
   const agentRunning = agentStatus === "running" || agentStatus === "starting";
@@ -79,6 +85,30 @@ export function TopStatusBar({
         ) : null}
       </div>
       <div className="topbar__zone topbar__system">
+        {startupDegraded.length ? (
+          <button
+            type="button"
+            className="topbar__taskbar-attention"
+            onClick={onOpenStartupStatus}
+            title={startupDegraded.map((id) => t(`boot.degraded.${id}.next`)).join(" ")}
+            aria-label={t("topbar.startupDegraded.aria", { count: startupDegraded.length })}
+          >
+            <AlertRegular />
+            <span>{t("topbar.startupDegraded.label")}</span>
+          </button>
+        ) : null}
+        {taskbarAttention ? (
+          <button
+            type="button"
+            className="topbar__taskbar-attention"
+            onClick={onOpenTaskbarSettings}
+            title={taskbarMode.fallbackReason ?? t(`topbar.taskbar.${taskbarAttention}.detail`)}
+            aria-label={t(`topbar.taskbar.${taskbarAttention}.aria`)}
+          >
+            <AlertRegular />
+            <span>{t(`topbar.taskbar.${taskbarAttention}.label`)}</span>
+          </button>
+        ) : null}
         <ScreenRecordingButton onFeedback={onFeedback} />
         <button type="button" className="topbar__clock" onClick={onOpenDateTime}
           aria-label={t("taskbar.clock.open", { date: localizedClock.longDate, time: localizedClock.time })}>

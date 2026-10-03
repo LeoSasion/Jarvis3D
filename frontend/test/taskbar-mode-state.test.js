@@ -8,8 +8,28 @@ import { createMockPlatform } from "../src/platform/mock-platform.js";
 import {
   canRetryTaskbarMode,
   getTaskbarCooldownRemaining,
+  getTaskbarAttention,
   getTaskbarTransitionToast,
 } from "../src/taskbar-mode-model.js";
+
+test("persistent taskbar attention reflects safe mode or a settled fallback", () => {
+  const base = {
+    loading: false,
+    simulation: false,
+    safeMode: false,
+    requestedMode: "full",
+    effectiveMode: "full",
+    transitionStatus: "settled",
+    fallbackReason: null,
+    error: null,
+  };
+  assert.equal(getTaskbarAttention(base), null);
+  assert.equal(getTaskbarAttention({ ...base, safeMode: true }), "safe-mode");
+  assert.equal(getTaskbarAttention({ ...base, effectiveMode: "native" }), "fallback");
+  assert.equal(getTaskbarAttention({ ...base, fallbackReason: "watchdog failed" }), "fallback");
+  assert.equal(getTaskbarAttention({ ...base, effectiveMode: "native", transitionStatus: "applying" }), null);
+  assert.equal(getTaskbarAttention({ ...base, safeMode: true, simulation: true }), null);
+});
 
 test("taskbar mode normalization preserves an applying transaction", () => {
   const state = normalizeTaskbarModeState({

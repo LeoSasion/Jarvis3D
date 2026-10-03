@@ -40,7 +40,7 @@ test("interactive graph canvases expose local focus treatment and passive or fro
   assert.match(navigation, /if \(!interactive \|\| frozen\) \{[\s\S]*removeAttribute\("tabindex"\)[\s\S]*removeAttribute\("aria-label"\)[\s\S]*removeAttribute\("aria-keyshortcuts"\)/u);
   assert.match(navigation, /canvas\.tabIndex = 0/u);
   assert.match(navigation, /aria-keyshortcuts/u);
-  assert.match(navigation, /t\("graph\.camera\.controls\.aria"\)/u);
+  assert.match(navigation, /t\(`graph\.camera\.controls\.\$\{dimension\}d\.aria`\)/u);
   assert.match(style, /\.graphics-runtime\.is-interactive canvas:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--signal-hot\)/su);
   assert.match(style, /@media \(forced-colors: active\)\s*\{[\s\S]*outline-color:\s*Highlight/u);
 });

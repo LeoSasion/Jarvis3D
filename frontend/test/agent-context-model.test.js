@@ -6,6 +6,7 @@ import {
   createAgentContextModel,
   createAgentContextPrompt,
   createAgentPromptForContext,
+  getAgentSourceLabelKey,
   getLatestAgentRelationMessage,
   getSuggestedAgentDirective,
   isAgentContextArmed,
@@ -115,7 +116,7 @@ test("moves through empty, staged, submitting, running, and complete phases", ()
   assert.deepEqual(model.items, []);
 });
 
-test("error and aborted phases retain context for retry while session reset clears it", () => {
+test("failed and aborted turns retain history but require explicit reattachment", () => {
   const staged = createAgentContextModel([entry("C:\\Work\\Retry.txt")]);
   let model = agentContextReducer(staged, { type: "submit", clientMessageId: "client-error" });
   model = agentContextReducer(model, {
@@ -129,12 +130,18 @@ test("error and aborted phases retain context for retry while session reset clea
     message: "The file changed.",
     retryable: true,
   });
-
+  assert.equal(isAgentContextArmed(model), false);
+  assert.equal(createAgentPromptForContext("Try again", model), "Try again");
+  assert.equal(agentContextReducer(model, { type: "submit", clientMessageId: "client-retry" }), model);
+  model = agentContextReducer(model, { type: "stage", entries: model.items,
+    relationId: "relation-retry" });
+  assert.equal(isAgentContextArmed(model), true);
   model = agentContextReducer(model, { type: "submit", clientMessageId: "client-retry" });
   model = agentContextReducer(model, { type: "run-start", runId: "run-retry" });
   model = agentContextReducer(model, { type: "aborted" });
   assert.equal(model.phase, "aborted");
   assert.equal(model.items.length, 1);
+  assert.equal(createAgentPromptForContext("Another question", model), "Another question");
 
   model = agentContextReducer(model, { type: "session-reset" });
   assert.equal(model.phase, "empty");
@@ -223,4 +230,29 @@ test("explicit relink creates a new armed relation while terminal history stays 
   assert.equal(context.relationId, "relation-new");
   assert.equal(isAgentContextArmed(context), true);
   assert.match(createAgentPromptForContext("Use the linked file", context), /METADATA ONLY/u);
+});
+
+test("staging a new selection after a completed turn never carries forward old source text", () => {
+  const old = entry("C:\\Work\\Old.md", { excerpt: { text: "OLD PRIVATE BODY", startLine: 10,
+    endLine: 10, revision: "r1", digest: "d1" } });
+  const fresh = entry("C:\\Work\\Fresh.md", { excerpt: { text: "Fresh approved line", startLine: 42,
+    endLine: 42, revision: "r2", digest: "d2" } });
+  let context = createAgentContextModel([old]);
+  context = agentContextReducer(context, { type: "submit", clientMessageId: "first" });
+  context = agentContextReducer(context, { type: "run-start", runId: "run-first" });
+  context = agentContextReducer(context, { type: "run-end", runId: "run-first", status: "complete" });
+  assert.equal(createAgentPromptForContext("Plain continuation", context), "Plain continuation");
+  context = agentContextReducer(context, { type: "stage", entries: [fresh], relationId: "fresh" });
+  const prompt = createAgentPromptForContext("Use this note", context);
+  assert.match(prompt, /Fresh approved line/u);
+  assert.doesNotMatch(prompt, /OLD PRIVATE BODY/u);
+});
+
+test("source labels distinguish next-send, current-send, and historical phases", () => {
+  assert.equal(getAgentSourceLabelKey("staged"), "knowledge.agent.pendingSources");
+  assert.equal(getAgentSourceLabelKey("submitting"), "agent.context.submittingSources");
+  assert.equal(getAgentSourceLabelKey("running"), "agent.context.sentSources");
+  for (const phase of ["complete", "error", "aborted", "restored"]) {
+    assert.equal(getAgentSourceLabelKey(phase), "agent.context.historicalSources");
+  }
 });

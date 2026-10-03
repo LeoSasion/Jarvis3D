@@ -5,11 +5,18 @@ import {
   createConversationId, createSavedConversation, mergeConversationMessages,
 } from "../agent-conversation-library.js";
 
+function saveFailureKind(reason) {
+  const message = String(reason?.message ?? "");
+  return /saved conversation changed|revision conflict/iu.test(message) ? "conflict" : "save";
+}
+
 export function useAgentConversationLibrary(liveMessages, agentState) {
   const [current, setCurrent] = useState(() => ({ id: createConversationId(), title: "", restored: [] }));
   const [entries, setEntries] = useState([]);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState(null);
+  const [listStatus, setListStatus] = useState("loading");
+  const [failedRestoreId, setFailedRestoreId] = useState(null);
   const [transitioning, setTransitioning] = useState(false);
   const latest = useRef(null);
   const saveQueue = useRef(Promise.resolve());
@@ -24,13 +31,24 @@ export function useAgentConversationLibrary(liveMessages, agentState) {
 
   const refresh = useCallback(async () => {
     if (!platform.agentConversations) return;
-    const values = await platform.agentConversations.list();
-    if (mounted.current) setEntries(values);
+    if (mounted.current) setListStatus("loading");
+    try {
+      const values = await platform.agentConversations.list();
+      if (mounted.current) {
+        setEntries(values);
+        setListStatus("ready");
+        setError((value) => value === "read" ? null : value);
+      }
+      return values;
+    } catch (reason) {
+      if (mounted.current) { setListStatus("error"); setError("read"); }
+      throw reason;
+    }
   }, []);
 
   useEffect(() => {
     mounted.current = true;
-    void refresh().catch(() => { if (mounted.current) setError("read"); });
+    void refresh().catch(() => {});
     return () => { mounted.current = false; };
   }, [refresh]);
 
@@ -54,9 +72,11 @@ export function useAgentConversationLibrary(liveMessages, agentState) {
       if (!mounted.current) return;
       setCurrent((value) => value.id === document.id ? { ...value, title: value.title || result.title } : value);
       if (sequence === saveSequence.current) { setStatus("saved"); setError(null); }
-      await refresh();
+      await refresh().catch(() => {});
     } catch (reason) {
-      if (mounted.current && sequence === saveSequence.current) { setStatus("error"); setError("save"); }
+      if (mounted.current && sequence === saveSequence.current) {
+        setStatus("error"); setError(saveFailureKind(reason));
+      }
       throw reason;
     }
   }, [refresh]);
@@ -73,8 +93,10 @@ export function useAgentConversationLibrary(liveMessages, agentState) {
     if (busyRef.current) throw new Error("AGENT_BUSY");
     busyRef.current = true;
     setTransitioning(true);
+    let stage = "save";
     try {
       await save({ force: true });
+      stage = "restore";
       const selected = id ? await platform.agentConversations.read(id) : null;
       await resetProvider();
       if (selected) {
@@ -85,8 +107,12 @@ export function useAgentConversationLibrary(liveMessages, agentState) {
         : { id: createConversationId(), title: "", restored: [] });
       setStatus(selected ? "saved" : "idle");
       setError(null);
+      setFailedRestoreId(null);
     } catch (reason) {
-      setError("restore");
+      if (stage === "restore") {
+        setError("restore");
+        setFailedRestoreId(id);
+      }
       throw reason;
     } finally {
       busyRef.current = false;
@@ -106,15 +132,16 @@ export function useAgentConversationLibrary(liveMessages, agentState) {
       revisions.current.set(id, result.revision);
       latest.current.current = { ...latest.current.current, title: normalized };
       setCurrent((value) => ({ ...value, title: normalized }));
-      await refresh();
-    } catch (reason) { setError("save"); throw reason; }
+      await refresh().catch(() => {});
+    } catch (reason) { setError(saveFailureKind(reason)); throw reason; }
     finally { busyRef.current = false; setTransitioning(false); }
   }, [refresh, save]);
 
   const remove = useCallback(async (id) => {
     if (id === latest.current.current.id) throw new Error("ACTIVE_CONVERSATION");
-    try { await platform.agentConversations.delete(id); await refresh(); }
+    try { await platform.agentConversations.delete(id); }
     catch (reason) { setError("save"); throw reason; }
+    await refresh();
   }, [refresh]);
 
   const saveCopy = useCallback(async () => {
@@ -138,11 +165,12 @@ export function useAgentConversationLibrary(liveMessages, agentState) {
       setCurrent({ ...snapshot.current, id, title: document.title });
       setStatus("saved");
       setError(null);
-      await refresh();
-    } catch (reason) { if (mounted.current) { setStatus("error"); setError("save"); } throw reason; }
+      await refresh().catch(() => {});
+    } catch (reason) { if (mounted.current) { setStatus("error"); setError(saveFailureKind(reason)); } throw reason; }
     finally { busyRef.current = false; if (mounted.current) setTransitioning(false); }
   }, [refresh]);
 
-  return { available, current, messages, entries, status, error, transitioning, busyRef,
-    resumeMessages: current.restored, change, rename, remove, save, saveCopy };
+  return { available, current, messages, entries, status, error, listStatus, failedRestoreId,
+    transitioning, busyRef, resumeMessages: current.restored,
+    refresh, change, rename, remove, save, saveCopy };
 }

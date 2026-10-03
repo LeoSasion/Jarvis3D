@@ -1,0 +1,675 @@
+{
+  "schemaVersion": 1,
+  "environment": "native-webview2",
+  "browserVersion": "154.0.4258.48",
+  "capturedAtUtc": "2026-10-03T06:52:05.2904609\u002B00:00",
+  "taskbarTouched": false,
+  "note": "Fixed-step synthetic animation; P95 is actual active frame interval, not GPU time. PNGs are browser-composited WebView captures cropped to the same CSS stage. Compare scene invariants across runtimes; review PNG encoding/pixel variance separately.",
+  "success": true,
+  "samples": [
+    {
+      "camera": {
+        "position": [
+          0,
+          0,
+          720
+        ],
+        "projection": [
+          1.4973578492694772,
+          0,
+          0,
+          0,
+          0,
+          2.2460367739042155,
+          0,
+          0,
+          0,
+          0,
+          -1.0000500012500313,
+          -1,
+          0,
+          0,
+          -0.2000050001250031,
+          0
+        ],
+        "quaternion": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "type": "PerspectiveCamera",
+        "zoom": 1
+      },
+      "canvas": {
+        "dpr": 1,
+        "height": 640,
+        "width": 960
+      },
+      "caseId": "idle",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      },
+      "frameStatistics": {
+        "count": 179,
+        "maxMs": 6.600000023841858,
+        "meanMs": 5.589385474860335,
+        "measurement": "actual active frame intervals; not GPU execution time",
+        "p50Ms": 5.5,
+        "p95Ms": 6.200000017881393
+      },
+      "frozen": true,
+      "layout": "settled",
+      "memory": {
+        "geometries": 6,
+        "programs": 7,
+        "textures": 10
+      },
+      "mount": 1,
+      "nodes": 96,
+      "positionDigest": "edaee1c6",
+      "quality": "balanced",
+      "relations": 186,
+      "render": {
+        "calls": 13,
+        "lines": 2592,
+        "points": 102,
+        "triangles": 4774
+      },
+      "shaderTime": 4,
+      "signalDigest": "1f116dc5",
+      "simulationFrames": 240,
+      "timeSeconds": 4,
+      "screenshot": "idle.png",
+      "screenshotSha256": "ed084162abd7b6aa2b797bf4855d49b1b21e7f0b3439e2f0e9c8334178e64b87"
+    },
+    {
+      "camera": {
+        "position": [
+          0,
+          0,
+          700
+        ],
+        "projection": [
+          0.0020833333333333333,
+          0,
+          0,
+          0,
+          0,
+          0.003125,
+          0,
+          0,
+          0,
+          0,
+          -0.0005000125003125078,
+          0,
+          0,
+          0,
+          -1.0000500012500313,
+          1
+        ],
+        "quaternion": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "type": "OrthographicCamera",
+        "zoom": 1
+      },
+      "canvas": {
+        "dpr": 1,
+        "height": 640,
+        "width": 960
+      },
+      "caseId": "explore-2d",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      },
+      "frameStatistics": {
+        "count": 179,
+        "maxMs": 6.5,
+        "meanMs": 5.507262569899,
+        "measurement": "actual active frame intervals; not GPU execution time",
+        "p50Ms": 5.5,
+        "p95Ms": 6.100000023841858
+      },
+      "frozen": true,
+      "layout": "settled",
+      "memory": {
+        "geometries": 6,
+        "programs": 7,
+        "textures": 10
+      },
+      "mount": 2,
+      "nodes": 96,
+      "positionDigest": "bc184b15",
+      "quality": "balanced",
+      "relations": 186,
+      "render": {
+        "calls": 13,
+        "lines": 2280,
+        "points": 102,
+        "triangles": 4582
+      },
+      "shaderTime": 4,
+      "signalDigest": "36ce53cf",
+      "simulationFrames": 240,
+      "timeSeconds": 4,
+      "screenshot": "explore-2d.png",
+      "screenshotSha256": "e71ff15c179b10d065c0e7ac7cb413264fb079e4a1e703177804a39019c7165e"
+    },
+    {
+      "camera": {
+        "position": [
+          0,
+          0,
+          720
+        ],
+        "projection": [
+          1.4973578492694772,
+          0,
+          0,
+          0,
+          0,
+          2.2460367739042155,
+          0,
+          0,
+          0,
+          0,
+          -1.0000500012500313,
+          -1,
+          0,
+          0,
+          -0.2000050001250031,
+          0
+        ],
+        "quaternion": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "type": "PerspectiveCamera",
+        "zoom": 1
+      },
+      "canvas": {
+        "dpr": 1,
+        "height": 640,
+        "width": 960
+      },
+      "caseId": "explore-3d",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      },
+      "frameStatistics": {
+        "count": 179,
+        "maxMs": 6.5,
+        "meanMs": 5.51061452500647,
+        "measurement": "actual active frame intervals; not GPU execution time",
+        "p50Ms": 5.5,
+        "p95Ms": 6.0999999940395355
+      },
+      "frozen": true,
+      "layout": "settled",
+      "memory": {
+        "geometries": 6,
+        "programs": 7,
+        "textures": 10
+      },
+      "mount": 3,
+      "nodes": 96,
+      "positionDigest": "83e7c64e",
+      "quality": "balanced",
+      "relations": 186,
+      "render": {
+        "calls": 13,
+        "lines": 2592,
+        "points": 102,
+        "triangles": 5206
+      },
+      "shaderTime": 4,
+      "signalDigest": "bf85bf7d",
+      "simulationFrames": 240,
+      "timeSeconds": 4,
+      "screenshot": "explore-3d.png",
+      "screenshotSha256": "435005f075f5ebf08845f2f7630177bb4e07443a4faea5514f286a87aa9ca732"
+    },
+    {
+      "camera": {
+        "position": [
+          0,
+          0,
+          720
+        ],
+        "projection": [
+          1.4973578492694772,
+          0,
+          0,
+          0,
+          0,
+          2.2460367739042155,
+          0,
+          0,
+          0,
+          0,
+          -1.0000500012500313,
+          -1,
+          0,
+          0,
+          -0.2000050001250031,
+          0
+        ],
+        "quaternion": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "type": "PerspectiveCamera",
+        "zoom": 1
+      },
+      "canvas": {
+        "dpr": 1,
+        "height": 640,
+        "width": 960
+      },
+      "caseId": "frozen-a",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      },
+      "frameStatistics": {
+        "count": 179,
+        "maxMs": 6.5,
+        "meanMs": 5.51061452500647,
+        "measurement": "actual active frame intervals; not GPU execution time",
+        "p50Ms": 5.5,
+        "p95Ms": 6.0999999940395355
+      },
+      "frozen": true,
+      "layout": "settled",
+      "memory": {
+        "geometries": 6,
+        "programs": 7,
+        "textures": 10
+      },
+      "mount": 3,
+      "nodes": 96,
+      "positionDigest": "83e7c64e",
+      "quality": "balanced",
+      "relations": 186,
+      "render": {
+        "calls": 13,
+        "lines": 2592,
+        "points": 102,
+        "triangles": 5206
+      },
+      "shaderTime": 4,
+      "signalDigest": "bf85bf7d",
+      "simulationFrames": 240,
+      "timeSeconds": 4,
+      "screenshot": "frozen-a.png",
+      "screenshotSha256": "a5a928de6283aff36733529b343238dfb436f046c160b5e1683cabec8638f2f3"
+    },
+    {
+      "camera": {
+        "position": [
+          0,
+          0,
+          720
+        ],
+        "projection": [
+          1.4973578492694772,
+          0,
+          0,
+          0,
+          0,
+          2.2460367739042155,
+          0,
+          0,
+          0,
+          0,
+          -1.0000500012500313,
+          -1,
+          0,
+          0,
+          -0.2000050001250031,
+          0
+        ],
+        "quaternion": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "type": "PerspectiveCamera",
+        "zoom": 1
+      },
+      "canvas": {
+        "dpr": 1,
+        "height": 640,
+        "width": 960
+      },
+      "caseId": "frozen-b",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      },
+      "frameStatistics": {
+        "count": 179,
+        "maxMs": 6.5,
+        "meanMs": 5.51061452500647,
+        "measurement": "actual active frame intervals; not GPU execution time",
+        "p50Ms": 5.5,
+        "p95Ms": 6.0999999940395355
+      },
+      "frozen": true,
+      "layout": "settled",
+      "memory": {
+        "geometries": 6,
+        "programs": 7,
+        "textures": 10
+      },
+      "mount": 3,
+      "nodes": 96,
+      "positionDigest": "83e7c64e",
+      "quality": "balanced",
+      "relations": 186,
+      "render": {
+        "calls": 13,
+        "lines": 2592,
+        "points": 102,
+        "triangles": 5206
+      },
+      "shaderTime": 4,
+      "signalDigest": "bf85bf7d",
+      "simulationFrames": 240,
+      "timeSeconds": 4,
+      "screenshot": "frozen-b.png",
+      "screenshotSha256": "f0740457034606bd16732696c6a003ffa5c7b73054164f545c5eba232c9985dd"
+    },
+    {
+      "camera": {
+        "position": [
+          0,
+          0,
+          720
+        ],
+        "projection": [
+          1.4973578492694772,
+          0,
+          0,
+          0,
+          0,
+          2.2460367739042155,
+          0,
+          0,
+          0,
+          0,
+          -1.0000500012500313,
+          -1,
+          0,
+          0,
+          -0.2000050001250031,
+          0
+        ],
+        "quaternion": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "type": "PerspectiveCamera",
+        "zoom": 1
+      },
+      "canvas": {
+        "dpr": 1,
+        "height": 640,
+        "width": 960
+      },
+      "caseId": "frozen-a-restored",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      },
+      "frameStatistics": {
+        "count": 179,
+        "maxMs": 6.5,
+        "meanMs": 5.51061452500647,
+        "measurement": "actual active frame intervals; not GPU execution time",
+        "p50Ms": 5.5,
+        "p95Ms": 6.0999999940395355
+      },
+      "frozen": true,
+      "layout": "settled",
+      "memory": {
+        "geometries": 6,
+        "programs": 7,
+        "textures": 10
+      },
+      "mount": 3,
+      "nodes": 96,
+      "positionDigest": "83e7c64e",
+      "quality": "balanced",
+      "relations": 186,
+      "render": {
+        "calls": 13,
+        "lines": 2592,
+        "points": 102,
+        "triangles": 5206
+      },
+      "shaderTime": 4,
+      "signalDigest": "bf85bf7d",
+      "simulationFrames": 240,
+      "timeSeconds": 4,
+      "screenshot": "frozen-a-restored.png",
+      "screenshotSha256": "a5a928de6283aff36733529b343238dfb436f046c160b5e1683cabec8638f2f3"
+    },
+    {
+      "camera": {
+        "position": [
+          0,
+          0,
+          720
+        ],
+        "projection": [
+          1.4973578492694772,
+          0,
+          0,
+          0,
+          0,
+          2.2460367739042155,
+          0,
+          0,
+          0,
+          0,
+          -1.0000500012500313,
+          -1,
+          0,
+          0,
+          -0.2000050001250031,
+          0
+        ],
+        "quaternion": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "type": "PerspectiveCamera",
+        "zoom": 1
+      },
+      "canvas": {
+        "dpr": 1,
+        "height": 640,
+        "width": 960
+      },
+      "caseId": "reentry",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      },
+      "frameStatistics": {
+        "count": 297,
+        "maxMs": 6.5,
+        "meanMs": 5.487878787798512,
+        "measurement": "actual active frame intervals; not GPU execution time",
+        "p50Ms": 5.4000000059604645,
+        "p95Ms": 6.0999999940395355
+      },
+      "frozen": true,
+      "layout": "settled",
+      "memory": {
+        "geometries": 7,
+        "programs": 7,
+        "textures": 10
+      },
+      "mount": 3,
+      "nodes": 96,
+      "positionDigest": "83e7c64e",
+      "quality": "balanced",
+      "relations": 186,
+      "render": {
+        "calls": 13,
+        "lines": 2592,
+        "points": 102,
+        "triangles": 5206
+      },
+      "shaderTime": 6,
+      "signalDigest": "8ac00d14",
+      "simulationFrames": 360,
+      "timeSeconds": 6,
+      "screenshot": "reentry.png",
+      "screenshotSha256": "915d79aefd2f3a30fa9b94fd0b90a752df7487a92b260aa27a631009f2b66e9a"
+    },
+    {
+      "camera": {
+        "position": [
+          0,
+          0,
+          720
+        ],
+        "projection": [
+          1.4973578492694772,
+          0,
+          0,
+          0,
+          0,
+          2.2460367739042155,
+          0,
+          0,
+          0,
+          0,
+          -1.0000500012500313,
+          -1,
+          0,
+          0,
+          -0.2000050001250031,
+          0
+        ],
+        "quaternion": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "type": "PerspectiveCamera",
+        "zoom": 1
+      },
+      "canvas": {
+        "dpr": 1,
+        "height": 640,
+        "width": 960
+      },
+      "caseId": "context-restored",
+      "context": {
+        "lost": 1,
+        "restored": 1
+      },
+      "frameStatistics": {
+        "count": 297,
+        "maxMs": 6.5,
+        "meanMs": 5.487878787798512,
+        "measurement": "actual active frame intervals; not GPU execution time",
+        "p50Ms": 5.4000000059604645,
+        "p95Ms": 6.0999999940395355
+      },
+      "frozen": true,
+      "layout": "settled",
+      "memory": {
+        "geometries": 6,
+        "programs": 7,
+        "textures": 10
+      },
+      "mount": 3,
+      "nodes": 96,
+      "positionDigest": "83e7c64e",
+      "quality": "balanced",
+      "relations": 186,
+      "render": {
+        "calls": 13,
+        "lines": 2592,
+        "points": 102,
+        "triangles": 5206
+      },
+      "shaderTime": 6,
+      "signalDigest": "8ac00d14",
+      "simulationFrames": 360,
+      "timeSeconds": 6,
+      "screenshot": "context-restored.png",
+      "screenshotSha256": "915d79aefd2f3a30fa9b94fd0b90a752df7487a92b260aa27a631009f2b66e9a"
+    }
+  ],
+  "manifest": {
+    "captureFrames": 240,
+    "cases": [
+      "idle",
+      "explore-2d",
+      "explore-3d",
+      "frozen-a",
+      "frozen-b",
+      "frozen-a-restored",
+      "reentry",
+      "context-restored"
+    ],
+    "dpr": 1,
+    "fixture": "six-clusters-96-v1",
+    "height": 640,
+    "quality": "balanced",
+    "schemaVersion": 1,
+    "seed": "jarvis-webgl-v1",
+    "stepSeconds": 0.016666666666666666,
+    "theme": "nexus",
+    "warmupFrames": 60,
+    "width": 960
+  },
+  "runtime": {
+    "build": {
+      "builtAtUtc": "2026-10-03T06:47:42.983Z",
+      "dirty": true,
+      "revision": "8adfeb8507a7bcec506d52ea51b2f250b912ee0c",
+      "version": "development"
+    },
+    "devicePixelRatio": 1,
+    "documentVisible": true,
+    "stage": {
+      "bottom": 640,
+      "height": 640,
+      "left": 0,
+      "right": 960,
+      "top": 0,
+      "width": 960,
+      "x": 0,
+      "y": 0
+    },
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "viewport": {
+      "height": 720,
+      "width": 1280
+    }
+  }
+}

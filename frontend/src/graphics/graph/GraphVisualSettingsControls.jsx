@@ -267,7 +267,7 @@ export function SettingsGroup({ category, title, meta, children, open = false })
   );
 }
 
-export function FxCategory({ category, title, meta, children, open = true }) {
+export function FxCategory({ category, title, meta, children, open = false }) {
   const activeCategory = useContext(SettingsCategoryContext);
   const filter = useContext(SettingsFilterContext);
   if (activeCategory === null && !hasMatchingControl(children, filter)) return null;

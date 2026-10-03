@@ -7,6 +7,17 @@ export function getTaskbarCooldownRemaining(retryAfterUtc, now = Date.now()) {
     : 0;
 }
 
+export function getTaskbarAttention(state) {
+  if (!state || state.loading || state.simulation || state.transitionStatus === "applying") {
+    return null;
+  }
+  if (state.safeMode) return "safe-mode";
+  if (state.fallbackReason || state.error || state.requestedMode !== state.effectiveMode) {
+    return "fallback";
+  }
+  return null;
+}
+
 export function canRetryTaskbarMode(state, busy, now = Date.now()) {
   if (busy ||
       state.safeMode ||

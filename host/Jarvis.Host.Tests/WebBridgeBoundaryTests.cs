@@ -136,6 +136,14 @@ public sealed class WebBridgeBoundaryTests
             WebBridgeSurfacePolicy.AllowsEvent(
                 WebBridgeSurface.Taskbar,
                 "desktop.entriesChanged"));
+        Assert.True(
+            WebBridgeSurfacePolicy.AllowsEvent(
+                WebBridgeSurface.Desktop,
+                "lifecycle.exitStatus"));
+        Assert.False(
+            WebBridgeSurfacePolicy.AllowsEvent(
+                WebBridgeSurface.Taskbar,
+                "lifecycle.exitStatus"));
     }
 
     [Fact]

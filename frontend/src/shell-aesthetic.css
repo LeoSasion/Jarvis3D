@@ -184,6 +184,35 @@ body {
 .topbar__system {
   justify-content: flex-end;
 }
+.topbar__taskbar-attention {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 168px;
+  height: calc(100% - 16px);
+  padding: 0 10px;
+  border: 1px solid var(--shell-accent);
+  background: var(--shell-accent-subtle);
+  color: var(--shell-accent);
+  font: 10px/1 var(--shell-code-font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.topbar__taskbar-attention:hover,
+.topbar__taskbar-attention:focus-visible {
+  background: var(--shell-hover);
+  outline: 2px solid var(--shell-accent);
+  outline-offset: 2px;
+}
+.topbar__taskbar-attention svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+@media (max-width: 1500px) {
+  .topbar__taskbar-attention span { display: none; }
+}
 .topbar__record {
   display: flex;
   align-items: center;
@@ -2234,6 +2263,82 @@ body {
 .runtime-settings-detail > .runtime-settings-section-anchor {
   width: 100%;
   margin-inline: 0 !important;
+}
+
+.runtime-settings-subnav {
+  position: sticky;
+  top: -16px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: -16px -16px 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--shell-border-subtle);
+  background: var(--shell-surface);
+}
+
+.runtime-settings-subnav button {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--shell-control-radius);
+  color: var(--shell-muted);
+  font: 600 12px/1.2 var(--shell-font);
+}
+
+.runtime-settings-subnav button:hover,
+.runtime-settings-subnav button[aria-current="location"],
+.runtime-settings-subnav button:focus-visible {
+  color: var(--shell-text-strong);
+  border-color: var(--shell-accent);
+  background: var(--shell-hover);
+}
+
+.runtime-settings-detail [data-settings-subsection] {
+  scroll-margin-top: 72px;
+}
+
+.runtime-workspace-layout {
+  display: grid;
+  gap: 12px;
+  margin: 16px;
+  padding: 16px;
+  border: 1px solid var(--shell-border-subtle);
+  border-radius: var(--shell-panel-radius);
+  background: var(--shell-surface);
+}
+
+.runtime-workspace-layout header {
+  display: grid;
+  gap: 4px;
+}
+
+.runtime-workspace-layout header strong {
+  color: var(--shell-text-strong);
+  font: 650 16px/1.25 var(--shell-font);
+}
+
+.runtime-workspace-layout header small,
+.runtime-workspace-layout p {
+  margin: 0;
+  color: var(--shell-muted);
+  font: 12px/1.4 var(--shell-font);
+}
+
+.runtime-workspace-layout button {
+  justify-self: start;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--shell-border-strong);
+  border-radius: var(--shell-control-radius);
+  color: var(--shell-text-strong);
+  font: 600 12px/1.25 var(--shell-font);
+}
+
+.runtime-workspace-layout button:hover,
+.runtime-workspace-layout button:focus-visible {
+  border-color: var(--shell-accent);
 }
 
 .runtime-settings-detail .runtime-identity {

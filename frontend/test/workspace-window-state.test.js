@@ -4,7 +4,9 @@ import {
   WORKSPACE_LAYOUT_VERSION,
   constrainWindowBounds,
   createWorkspaceWindowState,
+  getDefaultWindowBounds,
   getWorkspaceTaskbarWindows,
+  moveWorkspaceWindowBounds,
   serializeWorkspaceLayout,
   workspaceWindowReducer,
 } from "../src/workspace-window-state.js";
@@ -103,6 +105,29 @@ test("bounds reject non-finite and off-screen persisted values", () => {
   assert.ok(bounds.width >= 600);
   assert.ok(bounds.height >= 420);
   assert.ok(bounds.x + bounds.width <= 1908);
+});
+
+test("keyboard movement remains inside the current viewport and layout reset persists defaults", () => {
+  let state = createWorkspaceWindowState(viewport);
+  state = reduce(state, "OPEN", "agent");
+  const original = state.windows.agent.bounds;
+  state = reduce(state, "COMMIT_BOUNDS", "agent", {
+    bounds: moveWorkspaceWindowBounds("agent", original, 32, -12, viewport),
+  });
+  assert.notDeepEqual(state.windows.agent.bounds, original);
+  state = reduce(state, "TOGGLE_MAXIMIZE", "agent");
+  state = reduce(state, "RESET_LAYOUT");
+
+  assert.equal(state.windows.agent.open, true);
+  assert.equal(state.activeId, "agent");
+  assert.equal(state.windows.agent.maximized, false);
+  assert.equal(state.windows.agent.restoreBounds, null);
+  assert.deepEqual(state.windows.agent.bounds, getDefaultWindowBounds("agent", viewport));
+  assert.deepEqual(serializeWorkspaceLayout(state).windows.agent.bounds, original);
+
+  const clipped = moveWorkspaceWindowBounds("agent", original, -100000, 100000, viewport);
+  assert.equal(clipped.x, viewport.left);
+  assert.equal(clipped.y + clipped.height, viewport.height - viewport.bottom);
 });
 
 test("layout persistence excludes open state and rejects stale versions", () => {

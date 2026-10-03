@@ -297,7 +297,9 @@ export function GraphVisualSettings({
             {t("graphVisualSettings.title")}
           </strong>
         </span>
-        <button type="button" className="graph-visual-settings__preset-link" onClick={() => chooseCategory("presets")}>
+        <button type="button" className="graph-visual-settings__preset-link" onClick={() => {
+          setQuery(""); setChangedOnly(false); chooseCategory("presets");
+        }}>
           {presetId === "custom" ? t("graphVisualSettings.editor.custom") : presetId.toUpperCase()}
         </button>
         {onClose ? (
@@ -326,7 +328,7 @@ export function GraphVisualSettings({
         </span>
       </div>
       <GraphVisualEditorToolbar settings={settings} query={query} onQuery={setQuery} changedOnly={changedOnly} onChangedOnly={setChangedOnly} />
-      <div className="graph-visual-settings__tabs" role="tablist" aria-label={t("graphVisualSettings.editor.categories")}>
+      {!filtering ? <div className="graph-visual-settings__tabs" role="tablist" aria-label={t("graphVisualSettings.editor.categories")}>
         {settingsCategories.map((id, index) => (
           <button
             key={id}
@@ -350,8 +352,11 @@ export function GraphVisualSettings({
             }}
           >{t(`graphVisualSettings.editor.tab.${id}`)}</button>
         ))}
-      </div>
-      <div ref={contentRef} id={`${categoryId}-panel`} className={`graph-visual-settings__content ${filtering ? "is-filtering" : ""}`} inert={preview.side === "a"} role="tabpanel" aria-labelledby={`${categoryId}-${category}`} tabIndex={0}>
+      </div> : <div className="graph-visual-settings__search-mode" role="status">
+        <strong id={`${categoryId}-results`}>{editorCopy.results}</strong>
+        <button type="button" onClick={() => { setQuery(""); setChangedOnly(false); }}>{editorCopy.clearFilters}</button>
+      </div>}
+      <div ref={contentRef} id={`${categoryId}-panel`} className={`graph-visual-settings__content ${filtering ? "is-filtering" : ""}`} inert={preview.side === "a"} role={filtering ? "region" : "tabpanel"} aria-labelledby={filtering ? `${categoryId}-results` : `${categoryId}-${category}`} tabIndex={0}>
         <p className="graph-visual-settings__category-help">{filtering ? query.trim() ? editorCopy.results : editorCopy.modified : t(`graphVisualSettings.editor.help.${category}`)}</p>
         {filtering && <p className="graph-visual-settings__empty" role="status">{editorCopy.empty}</p>}
       {category === "presets" && !filtering ? <>
@@ -475,7 +480,6 @@ export function GraphVisualSettings({
             coreState: t(activeProfile.edge.core.enabled ? "common.state.on" : "common.state.off"),
             haloState: t(activeProfile.edge.halo.enabled ? "common.state.on" : "common.state.off"),
           })}
-          open
         >
           <div className="graph-visual-settings__control-grid">
             <GraphFxRangeControl profileId={profileId} profile={activeProfile} path="edge.master.opacity" label={technicalLabel(t, "RELATION MASTER OPACITY")} detail={t("graphVisualSettings.control.relationMasterOpacity.detail")} format="percent" disabled={!activeProfile.edge.core.enabled && (neuronMaterials || !activeProfile.edge.halo.enabled)} />

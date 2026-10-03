@@ -6,6 +6,9 @@ the native Explorer taskbar and desktop.
 
 ## Evidence kept in this repository
 
+- [October 3 UI interaction delivery](ui-interaction-2026-10-03.md)
+  records the P0/P1/P2 changes, synthetic browser flow, isolated native failure
+  exits, and matching browser/WebView2 graph invariants.
 - [October 3 Pi 1.0.0 adaptation](pi-1.0.0-adaptation-2026-10-03.md)
   records the updated upstream pin, tree verification, RPC disposition handling,
   isolated Host handshake, and deterministic loopback response.

@@ -789,6 +789,26 @@
   background: var(--shell-hover);
 }
 
+.graph-visual-settings__search-mode {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  padding: 5px 18px;
+  border-bottom: 1px solid var(--shell-border);
+  color: var(--shell-text-strong);
+  font: 12px/1.4 var(--shell-font);
+}
+
+.graph-visual-settings__search-mode button {
+  min-height: 36px;
+  border: 1px solid var(--shell-border);
+  color: var(--shell-text);
+  background: transparent;
+}
+
 .graph-visual-settings__content {
   flex: 1;
   min-height: 0;

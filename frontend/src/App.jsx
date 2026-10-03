@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getLatestAgentRelationMessage } from "./agent-context-model.js";
 import { canUseAgentChat } from "./agent-session-model.js";
+import { getBootChecks, getDegradedBootCheckIds } from "./boot-checks.js";
 import { CommandOverlay } from "./components/CommandOverlay.jsx";
 import { CoreStage } from "./components/CoreStage.jsx";
 import { DesktopShortcuts } from "./components/DesktopShortcuts.jsx";
@@ -71,6 +72,7 @@ export function App() {
     toggleMaximize: toggleMaximizeWorkspaceWindow,
     toggleFromTaskbar: toggleWorkspaceWindowFromTaskbar,
     commitBounds: commitWorkspaceWindowBounds,
+    resetLayout: resetWorkspaceLayout,
     cycle: cycleWorkspaceWindows,
   } = useWorkspaceManager();
   const agentSession = useAgentSession();
@@ -87,10 +89,16 @@ export function App() {
   const [explorerSelection, setExplorerSelection] = useState([]);
   const [inspectorTarget, setInspectorTarget] = useState(null);
   const [bootActive, setBootActive] = useState(true);
+  const [bootReview, setBootReview] = useState(false);
+  const [startupDegraded, setStartupDegraded] = useState([]);
+  const startupIssueReportedRef = useRef(false);
   const [graphLaunchpadHidden, setGraphLaunchpadHidden] = useState(false);
   const [notice, setNotice] = useState(null);
   const [localFeedEvents, setLocalFeedEvents] = useState([]);
   const showDesktopRestoreIdsRef = useRef([]);
+  const exitRequestInFlightRef = useRef(false);
+  const [initialSettingsSection, setInitialSettingsSection] = useState(null);
+  const [settingsNavigationToken, setSettingsNavigationToken] = useState(0);
   const workspaceLayoutMode = getWorkspaceLayoutMode(workspaceState.windows);
   const linkedWorkspaceVariant = workspaceLayoutMode === "explorer-agent-linked"
     ? getLinkedWorkspaceVariant(workspaceState.viewport)
@@ -166,7 +174,30 @@ export function App() {
   const showSettingsFeedback = useCallback((input) => showToast(
     typeof input === "string" ? { title: input, source: "settings" } : { ...input, source: input?.source ?? "settings" },
   ), [showToast]);
-  const finishBoot = useCallback(() => setBootActive(false), []);
+  const finishBoot = useCallback(() => {
+    setBootActive(false);
+    setBootReview(false);
+  }, []);
+  const onBootChecksSettled = useCallback((degradedIds) => {
+    setStartupDegraded(degradedIds);
+    if (!degradedIds.length || startupIssueReportedRef.current) return;
+    startupIssueReportedRef.current = true;
+    void platform.feed.reportFault({
+      source: "runtime",
+      severity: "warning",
+      title: translate("boot.degraded.feedTitle"),
+      detail: degradedIds.map((id) => translate(`boot.degraded.${id}.next`)).join(" "),
+      actionId: "open-runtime-settings",
+    }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    let active = true;
+    const checks = getBootChecks();
+    Promise.allSettled(checks.map((check) => check.promise)).then((results) => {
+      if (active) onBootChecksSettled(getDegradedBootCheckIds(checks, results, platform.isNative));
+    });
+    return () => { active = false; };
+  }, [onBootChecksSettled]);
 
   const openExplorer = useCallback((path = null) => {
     setCommandOpen(false);
@@ -533,6 +564,8 @@ export function App() {
 
   const openDesktopSettings = useCallback(() => {
     setCommandOpen(false);
+    setInitialSettingsSection(null);
+    setSettingsNavigationToken((current) => current + 1);
     setShellPanel("settings");
     showToast(translate("feedback.settings.ready"));
   }, [showToast]);
@@ -597,6 +630,8 @@ export function App() {
       }
       if (builtinId === "jarvis-settings") {
         setCommandOpen(false);
+        setInitialSettingsSection(null);
+        setSettingsNavigationToken((current) => current + 1);
         setShellPanel("settings");
         showToast(translate("feedback.settings.ready"));
         return;
@@ -702,6 +737,10 @@ export function App() {
   const openShellPanel = useCallback(async (panel) => {
     await hideTaskbarFlyout();
     setCommandOpen(false);
+    if (panel === "settings") {
+      setInitialSettingsSection(null);
+      setSettingsNavigationToken((current) => current + 1);
+    }
     setShellPanel((current) => current === panel ? null : panel);
   }, [hideTaskbarFlyout]);
   const openSessionPanel = useCallback(() => {
@@ -709,6 +748,10 @@ export function App() {
   }, [openShellPanel]);
   const navigateShellPanel = useCallback((panel) => {
     setCommandOpen(false);
+    if (panel === "settings") {
+      setInitialSettingsSection(null);
+      setSettingsNavigationToken((current) => current + 1);
+    }
     setShellPanel(panel);
   }, []);
 
@@ -719,6 +762,8 @@ export function App() {
       return;
     }
     if (target.toLowerCase() === "jarvis-settings:") {
+      setInitialSettingsSection(null);
+      setSettingsNavigationToken((current) => current + 1);
       setShellPanel("settings");
       showToast(translate("feedback.settings.ready"));
       return;
@@ -766,13 +811,17 @@ export function App() {
   }, [showToast]);
 
   const exitToWindows = useCallback(async () => {
+    if (exitRequestInFlightRef.current) return true;
     if (!platform.isNative) {
       showToast(translate("feedback.session.powerProtected"));
-      return;
+      return false;
     }
+    exitRequestInFlightRef.current = true;
     try {
       await platform.lifecycle.exitToWindows();
+      return true;
     } catch (error) {
+      exitRequestInFlightRef.current = false;
       showToast({
         severity: "error",
         source: "runtime",
@@ -780,6 +829,7 @@ export function App() {
         detail: error.message,
         actions: [{ label: translate("common.action.sessionControl"), onInvoke: () => setShellPanel("session") }],
       });
+      return false;
     }
   }, [showToast]);
 
@@ -845,6 +895,16 @@ export function App() {
         onAbortAgent={agentSession.abort}
         agentState={agentSession.state}
         onPower={openSessionPanel}
+        onOpenTaskbarSettings={() => {
+          setInitialSettingsSection("settings-taskbar");
+          setSettingsNavigationToken((current) => current + 1);
+          setShellPanel("settings");
+        }}
+        startupDegraded={startupDegraded}
+        onOpenStartupStatus={() => {
+          setBootReview(true);
+          setBootActive(true);
+        }}
         onOpenDateTime={() => openShellPanel("date-time")}
       />
 
@@ -882,7 +942,16 @@ export function App() {
 
       {bootActive ? (
         <Suspense fallback={null}>
-          <BootSequence onComplete={finishBoot} />
+          <BootSequence
+            onComplete={finishBoot}
+            onOpenRecoverySettings={() => {
+              setInitialSettingsSection("settings-recovery");
+              setSettingsNavigationToken((current) => current + 1);
+              setShellPanel("settings");
+              finishBoot();
+            }}
+            reviewOnly={bootReview}
+          />
         </Suspense>
       ) : null}
 
@@ -1066,18 +1135,24 @@ export function App() {
             panel={shellPanelPresence.renderedValue}
             presenceState={shellPanelPresence.state}
             onPresenceComplete={shellPanelPresence.complete}
-            onClose={() => setShellPanel(null)}
+            onClose={() => {
+              setShellPanel(null);
+              setInitialSettingsSection(null);
+            }}
             onOpenCommand={openCommand}
             onLaunch={launchShellApp}
             onLaunchInstalled={launchInstalledApplication}
             onActivateWindow={activateShellWindow}
             onOpenPanel={navigateShellPanel}
+            initialSettingsSection={initialSettingsSection}
+            settingsNavigationToken={settingsNavigationToken}
             onExit={exitToWindows}
             onToast={showSettingsFeedback}
             localFeedEvents={localFeedEvents}
             onClearLocalFeed={clearLocalFeed}
             onMarkLocalFeedRead={markLocalFeedRead}
             graphSourceState={defaultKnowledgeGraph}
+            onResetWindowLayout={resetWorkspaceLayout}
           />
         </Suspense>
       ) : null}

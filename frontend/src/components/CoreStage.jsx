@@ -206,14 +206,30 @@ export function CoreStage({
     [t],
   );
 
-  const issueCameraCommand = useCallback((type) => {
+  const issueCameraCommand = useCallback((type, details = {}) => {
     cameraCommandIdRef.current += 1;
-    setCameraCommand({ id: cameraCommandIdRef.current, type });
+    setCameraCommand({
+      id: cameraCommandIdRef.current,
+      type,
+      dimension: graphVisualSettings.view.dimension,
+      ...details,
+    });
+  }, [graphVisualSettings.view.dimension]);
+  const consumeCameraCommand = useCallback((id) => {
+    setCameraCommand((current) => current?.id === id ? null : current);
   }, []);
+  useEffect(() => {
+    setCameraCommand((current) => current?.dimension === graphVisualSettings.view.dimension ? current : null);
+  }, [graphVisualSettings.view.dimension]);
 
   const selectDefaultGraphNode = useCallback((node) => {
     setSelectedGraphNodeId(node?.id ?? null);
   }, []);
+  const locateDefaultGraphNode = useCallback((node) => {
+    if (!node?.id) return;
+    setSelectedGraphNodeId(node.id);
+    issueCameraCommand("focus-node", { nodeId: node.id });
+  }, [issueCameraCommand]);
 
   const toggleGraphExplore = useCallback(() => {
     setGraphExploreMode((current) => {
@@ -300,6 +316,7 @@ export function CoreStage({
               <CoreVisualCanvas
                 onCameraViewChange={handleCameraViewChange}
                 cameraCommand={cameraCommand}
+                onCameraCommandConsumed={consumeCameraCommand}
                 fallback={<GraphFallback runtimeFallback />}
                 graph={renderedGraph}
                 hoveredNodeId={hoveredGraphNodeId}
@@ -389,6 +406,18 @@ export function CoreStage({
               {t("core.graph.toolbar.show")}
             </button>
           )}
+          <details className="core-stage__source-badge">
+            <summary>{t("graph.workspace.source.badge", { count: defaultGraph.nodes.length })}</summary>
+            <div>
+              <strong>{defaultGraph.source.name}</strong>
+              <span>{t("graph.workspace.facts.visible", { count: defaultGraph.nodes.length })}</span>
+              <span>{t("graph.workspace.facts.relations", { count: defaultGraph.edges.length })}</span>
+              <span>{defaultGraph.source.simulation
+                ? t("core.graph.source.browserPreview")
+                : t(defaultGraph.source.resolution === "local-preview"
+                  ? "core.graph.source.localVault" : "core.graph.source.windowsReadOnly")}</span>
+            </div>
+          </details>
           {!graphExploreMode ? (
             <button
               ref={visualSettingsTriggerRef}
@@ -413,6 +442,11 @@ export function CoreStage({
               if (graphVisualSettings.view.dimension === 2) setGraphZoom(1);
               issueCameraCommand("reset");
             }}
+            onClear={() => {
+              setSelectedGraphNodeId(null);
+              setNeighborhoodGraph(null);
+            }}
+            clearAction="clearNodeSelection"
             onOpenVisualSettings={toggleVisualSettings}
             visualSettingsOpen={visualSettingsOpen}
             visualSettingsTriggerRef={visualSettingsTriggerRef}
@@ -425,8 +459,8 @@ export function CoreStage({
           nodes={renderedGraph.nodes}
           selectedNodeId={selectedGraphNodeId}
           connections={selectedGraphConnections}
-          onSelectNode={selectDefaultGraphNode}
-          onActivateNode={selectDefaultGraphNode}
+          onSelectNode={locateDefaultGraphNode}
+          onActivateNode={locateDefaultGraphNode}
           connectionHeadingId={defaultConnectionHeadingId}
           connectionSummaryId={defaultConnectionSummaryId}
           getNodeLabel={getDefaultGraphNodeLabel}
@@ -462,6 +496,7 @@ export function CoreStage({
           graph={defaultGraph}
           selectedNodeId={selectedGraphNodeId}
           onSelectNode={selectDefaultGraphNode}
+          onFocusNode={locateDefaultGraphNode}
           onNeighborhood={setNeighborhoodGraph}
           onLinkToAgent={onLinkGraphNode}
         />

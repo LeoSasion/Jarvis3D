@@ -1,5 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { canExportAnswer, createAnswerMarkdown, getUnverifiedCitations, splitAnswerCitations } from "../agent-answer-model.js";
+import { useMemo, useState } from "react";
+import { canExportAnswer, createAnswerMarkdown, getCitationTargetLine, getUnverifiedCitations, splitAnswerCitations } from "../agent-answer-model.js";
 import "./agent-answer.css";
 
 function downloadAnswer(document) {
@@ -16,22 +16,10 @@ function downloadAnswer(document) {
   }
 }
 
-export function AgentAnswer({ message, sources, t }) {
-  const sourcePanelId = useId();
-  const sourcePanelRef = useRef(null);
-  const citationTriggerRef = useRef(null);
-  const [selectedSnapshot, setSelectedSnapshot] = useState(null);
+export function AgentAnswer({ message, sources, t, sourcePanelId, selectedCitation, onOpenSource }) {
   const [exportStatus, setExportStatus] = useState(null);
   const parts = useMemo(() => splitAnswerCitations(message.text, sources), [message.text, sources]);
   const unverified = useMemo(() => getUnverifiedCitations(parts), [parts]);
-  const selectedSource = sources.find((source) => JSON.stringify(source) === selectedSnapshot);
-  const snapshotVisible = Boolean(selectedSource);
-
-  useEffect(() => {
-    if (!snapshotVisible) return;
-    sourcePanelRef.current?.focus();
-    sourcePanelRef.current?.scrollIntoView({ block: "nearest" });
-  }, [selectedSnapshot, snapshotVisible]);
 
   const exportAnswer = () => {
     try {
@@ -48,27 +36,15 @@ export function AgentAnswer({ message, sources, t }) {
   return <div className="agent-answer">
     <p>{parts.map((part, index) => part.source ? <button key={index} type="button" className="agent-answer__citation"
       aria-label={t("agent.answer.viewSource", { citation: part.text, path: part.source.path })}
-      aria-controls={sourcePanelId} aria-expanded={selectedSource?.source === part.citation}
-      onClick={(event) => {
-        citationTriggerRef.current = event.currentTarget;
-        setSelectedSnapshot(JSON.stringify(part.source));
-        if (selectedSource === part.source) sourcePanelRef.current?.focus();
-      }}>{part.text}</button> : part.text)}</p>
+      aria-controls={sourcePanelId} aria-expanded={selectedCitation?.messageId === message.id
+        && selectedCitation?.offset === part.offset}
+      onClick={(event) => onOpenSource({ messageId: message.id, source: part.source,
+        offset: part.offset, line: getCitationTargetLine(message.text, part, part.source),
+        trigger: event.currentTarget })}>
+      {part.text}</button> : part.text)}</p>
     {unverified.length ? <p className="agent-answer__unverified" role="note">
       {t("agent.answer.unverified", { citations: unverified.slice(0, 8).join(", ") })}{unverified.length > 8 ? "…" : ""}
     </p> : null}
-    {selectedSource ? <section id={sourcePanelId} ref={sourcePanelRef} tabIndex={-1} className="agent-answer__snapshot"
-      aria-label={t("agent.answer.sourceSnapshot", { citation: `[${selectedSource.source}]` })}>
-      <header><strong>[{selectedSource.source}] {selectedSource.title}</strong>
-        <button type="button" onClick={() => {
-          setSelectedSnapshot(null);
-          citationTriggerRef.current?.focus();
-        }}>{t("agent.answer.closeSource")}</button></header>
-      <small>{selectedSource.path} · L{selectedSource.startLine}–{selectedSource.endLine}</small>
-      <p>{t("agent.answer.snapshotNotice")}</p>
-      {selectedSource.truncated ? <p>{t("agent.answer.truncated")}</p> : null}
-      <pre>{selectedSource.text}</pre>
-    </section> : null}
     {canExportAnswer(message) ? <div className="agent-answer__actions">
       <button type="button" onClick={exportAnswer}>{t("agent.answer.export")}</button>
       {exportStatus ? <small role={exportStatus === "error" ? "alert" : "status"}>

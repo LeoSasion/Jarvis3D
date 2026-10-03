@@ -1173,6 +1173,7 @@ function createNodeScreenIndex({
 export function GraphScene({
   animationClock = null,
   cameraCommand = null,
+  onCameraCommandConsumed,
   graph,
   dimension = 2,
   hoveredNodeId = null,
@@ -1195,6 +1196,7 @@ export function GraphScene({
   const { frozen } = useSyncExternalStore(subscribeGraphVisualPreview, getGraphVisualPreviewSnapshot);
   const comparisonClock = useMemo(() => animationClock ?? createGraphComparisonClock(), [animationClock]);
   const pendingLayoutPositionsRef = useRef(null);
+  const [readyLayoutRevision, setReadyLayoutRevision] = useState(null);
   const coarsePointer = useCoarsePointer();
   const scenePlan = useMemo(
     () => applyGraphRuntimeQuality(renderPlan, runtime?.qualityProfile, graph),
@@ -1472,7 +1474,12 @@ export function GraphScene({
   const positionedModelRef = useRef(null);
   const activeRevisionRef = useRef(revision);
   const onLayoutStateRef = useRef(onLayoutState);
-  onLayoutStateRef.current = onLayoutState;
+  onLayoutStateRef.current = (state, iteration) => {
+    onLayoutState?.(state, iteration);
+    if (state === "settled" || state === "error") {
+      setReadyLayoutRevision(activeRevisionRef.current);
+    }
+  };
   const pointerQueueRef = useRef(createGraphPointerQueue());
   const pointerInteractionRef = useRef({ down: null });
   const pointerCallbacksRef = useRef({ onNodeHover, onNodeSelect });
@@ -2789,6 +2796,14 @@ export function GraphScene({
       invalidate();
     };
     const handlePointerDown = (event) => {
+      if (event.pointerType === "touch") {
+        pointerInteraction.activeTouches ??= new Set();
+        pointerInteraction.activeTouches.add(event.pointerId);
+        if (pointerInteraction.activeTouches.size > 1) {
+          pointerInteraction.down = null;
+          return;
+        }
+      }
       pointerInteraction.down = {
         button: event.button,
         moved: false,
@@ -2812,15 +2827,18 @@ export function GraphScene({
     const handlePointerUp = (event) => {
       const down = pointerInteraction.down;
       pointerInteraction.down = null;
+      const multiTouch = event.pointerType === "touch" && pointerInteraction.activeTouches?.size > 1;
+      pointerInteraction.activeTouches?.delete(event.pointerId);
       const sample = readSample(event);
       pointerQueue.queueHover(sample);
-      if (down?.pointerId === event.pointerId && down.button === 0 && !down.moved) {
+      if (!multiTouch && down?.pointerId === event.pointerId && down.button === 0 && !down.moved) {
         pointerQueue.queueSelection(sample);
       }
       invalidate();
     };
-    const handlePointerCancel = () => {
+    const handlePointerCancel = (event) => {
       pointerInteraction.down = null;
+      pointerInteraction.activeTouches?.delete(event.pointerId);
       queueHover({ active: false });
     };
     const handlePointerLeave = () => queueHover({ active: false });
@@ -2832,6 +2850,7 @@ export function GraphScene({
     canvas.addEventListener("pointerleave", handlePointerLeave, { passive: true });
     return () => {
       pointerInteraction.down = null;
+      pointerInteraction.activeTouches?.clear();
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointermove", handlePointerMove);
       canvas.removeEventListener("pointerup", handlePointerUp);
@@ -3290,6 +3309,7 @@ export function GraphScene({
     layoutRequestRef.current = request;
     const worker = workerRef.current;
     if (!worker) {
+      activeRevisionRef.current = revision;
       onLayoutStateRef.current?.("error", 0);
       applyPositionsRef.current(graphPositionsRef.current);
       ensureWorkerRef.current?.();
@@ -3331,7 +3351,19 @@ export function GraphScene({
     });
   }, [gl, model.nodes.length, neuronMode, renderEdges.length, orbMorphModel.shellNodeCount, orbMorphModel.shellEdgePairs.length]);
 
-  const getPositions = useCallback(() => positionsRef.current, []);
+  const getPositions = useCallback(() => graphPositionsRef.current, []);
+  const nodeIndexById = useMemo(
+    () => new Map(model.nodes.map((node, index) => [node.id, index])),
+    [model.nodes],
+  );
+  const getNodePosition = useCallback((nodeId) => {
+    const index = nodeIndexById.get(nodeId);
+    if (index === undefined) return null;
+    const positions = graphPositionsRef.current;
+    const offset = index * 3;
+    if (offset + 2 >= positions.length) return null;
+    return { x: positions[offset], y: positions[offset + 1], z: positions[offset + 2] };
+  }, [nodeIndexById]);
 
   return (
     <group>
@@ -3359,9 +3391,12 @@ export function GraphScene({
         frozen={frozen}
         onViewChange={onCameraViewChange}
         command={cameraCommand}
+        onCommandConsumed={onCameraCommandConsumed}
         dimension={dimension}
+        getNodePosition={getNodePosition}
         getPositions={getPositions}
         interactive={interactive}
+        layoutReady={readyLayoutRevision === revision}
         reducedMotion={reducedMotion}
         zoom={zoom}
       />

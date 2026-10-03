@@ -31,7 +31,8 @@ export function splitAnswerCitations(text, sources = EMPTY_SOURCES) {
   for (const match of value.matchAll(/\[S\d+\]/gu)) {
     if (match.index > offset) parts.push({ text: value.slice(offset, match.index) });
     const citation = match[0].slice(1, -1);
-    parts.push({ text: match[0], citation, source: sourceById.get(citation) ?? null });
+    parts.push({ text: match[0], citation, source: sourceById.get(citation) ?? null,
+      offset: match.index });
     offset = match.index + match[0].length;
   }
   if (offset < value.length) parts.push({ text: value.slice(offset) });
@@ -40,6 +41,30 @@ export function splitAnswerCitations(text, sources = EMPTY_SOURCES) {
 
 export function getUnverifiedCitations(parts) {
   return [...new Set(parts.filter((part) => part.citation && !part.source).map((part) => part.text))];
+}
+
+export function getCitationTargetLine(answer, citation, source) {
+  const first = source.startLine;
+  const last = Math.min(source.endLine, first + (typeof source.text === "string"
+    ? source.text.split(/\r?\n/u).length - 1 : source.endLine - first));
+  if (!Number.isInteger(first) || !Number.isInteger(last)) return null;
+  const text = String(answer ?? "");
+  const offset = citation?.offset;
+  if (!Number.isInteger(offset)) return first;
+  const before = text.slice(Math.max(0, offset - 48), offset).split(/[.!?。！？\n]/u).at(-1);
+  const after = text.slice(offset + citation.text.length, offset + citation.text.length + 48)
+    .split(/[.!?。！？\n]/u)[0];
+  const linePattern = /(?:\bL(?:ine)?\s*|第\s*)(\d+)(?:\s*行)?/giu;
+  const precedingLines = [...before.matchAll(linePattern)];
+  let preceding = precedingLines.at(-1);
+  const previous = precedingLines.at(-2);
+  if (previous && preceding
+    && /^[\s\-–—~至到]+$/u.test(before.slice(previous.index + previous[0].length, preceding.index))) {
+    preceding = previous;
+  }
+  const following = [...after.matchAll(linePattern)][0];
+  const line = Number(preceding?.[1] ?? following?.[1]);
+  return Number.isInteger(line) && line >= first && line <= last ? line : first;
 }
 
 export function canExportAnswer(message) {

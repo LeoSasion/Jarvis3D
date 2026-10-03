@@ -106,6 +106,7 @@ import {
   normalizeSessionChallenge,
   normalizeSessionControlState,
 } from "../session-control-model.js";
+import { getSessionExitProgress } from "../session-exit-progress-model.js";
 import {
   filterSystemFeed,
   getSystemFeedFilterShortcut,
@@ -1698,6 +1699,14 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
   const [challenge, setChallenge] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [exitPhase, setExitPhase] = useState("idle");
+  const [nativeTaskbarVerified, setNativeTaskbarVerified] = useState(false);
+
+  useEffect(() => platform.events.subscribe("lifecycle.exitStatus", (event) => {
+    if (!event?.phase) return;
+    setExitPhase(event.phase);
+    setNativeTaskbarVerified(event.nativeTaskbarVerified === true);
+  }), []);
 
   useEffect(() => {
     let active = true;
@@ -1777,7 +1786,23 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
       return;
     }
     if (challenge.local) {
-      await onExit();
+      setBusy(true);
+      setExitPhase("requesting");
+      setError("");
+      try {
+        const accepted = await onExit();
+        if (!accepted) {
+          setExitPhase("idle");
+          setError(t("session.exit.requestFailed"));
+          setBusy(false);
+        } else {
+          setExitPhase((current) => current === "requesting" ? "requested" : current);
+        }
+      } catch (nextError) {
+        setExitPhase("idle");
+        setError(nextError.message);
+        setBusy(false);
+      }
       return;
     }
 
@@ -1810,6 +1835,7 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
     : null;
   const challengeTitle = localizedChallengeAction?.label ?? challenge?.title;
   const challengeDetail = localizedChallengeAction?.consequence ?? challenge?.detail;
+  const exitProgress = getSessionExitProgress(exitPhase, nativeTaskbarVerified);
 
   return (
     <section
@@ -1843,6 +1869,17 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
             ? "session.status.guarded"
             : "session.status.limited")}</code>
       </div>
+
+      {exitProgress ? (
+        <div className={`session-exit-progress is-${exitProgress.phase}`} role="status" aria-live="polite">
+          <ShieldRegular />
+          <span>
+            <strong>{t(exitProgress.titleKey)}</strong>
+            <small>{t(exitProgress.detailKey)}</small>
+            <code>{t(exitProgress.verificationKey)}</code>
+          </span>
+        </div>
+      ) : null}
 
       {!challenge ? (
         <div
@@ -2034,14 +2071,68 @@ const runtimeSettingsSections = Object.freeze([
   { id: "settings-recovery", labelKey: "settings.navigation.recovery" },
 ]);
 
-function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp, graphSourceState }) {
+const runtimeSettingsSubsections = Object.freeze({
+  "settings-interface": Object.freeze([
+    { id: "settings-interface-appearance", labelKey: "settings.subsection.appearance" },
+    { id: "settings-interface-layout", labelKey: "settings.subsection.layout" },
+    { id: "settings-interface-recovery", labelKey: "settings.subsection.configuration" },
+  ]),
+  "settings-graph": Object.freeze([
+    { id: "settings-graph-source", labelKey: "settings.subsection.source" },
+    { id: "settings-graph-visuals", labelKey: "settings.subsection.visuals" },
+    { id: "settings-graph-profiles", labelKey: "settings.subsection.profiles" },
+  ]),
+});
+
+function normalizeInitialSettingsSection(section) {
+  return runtimeSettingsSections.some((item) => item.id === section)
+    ? section : runtimeSettingsSections[0].id;
+}
+
+function RuntimeSettingsPanel({
+  onClose,
+  onToast,
+  onOpenHelp,
+  graphSourceState,
+  initialSettingsSection,
+  settingsNavigationToken,
+  onResetWindowLayout,
+}) {
   const { t } = useLanguage();
+  const detailRef = useRef(null);
   const [runtime, setRuntime] = useState(null);
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
   const [diagnostics, setDiagnostics] = useState(null);
   const [diagnosticStatus, setDiagnosticStatus] = useState("idle");
-  const [activeSection, setActiveSection] = useState(runtimeSettingsSections[0].id);
+  const [activeSection, setActiveSection] = useState(
+    () => normalizeInitialSettingsSection(initialSettingsSection),
+  );
+  const [activeSubsection, setActiveSubsection] = useState("");
+
+  useEffect(() => {
+    setActiveSection(normalizeInitialSettingsSection(initialSettingsSection));
+  }, [initialSettingsSection, settingsNavigationToken]);
+
+  useEffect(() => {
+    setActiveSubsection(runtimeSettingsSubsections[activeSection]?.[0]?.id ?? "");
+    detailRef.current?.scrollTo({ top: 0 });
+  }, [activeSection]);
+
+  const handleDetailScroll = (event) => {
+    const subsections = runtimeSettingsSubsections[activeSection] ?? [];
+    const top = event.currentTarget.getBoundingClientRect().top + 72;
+    const current = subsections.filter(({ id }) => {
+      const element = document.getElementById(id);
+      return element && element.getBoundingClientRect().top <= top;
+    }).at(-1) ?? subsections[0];
+    if (current && current.id !== activeSubsection) setActiveSubsection(current.id);
+  };
+
+  const goToSubsection = (id) => {
+    setActiveSubsection(id);
+    document.getElementById(id)?.scrollIntoView({ block: "start" });
+  };
 
   useEffect(() => {
     let active = true;
@@ -2153,10 +2244,21 @@ function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp, graphSourceState }
 
         <div
           id="runtime-settings-detail"
+          ref={detailRef}
           className="runtime-settings-detail"
           role="region"
           aria-labelledby={`settings-nav-${activeSection}`}
+          onScroll={handleDetailScroll}
         >
+
+          {runtimeSettingsSubsections[activeSection] ? (
+            <nav className="runtime-settings-subnav" aria-label={t("settings.subsection.aria")}>
+              {runtimeSettingsSubsections[activeSection].map(({ id, labelKey }) => (
+                <button key={id} type="button" aria-current={activeSubsection === id ? "location" : undefined}
+                  onClick={() => goToSubsection(id)}>{t(labelKey)}</button>
+              ))}
+            </nav>
+          ) : null}
 
           {activeSection === "settings-general" ? (
             <section
@@ -2241,25 +2343,47 @@ function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp, graphSourceState }
 
           {activeSection === "settings-interface" ? (
             <div id="settings-interface" className="runtime-settings-section-anchor">
-              <InterfacePreferences onToast={onToast} />
-              <ConfigurationSettingsPanel />
+              <div id="settings-interface-appearance" data-settings-subsection>
+                <InterfacePreferences onToast={onToast} />
+              </div>
+              <section id="settings-interface-layout" data-settings-subsection
+                className="runtime-workspace-layout" aria-labelledby="settings-interface-layout-title">
+                <header>
+                  <strong id="settings-interface-layout-title">{t("settings.interface.layout.title")}</strong>
+                  <small>{t("settings.interface.layout.description")}</small>
+                </header>
+                <button type="button" onClick={() => {
+                  onResetWindowLayout?.();
+                  onToast?.(t("settings.interface.layout.restored"));
+                }}>{t("settings.interface.layout.reset")}</button>
+                <p>{t("settings.interface.layout.keyboard")}</p>
+              </section>
+              <div id="settings-interface-recovery" data-settings-subsection>
+                <ConfigurationSettingsPanel />
+              </div>
             </div>
           ) : null}
 
           {activeSection === "settings-graph" ? (
             <div id="settings-graph" className="runtime-settings-section-anchor">
-              <GraphSourceSettings state={graphSourceState} onToast={onToast} />
-              <OptionalSettingsBoundary fallbackMessage={t("settings.graph.visuals.unavailable")}>
-                <Suspense fallback={(
-                  <p className="shell-empty-state">{t("settings.graph.visuals.loading")}</p>
-                )}>
-                  <GraphVisualSettings embedded onToast={onToast} />
-                </Suspense>
-              </OptionalSettingsBoundary>
-              <GraphProfileManager
-                vaultName={graphSourceState?.graph?.source?.name ?? ""}
-                onToast={onToast}
-              />
+              <div id="settings-graph-source" data-settings-subsection>
+                <GraphSourceSettings state={graphSourceState} onToast={onToast} />
+              </div>
+              <div id="settings-graph-visuals" data-settings-subsection>
+                <OptionalSettingsBoundary fallbackMessage={t("settings.graph.visuals.unavailable")}>
+                  <Suspense fallback={(
+                    <p className="shell-empty-state">{t("settings.graph.visuals.loading")}</p>
+                  )}>
+                    <GraphVisualSettings embedded onToast={onToast} />
+                  </Suspense>
+                </OptionalSettingsBoundary>
+              </div>
+              <div id="settings-graph-profiles" data-settings-subsection>
+                <GraphProfileManager
+                  vaultName={graphSourceState?.graph?.source?.name ?? ""}
+                  onToast={onToast}
+                />
+              </div>
             </div>
           ) : null}
 
@@ -2471,13 +2595,14 @@ function TaskbarModeSettings({ onToast }) {
   const { t } = useLanguage();
   const state = useTaskbarModeState();
   const [pendingMode, setPendingMode] = useState(null);
+  const [proposedMode, setProposedMode] = useState(null);
   const [retrying, setRetrying] = useState(false);
   const [clock, setClock] = useState(() => Date.now());
   const previousTransition = useRef({
     generation: state.transitionGeneration,
     status: state.transitionStatus,
   });
-  const selectedMode = pendingMode ?? state.requestedMode;
+  const selectedMode = proposedMode ?? pendingMode ?? state.requestedMode;
   const busy = state.loading ||
     state.transitionStatus === "applying" ||
     pendingMode !== null ||
@@ -2548,7 +2673,8 @@ function TaskbarModeSettings({ onToast }) {
   }, [retryAfterTimestamp]);
 
   const updateMode = async (mode) => {
-    if (busy || mode === state.requestedMode) return;
+    if (busy || state.safeMode || mode === state.requestedMode) return;
+    setProposedMode(null);
     setPendingMode(mode);
     try {
       await setTaskbarMode(mode);
@@ -2557,6 +2683,15 @@ function TaskbarModeSettings({ onToast }) {
     } finally {
       setPendingMode(null);
     }
+  };
+
+  const selectMode = (mode) => {
+    if (mode === "full" && state.requestedMode !== "full") {
+      setProposedMode("full");
+      return;
+    }
+    setProposedMode(null);
+    void updateMode(mode);
   };
 
   const retryMode = async () => {
@@ -2603,7 +2738,7 @@ function TaskbarModeSettings({ onToast }) {
                   name="taskbar-mode"
                   value={option.mode}
                   checked={selected}
-                  onChange={() => updateMode(option.mode)}
+                  onChange={() => selectMode(option.mode)}
                 />
                 <span className="window-appearance-level" aria-hidden="true">T{index}</span>
                 <span className="window-appearance-copy">
@@ -2616,6 +2751,21 @@ function TaskbarModeSettings({ onToast }) {
           })}
         </div>
       </fieldset>
+
+      {proposedMode === "full" ? (
+        <div className="taskbar-full-confirmation" role="group" aria-labelledby="taskbar-full-confirmation-title">
+          <strong id="taskbar-full-confirmation-title">{t("settings.taskbar.fullConfirm.title")}</strong>
+          <p>{t("settings.taskbar.fullConfirm.detail")}</p>
+          <div>
+            <button type="button" onClick={() => setProposedMode(null)}>
+              {t("common.action.cancel")}
+            </button>
+            <button type="button" className="is-confirm" disabled={busy || state.safeMode} onClick={() => void updateMode("full")}>
+              {t("settings.taskbar.fullConfirm.apply")}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="window-appearance-telemetry is-taskbar" role="status" aria-live="polite">
         <span><small>{simulation
@@ -2653,7 +2803,7 @@ function TaskbarModeSettings({ onToast }) {
       ) : null}
       {state.safeMode ? (
         <p className="window-appearance-feedback is-fallback" role="status">
-          <ShieldRegular /><span>{t("settings.taskbar.feedback.safeMode")}</span>
+          <ShieldRegular /><span>{t("settings.taskbar.feedback.safeMode")} {t("settings.taskbar.feedback.safeModeNext")}</span>
         </p>
       ) : null}
       {state.fallbackReason ? (
@@ -3549,6 +3699,9 @@ export function ShellPanelLayer({
   onClearLocalFeed,
   onMarkLocalFeedRead,
   graphSourceState,
+  initialSettingsSection,
+  settingsNavigationToken,
+  onResetWindowLayout,
 }) {
   const panelRef = useRef(null);
   const closing = presenceState === "closing";
@@ -3628,6 +3781,9 @@ export function ShellPanelLayer({
             onToast={onToast}
             onOpenHelp={() => onOpenPanel("help")}
             graphSourceState={graphSourceState}
+            initialSettingsSection={initialSettingsSection}
+            settingsNavigationToken={settingsNavigationToken}
+            onResetWindowLayout={onResetWindowLayout}
           />
         ) : null}
         {panel === "help" ? <HelpCenterPanel onClose={onClose} onOpenPanel={onOpenPanel} /> : null}

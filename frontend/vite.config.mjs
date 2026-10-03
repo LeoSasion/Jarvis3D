@@ -45,6 +45,8 @@ export default defineConfig(({ mode, command }) => {
         clientFiles: ["./src/main.jsx"],
       },
     },
-    plugins: [react(), localGraphPreview(vault)],
+    plugins: [react(), localGraphPreview(vault, {
+      settingsDirectory: env.JARVIS_PREVIEW_TEST_SETTINGS_DIRECTORY || null,
+    })],
   };
 });

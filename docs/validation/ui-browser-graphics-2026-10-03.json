@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "environment": "browser-iab-chrome-154",
+  "capturedAtUtc": "2026-10-03T07:03:08.501Z",
+  "fixture": "six-clusters-96-v1",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "stage": {
+    "width": 960,
+    "height": 640
+  },
+  "dpr": 1,
+  "cases": [
+    {
+      "caseId": "idle",
+      "phase": "complete",
+      "error": null,
+      "positionDigest": "edaee1c6",
+      "signalDigest": "1f116dc5",
+      "simulationFrames": 240,
+      "cameraType": "PerspectiveCamera",
+      "quality": "balanced",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      }
+    },
+    {
+      "caseId": "explore-2d",
+      "phase": "complete",
+      "error": null,
+      "positionDigest": "bc184b15",
+      "signalDigest": "36ce53cf",
+      "simulationFrames": 240,
+      "cameraType": "OrthographicCamera",
+      "quality": "balanced",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      }
+    },
+    {
+      "caseId": "explore-3d",
+      "phase": "complete",
+      "error": null,
+      "positionDigest": "83e7c64e",
+      "signalDigest": "bf85bf7d",
+      "simulationFrames": 240,
+      "cameraType": "PerspectiveCamera",
+      "quality": "balanced",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      }
+    },
+    {
+      "caseId": "frozen-a",
+      "phase": "complete",
+      "error": null,
+      "positionDigest": "83e7c64e",
+      "signalDigest": "bf85bf7d",
+      "simulationFrames": 240,
+      "cameraType": "PerspectiveCamera",
+      "quality": "balanced",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      }
+    },
+    {
+      "caseId": "frozen-b",
+      "phase": "complete",
+      "error": null,
+      "positionDigest": "83e7c64e",
+      "signalDigest": "bf85bf7d",
+      "simulationFrames": 240,
+      "cameraType": "PerspectiveCamera",
+      "quality": "balanced",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      }
+    },
+    {
+      "caseId": "frozen-a-restored",
+      "phase": "complete",
+      "error": null,
+      "positionDigest": "83e7c64e",
+      "signalDigest": "bf85bf7d",
+      "simulationFrames": 240,
+      "cameraType": "PerspectiveCamera",
+      "quality": "balanced",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      }
+    },
+    {
+      "caseId": "reentry",
+      "phase": "complete",
+      "error": null,
+      "positionDigest": "83e7c64e",
+      "signalDigest": "8ac00d14",
+      "simulationFrames": 360,
+      "cameraType": "PerspectiveCamera",
+      "quality": "balanced",
+      "context": {
+        "lost": 0,
+        "restored": 0
+      }
+    },
+    {
+      "caseId": "context-restored",
+      "phase": "complete",
+      "error": null,
+      "positionDigest": "83e7c64e",
+      "signalDigest": "8ac00d14",
+      "simulationFrames": 360,
+      "cameraType": "PerspectiveCamera",
+      "quality": "balanced",
+      "context": {
+        "lost": 1,
+        "restored": 1
+      }
+    }
+  ]
+}

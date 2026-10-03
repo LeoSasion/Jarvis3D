@@ -3,6 +3,7 @@ import { useLanguage } from "../i18n/language-system.js";
 import {
   WORKSPACE_WINDOW_DEFINITIONS,
   constrainWindowBounds,
+  moveWorkspaceWindowBounds,
 } from "../workspace-window-state.js";
 import {
   getDockedWindowBounds,
@@ -222,6 +223,24 @@ export function ManagedWorkspaceWindow({
     );
   }, [docked, id, onCommitBounds, viewport, windowState.bounds, windowState.maximized]);
 
+  const moveWithKeyboard = useCallback((event) => {
+    if (event.target !== event.currentTarget || !event.altKey || event.ctrlKey || event.metaKey
+      || docked || windowState.maximized) return;
+    const horizontal = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+    const vertical = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+    if (!horizontal && !vertical) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const step = event.shiftKey ? 32 : 12;
+    onCommitBounds(id, moveWorkspaceWindowBounds(
+      id,
+      windowState.bounds,
+      horizontal * step,
+      vertical * step,
+      viewport,
+    ));
+  }, [docked, id, onCommitBounds, viewport, windowState.bounds, windowState.maximized]);
+
   return (
     <div
       ref={frameRef}
@@ -246,8 +265,13 @@ export function ManagedWorkspaceWindow({
       data-window-layout={layoutMode}
       data-linked-variant={layoutMode === "explorer-agent-linked" ? linkedVariant : undefined}
       data-window-layout-suppressed={layoutSuppressed ? "true" : "false"}
+      role="group"
+      tabIndex={windowState.maximized || docked ? -1 : 0}
+      aria-label={t("workspaceWindow.moveHint", { window: windowTitle })}
+      aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown"
       onPointerDownCapture={beginGesture}
       onDoubleClick={handleDoubleClick}
+      onKeyDown={moveWithKeyboard}
     >
       {children}
       {!windowState.maximized && !docked ? RESIZE_DIRECTIONS.map((direction) => (

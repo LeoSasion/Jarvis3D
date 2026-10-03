@@ -98,6 +98,7 @@ function GraphicsRecoveryStatus({ fallback }) {
 
 function EnabledCoreVisualCanvas({
   cameraCommand = null,
+  onCameraCommandConsumed,
   graph,
   dimension,
   hoveredNodeId = null,
@@ -242,6 +243,7 @@ function EnabledCoreVisualCanvas({
           key={resolvedDimension}
           onCameraViewChange={onCameraViewChange}
           cameraCommand={cameraCommand}
+          onCameraCommandConsumed={onCameraCommandConsumed}
           dimension={resolvedDimension}
           graph={budgetGraph}
           hoveredNodeId={hoveredNodeId}

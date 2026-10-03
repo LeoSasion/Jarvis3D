@@ -83,6 +83,7 @@ export function useWorkspaceManager() {
   const commitBounds = useCallback((id, bounds) => {
     dispatch({ type: "COMMIT_BOUNDS", id, bounds });
   }, []);
+  const resetLayout = useCallback(() => dispatch({ type: "RESET_LAYOUT" }), []);
   const cycle = useCallback((direction) => {
     dispatch({ type: "CYCLE", direction });
   }, []);
@@ -103,6 +104,7 @@ export function useWorkspaceManager() {
     toggleMaximize,
     toggleFromTaskbar,
     commitBounds,
+    resetLayout,
     cycle,
   };
 }

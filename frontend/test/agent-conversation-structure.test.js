@@ -29,7 +29,17 @@ test("linked context belongs to the compact one-row composer", () => {
   assert.ok(transcriptStart >= 0);
   assert.ok(composerStart > transcriptStart);
   assert.ok(linkedContextUse > composerStart);
-  assert.match(agentSource, /className="agent-composer__attachments"/u);
+  assert.match(agentSource, /className=\{`agent-composer__attachments/u);
   assert.match(agentSource, /className="agent-composer__input-row"/u);
   assert.match(agentSource, /rows=\{1\}/u);
+});
+
+test("reading controls remain available while the transcript scrolls", () => {
+  const titlebar = agentSource.indexOf('className="agent-titlebar"');
+  const library = agentSource.indexOf("<AgentConversationLibrary", titlebar);
+  const transcript = agentSource.indexOf('className="agent-transcript"');
+  assert.ok(titlebar >= 0 && library > titlebar && library < transcript);
+  assert.match(agentSource, /nearBottomRef\.current/u);
+  assert.match(agentSource, /agent-new-content/u);
+  assert.match(agentSource, /agent-source-drawer/u);
 });

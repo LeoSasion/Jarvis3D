@@ -140,18 +140,22 @@ export function agentContextReducer(model, action) {
     case "stage": {
       if (["submitting", "running"].includes(current.phase)) return current;
       const additions = action.entries ?? action.items ?? [];
-      const items = normalizeAgentContextItems([...current.items, ...additions]);
+      // A completed relation is history. Only an explicit new stage arms its
+      // snapshots for another request; never merge them into a fresh selection.
+      const items = normalizeAgentContextItems([
+        ...(current.phase === "staged" ? current.items : []), ...additions,
+      ]);
       if (items.length === 0) return createAgentContextModel();
       return createModel({
         phase: "staged",
         items,
         relationId: normalizeIdentifier(action.relationId)
-          ?? current.relationId
+          ?? (current.phase === "staged" ? current.relationId : null)
           ?? fallbackRelationId(items),
       });
     }
     case "submit": {
-      if (current.items.length === 0 || ["submitting", "running"].includes(current.phase)) {
+      if (current.phase !== "staged" || current.items.length === 0) {
         return current;
       }
       return createModel({
@@ -239,6 +243,13 @@ export function agentContextReducer(model, action) {
 
 export function isAgentContextArmed(context) {
   return Boolean(context?.items?.length) && context.phase === "staged";
+}
+
+export function getAgentSourceLabelKey(phase) {
+  if (phase === "staged") return "knowledge.agent.pendingSources";
+  if (phase === "submitting") return "agent.context.submittingSources";
+  if (phase === "running") return "agent.context.sentSources";
+  return "agent.context.historicalSources";
 }
 
 export function isAgentMessageInRelation(message, context) {

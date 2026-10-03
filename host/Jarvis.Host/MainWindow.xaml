@@ -42,5 +42,55 @@
                    HorizontalAlignment="Center" />
       </StackPanel>
     </Border>
+
+    <Border x:Name="NativeFailureOverlay"
+            Visibility="Collapsed"
+            Background="{StaticResource NativeShellBackgroundBrush}">
+      <Border HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Width="480"
+              MaxWidth="480"
+              Padding="32"
+              BorderBrush="{StaticResource NativeShellMutedBrush}"
+              BorderThickness="1"
+              Background="#FF07111B">
+        <StackPanel>
+          <TextBlock Text="J A R V I S"
+                     Foreground="{StaticResource NativeShellInkBrush}"
+                     FontFamily="Segoe UI Light"
+                     FontSize="30" />
+          <TextBlock x:Name="NativeFailureTitle"
+                     Margin="0,24,0,0"
+                     Foreground="{StaticResource NativeShellInkBrush}"
+                     FontFamily="Segoe UI"
+                     FontSize="19"
+                     FontWeight="SemiBold" />
+          <TextBlock x:Name="NativeFailureDetail"
+                     Margin="0,12,0,0"
+                     Foreground="{StaticResource NativeShellMutedBrush}"
+                     FontFamily="Segoe UI"
+                     FontSize="13"
+                     TextWrapping="Wrap" />
+          <TextBlock x:Name="NativeFailureRecovery"
+                     Margin="0,20,0,0"
+                     Foreground="{StaticResource NativeShellInkBrush}"
+                     FontFamily="Segoe UI"
+                     FontSize="12"
+                     TextWrapping="Wrap" />
+          <Button x:Name="NativeFailureExitButton"
+                  AutomationProperties.AutomationId="NativeFailureExitButton"
+                  Margin="0,28,0,0"
+                  Height="44"
+                  MinWidth="180"
+                  HorizontalAlignment="Left"
+                  Click="OnNativeFailureExitClick" />
+          <TextBlock x:Name="NativeFailureShortcut"
+                     Margin="0,14,0,0"
+                     Foreground="{StaticResource NativeShellMutedBrush}"
+                     FontFamily="Segoe UI"
+                     FontSize="12" />
+        </StackPanel>
+      </Border>
+    </Border>
   </Grid>
 </Window>
