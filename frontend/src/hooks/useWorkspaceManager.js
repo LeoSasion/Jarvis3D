@@ -74,6 +74,7 @@ export function useWorkspaceManager() {
   }, []);
 
   const open = useCallback((id) => dispatch({ type: "OPEN", id }), []);
+  const openFromKnowledge = useCallback(() => dispatch({ type: "OPEN_FROM_KNOWLEDGE" }), []);
   const close = useCallback((id) => dispatch({ type: "CLOSE", id }), []);
   const activate = useCallback((id) => dispatch({ type: "ACTIVATE", id }), []);
   const minimize = useCallback((id) => dispatch({ type: "MINIMIZE", id }), []);
@@ -97,6 +98,7 @@ export function useWorkspaceManager() {
     state,
     taskbarWindows,
     open,
+    openFromKnowledge,
     close,
     activate,
     minimize,

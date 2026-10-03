@@ -116,7 +116,7 @@ export function KnowledgeBrowser({ graph, selectedNodeId, onSelectNode, onFocusN
   const ask = async (intent) => {
     if (!basket.length || staleBasketCount || basketRevisionPending) return;
     setBusy(true);
-    try { await onLinkToAgent(basket, t(`knowledge.prompt.${intent}`)); }
+    try { await onLinkToAgent(basket, intent === "question" ? "" : t(`knowledge.prompt.${intent}`)); }
     catch { setError(t("knowledge.error.agent")); setErrorKind("agent"); }
     finally { setBusy(false); }
   };

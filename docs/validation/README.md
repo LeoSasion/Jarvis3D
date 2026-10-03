@@ -6,6 +6,9 @@ the native Explorer taskbar and desktop.
 
 ## Evidence kept in this repository
 
+- [October 3 Knowledge → Agent handoff review](product-handoff-2026-10-03.md)
+  records the Product Design flow capture, source-pane obstruction fix, tall-screen
+  result-list improvement, and responsive limitations before hardware testing.
 - [October 3 UI interaction delivery](ui-interaction-2026-10-03.md)
   records the P0/P1/P2 changes, synthetic browser flow, isolated native failure
   exits, and matching browser/WebView2 graph invariants.

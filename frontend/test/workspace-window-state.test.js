@@ -130,6 +130,65 @@ test("keyboard movement remains inside the current viewport and layout reset per
   assert.equal(clipped.y + clipped.height, viewport.height - viewport.bottom);
 });
 
+test("knowledge handoff keeps the source panel visible without moving a custom Agent layout", () => {
+  const sourceViewport = { width: 1280, height: 720, top: 48, right: 0, bottom: 56, left: 0 };
+  let state = createWorkspaceWindowState(sourceViewport);
+  state = reduce(state, "OPEN_FROM_KNOWLEDGE");
+  const placed = state.windows.agent.bounds;
+  assert.equal(state.activeId, "agent");
+  assert.ok(placed.x >= 24 + 330 + 24);
+  assert.ok(placed.x + placed.width <= sourceViewport.width - 24);
+
+  state = reduce(state, "REFLOW", "agent", { viewport: { ...sourceViewport, width: 980 } });
+  state = reduce(state, "REFLOW", "agent", { viewport: sourceViewport });
+  assert.deepEqual(state.windows.agent.bounds, placed);
+  assert.equal(serializeWorkspaceLayout(state).windows.agent.autoPlacement, "knowledge");
+  const restored = createWorkspaceWindowState(sourceViewport, serializeWorkspaceLayout(state));
+  assert.equal(restored.windows.agent.knowledgePlaced, true);
+
+  const narrow = { ...sourceViewport, width: 980 };
+  const tall = { ...sourceViewport, width: 1324, height: 1244 };
+  state = reduce(state, "REFLOW", "agent", { viewport: tall });
+  const tallBounds = state.windows.agent.bounds;
+  state = reduce(state, "REFLOW", "agent", { viewport: narrow });
+  state = reduce(state, "REFLOW", "agent", { viewport: tall });
+  assert.deepEqual(state.windows.agent.bounds, tallBounds);
+  state = reduce(state, "REFLOW", "agent", { viewport: sourceViewport });
+
+  state = reduce(state, "CLOSE", "agent");
+  state = reduce(state, "OPEN_FROM_KNOWLEDGE");
+  assert.deepEqual(state.windows.agent.bounds, placed);
+
+  const custom = { ...placed, x: 420 };
+  state = reduce(state, "COMMIT_BOUNDS", "agent", { bounds: custom });
+  state = reduce(state, "OPEN_FROM_KNOWLEDGE");
+  assert.deepEqual(state.windows.agent.bounds, custom);
+  assert.equal("autoPlacement" in serializeWorkspaceLayout(state).windows.agent, false);
+
+  const narrowState = reduce(createWorkspaceWindowState(narrow), "OPEN_FROM_KNOWLEDGE");
+  assert.deepEqual(narrowState.windows.agent.bounds, getDefaultWindowBounds("agent", narrow));
+});
+
+test("ordinary viewport reflow does not place Agent beside Knowledge", () => {
+  const sourceViewport = { width: 1280, height: 720, top: 48, right: 0, bottom: 56, left: 0 };
+  let state = createWorkspaceWindowState(sourceViewport);
+  state = reduce(state, "OPEN", "agent");
+  const original = state.windows.agent.bounds;
+
+  state = reduce(state, "REFLOW", "agent", { viewport: sourceViewport });
+  assert.deepEqual(state.windows.agent.bounds, original);
+  assert.equal(state.windows.agent.knowledgePlaced, false);
+
+  state = reduce(state, "REFLOW", "agent", { viewport: { ...sourceViewport, width: 1360 } });
+  state = reduce(state, "REFLOW", "agent", { viewport: sourceViewport });
+  assert.deepEqual(state.windows.agent.bounds, original);
+  assert.equal("autoPlacement" in serializeWorkspaceLayout(state).windows.agent, false);
+
+  state = reduce(state, "REFLOW", "agent", { viewport: { ...sourceViewport, width: 980 } });
+  assert.equal(state.windows.agent.bounds.x, 238);
+  assert.equal(state.windows.agent.knowledgePlaced, false);
+});
+
 test("layout persistence excludes open state and rejects stale versions", () => {
   let state = createWorkspaceWindowState(viewport);
   state = reduce(state, "OPEN", "explorer");

@@ -51,6 +51,10 @@
 .knowledge-browser__excerpt pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; line-height: 1.6; }
 .knowledge-browser__basket > div { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; }
 .knowledge-browser summary { cursor: pointer; margin: 10px 0; }
+@media (min-height: 900px) {
+  .knowledge-browser__results { max-height: 240px; }
+  .knowledge-browser:has(.knowledge-browser__note) .knowledge-browser__results { flex: 0 1 220px; }
+}
 @media (max-width: 640px) {
   .knowledge-browser { left: 10px; top: 66px; width: min(280px, calc(100% - 72px)); max-height: calc(100% - 144px); }
 }

@@ -236,7 +236,7 @@ export function useAgentSession() {
     }
   }, [context, draft, library, model.state, supportsChat]);
 
-  const addContextItems = useCallback((entries) => {
+  const addContextItems = useCallback((entries, { suggestDraft = true } = {}) => {
     if (["submitting", "running"].includes(context.phase)) return context.items;
     const items = normalizeAgentContextItems(entries);
     if (items.length === 0) return items;
@@ -246,7 +246,9 @@ export function useAgentSession() {
       entries: items,
       relationId: createRelationId(),
     });
-    setDraft((current) => current.trim() ? current : getSuggestedAgentDirective(items));
+    if (suggestDraft) {
+      setDraft((current) => current.trim() ? current : getSuggestedAgentDirective(items));
+    }
     return items;
   }, [context.items, context.phase]);
 

@@ -711,7 +711,10 @@ export function AgentConversationWindow({
               placeholder={isRunning
                 ? t("agent.composer.placeholder.responding")
                 : channelReady
-                  ? errorView?.guidance ?? t("agent.composer.placeholder.ready")
+                  ? errorView?.guidance ?? (linkedFlowPhase === "staged"
+                    && linkedContext?.items?.some((item) => item.excerpt)
+                    ? t("knowledge.agent.questionPlaceholder")
+                    : t("agent.composer.placeholder.ready"))
                   : state?.available && !supportsChat
                     ? t("agent.composer.placeholder.chatUnsupported")
                     : state?.available

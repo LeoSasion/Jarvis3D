@@ -209,6 +209,7 @@ export function createWorkspaceWindowState(viewportInput, persistedLayout = null
       maximized: persisted?.maximized === true,
       bounds,
       restoreBounds,
+      knowledgePlaced: id === "agent" && persisted?.autoPlacement === "knowledge",
       zIndex: definition.order,
     };
   });
@@ -253,6 +254,46 @@ function activateWindow(state, id, patch = {}) {
   };
 }
 
+function placeAgentBesideKnowledge(state) {
+  const current = state.windows.agent;
+  if (!current || current.maximized) return state;
+
+  // The Knowledge browser uses a 330px panel, 24px from the left edge.
+  // Only move the untouched default layout; a manually arranged window wins.
+  const defaultBounds = getDefaultWindowBounds("agent", state.viewport);
+  if (!current.knowledgePlaced
+    && Object.keys(defaultBounds).some((key) => current.bounds[key] !== defaultBounds[key])) {
+    return state;
+  }
+
+  const available = availableWorkspace(state.viewport);
+  const panelRight = available.x + 24 + 330;
+  const minimumGap = 24;
+  const rightMargin = 24;
+  const targetBounds = current.knowledgePlaced ? defaultBounds : current.bounds;
+  const fitsBesideSource = available.width
+    >= 24 + 330 + minimumGap + targetBounds.width + rightMargin;
+  if (!fitsBesideSource && !current.knowledgePlaced) return state;
+
+  return {
+    ...state,
+    windows: {
+      ...state.windows,
+      agent: {
+        ...current,
+        knowledgePlaced: fitsBesideSource || current.knowledgePlaced,
+        bounds: fitsBesideSource
+          ? constrainWindowBounds("agent", {
+            ...targetBounds,
+            x: Math.max(panelRight + minimumGap,
+              available.x + available.width - targetBounds.width - rightMargin),
+          }, state.viewport)
+          : defaultBounds,
+      },
+    },
+  };
+}
+
 function hideWindow(state, id, patch) {
   const current = state.windows[id];
   if (!current) return state;
@@ -274,6 +315,8 @@ export function workspaceWindowReducer(state, action) {
   switch (action?.type) {
     case "OPEN":
       return activateWindow(state, id);
+    case "OPEN_FROM_KNOWLEDGE":
+      return activateWindow(placeAgentBesideKnowledge(state), "agent");
     case "ACTIVATE":
     case "RESTORE":
       return activateWindow(state, id);
@@ -295,6 +338,7 @@ export function workspaceWindowReducer(state, action) {
       if (current.maximized) {
         return activateWindow(state, id, {
           maximized: false,
+          knowledgePlaced: false,
           bounds: constrainWindowBounds(
             id,
             current.restoreBounds ?? current.bounds,
@@ -305,6 +349,7 @@ export function workspaceWindowReducer(state, action) {
       }
       return activateWindow(state, id, {
         maximized: true,
+        knowledgePlaced: false,
         restoreBounds: current.bounds,
       });
     }
@@ -314,6 +359,7 @@ export function workspaceWindowReducer(state, action) {
       return activateWindow(state, id, {
         maximized: false,
         restoreBounds: null,
+        knowledgePlaced: false,
         bounds: constrainWindowBounds(id, action.bounds, state.viewport),
       });
     }
@@ -325,6 +371,7 @@ export function workspaceWindowReducer(state, action) {
           bounds: getDefaultWindowBounds(windowId, state.viewport),
           restoreBounds: null,
           maximized: false,
+          knowledgePlaced: false,
         },
       ]));
       return { ...state, windows };
@@ -341,7 +388,8 @@ export function workspaceWindowReducer(state, action) {
             : null,
         }];
       }));
-      return { ...state, viewport, windows };
+      const reflowed = { ...state, viewport, windows };
+      return windows.agent.knowledgePlaced ? placeAgentBesideKnowledge(reflowed) : reflowed;
     }
     case "CYCLE": {
       const visibleIds = Object.values(state.windows)
@@ -370,6 +418,9 @@ export function serializeWorkspaceLayout(state) {
         bounds: windowState.bounds,
         restoreBounds: windowState.restoreBounds,
         maximized: windowState.maximized,
+        ...(id === "agent" && windowState.knowledgePlaced
+          ? { autoPlacement: "knowledge" }
+          : {}),
       }];
     })),
   };

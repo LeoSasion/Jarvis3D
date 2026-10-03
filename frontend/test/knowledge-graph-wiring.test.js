@@ -25,7 +25,8 @@ test("connected graph actions stage bounded metadata or explicitly selected exce
     readSource("knowledge-graph-model.js"),
   ]);
 
-  assert.match(app, /agentSession\.addContextItems\(Array\.isArray\(entry\) \? entry : entry \? \[entry\] : \[\]\)/u);
+  assert.match(app, /agentSession\.addContextItems\(/u);
+  assert.match(app, /await openAgent\("knowledge"\)/u);
   assert.match(workspace, /getKnowledgeGraphNodeContextItem\(selectedNode\)/u);
   assert.match(workspace, /t\("graph\.workspace\.action\.askAgent"\)/u);
   assert.match(workspace, /platformKind === "windows"/u);

@@ -65,6 +65,7 @@ export function App() {
     state: workspaceState,
     taskbarWindows: internalTaskbarWindows,
     open: openWorkspaceWindow,
+    openFromKnowledge: openAgentFromKnowledge,
     close: closeWorkspaceWindow,
     activate: activateWorkspaceWindow,
     minimize: minimizeWorkspaceWindow,
@@ -270,13 +271,14 @@ export function App() {
     setCommandOpen(true);
   }, [hideTaskbarFlyout]);
 
-  const openAgent = useCallback(async () => {
+  const openAgent = useCallback(async (source = null) => {
     await hideTaskbarFlyout();
     setCommandOpen(false);
     setShellPanel(null);
     setActiveApp("jarvis:launcher");
-    openWorkspaceWindow("agent");
-  }, [hideTaskbarFlyout, openWorkspaceWindow]);
+    if (source === "knowledge") openAgentFromKnowledge();
+    else openWorkspaceWindow("agent");
+  }, [hideTaskbarFlyout, openAgentFromKnowledge, openWorkspaceWindow]);
 
   const toggleAgentFromTaskbar = useCallback(async () => {
     await hideTaskbarFlyout();
@@ -338,13 +340,18 @@ export function App() {
       showToast(translate("feedback.agent.contextLocked"));
       return;
     }
-    const stagedItems = agentSession.addContextItems(Array.isArray(entry) ? entry : entry ? [entry] : []);
+    const stagedItems = agentSession.addContextItems(
+      Array.isArray(entry) ? entry : entry ? [entry] : [],
+      { suggestDraft: directive === null },
+    );
     if (!stagedItems.length) {
       showToast(translate("feedback.agent.selectGraphNode"));
       return;
     }
-    await openAgent();
-    if (directive) agentSession.setDraft(directive);
+    await openAgent("knowledge");
+    if (directive !== null) {
+      agentSession.setDraft((current) => current.trim() ? current : directive);
+    }
     showToast(stagedItems.some((item) => item.excerpt)
       ? translate("knowledge.agent.stagedToast", { count: stagedItems.length })
       : translate("feedback.agent.graphNodeLinked", { name: stagedItems[0].name }));
