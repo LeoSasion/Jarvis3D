@@ -8,6 +8,8 @@ When implementing from a selected generated mock, treat that image as the source
 
 ## Approved JARVIS visual decisions
 
+- October 3, 2026 Knowledge explorer placement: open the explorer flush against the left workspace edge over desktop shortcuts. Do not reserve a visible shortcut strip as more icons are added. Let the user drag it by the header across the workspace, keeping the entire panel within the visible workspace; keyboard arrows move it and Home resets its position.
+
 - October 3, 2026 PC layout: judge the complete workspace at 1920×1080 and common 1280–2560 desktop widths, including 1366×768. In the Knowledge → Agent handoff, keep the Knowledge source, Agent composer and system rail usable together when width permits; at 1024×768, a focused Agent overlay may cover Knowledge but should leave the system rail accessible. Default windows should adapt to resolution changes while manually arranged windows retain their placement, and short panels must scroll to expose their actions.
 
 - October 2, 2026 workflow completion: themes, named graph presets, language, interface/audio and decorative-effect preferences share a revisioned local file alongside active graph settings. Keep automatic migration file-first, cross-client conflict handling and reversible two-file snapshots. A/B comparisons and freeze state are temporary renderer state, never saved profiles or undo entries. Adaptive quality may recover only after sustained measured headroom; count continuous requested animation frames, not sporadic demand-render gaps. Preserve the approved material defaults.

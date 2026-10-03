@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLanguage } from "../i18n/language-system.js";
 import { platform } from "../platform/index.js";
 import { MAX_AGENT_CONTENT_ITEMS } from "../agent-context-model.js";
@@ -10,6 +11,10 @@ import "./knowledge-browser.css";
 
 export function KnowledgeBrowser({ graph, selectedNodeId, onSelectNode, onFocusNode, onNeighborhood, onLinkToAgent }) {
   const { t, language } = useLanguage();
+  const browserRef = useRef(null);
+  const dragRef = useRef(null);
+  const [workspace, setWorkspace] = useState(null);
+  const [position, setPosition] = useState(null);
   const [query, setQuery] = useState("");
   const [tag, setTag] = useState("");
   const [offset, setOffset] = useState(0);
@@ -41,6 +46,81 @@ export function KnowledgeBrowser({ graph, selectedNodeId, onSelectNode, onFocusN
       .map((edge) => ({ ...edge, direction: edge.source === selectedNodeId ? "outgoing" : "incoming",
         node: nodes.get(edge.source === selectedNodeId ? edge.target : edge.source) }));
   }, [graph, neighborhood, selectedNodeId]);
+
+  useLayoutEffect(() => {
+    setWorkspace(document.querySelector(".desktop-workspace"));
+  }, []);
+
+  const constrainPosition = (left, top) => {
+    if (!workspace || !browserRef.current) return { left, top };
+    const frame = workspace.getBoundingClientRect();
+    const panel = browserRef.current.getBoundingClientRect();
+    return {
+      left: Math.round(Math.min(Math.max(0, left), Math.max(0, frame.width - panel.width))),
+      top: Math.round(Math.min(Math.max(0, top), Math.max(0, frame.height - panel.height))),
+    };
+  };
+
+  useEffect(() => {
+    if (!workspace || !browserRef.current) return undefined;
+    const observer = new ResizeObserver(() => {
+      setPosition((current) => current ? constrainPosition(current.left, current.top) : null);
+    });
+    observer.observe(workspace);
+    observer.observe(browserRef.current);
+    return () => observer.disconnect();
+  }, [workspace]);
+
+  const startDrag = (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (!workspace || !browserRef.current) return;
+    const frame = workspace.getBoundingClientRect();
+    const panel = browserRef.current.getBoundingClientRect();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      left: panel.left - frame.left,
+      top: panel.top - frame.top,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.focus();
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const moveDrag = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setPosition(constrainPosition(
+      drag.left + event.clientX - drag.clientX,
+      drag.top + event.clientY - drag.clientY,
+    ));
+    event.stopPropagation();
+  };
+  const endDrag = (event) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    event.stopPropagation();
+  };
+  const moveWithKeyboard = (event) => {
+    if (event.key === "Home") {
+      setPosition(null);
+    } else if (event.key.startsWith("Arrow")) {
+      if (!workspace || !browserRef.current) return;
+      const frame = workspace.getBoundingClientRect();
+      const panel = browserRef.current.getBoundingClientRect();
+      const step = event.shiftKey ? 50 : 10;
+      setPosition(constrainPosition(
+        panel.left - frame.left + (event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0),
+        panel.top - frame.top + (event.key === "ArrowDown" ? step : event.key === "ArrowUp" ? -step : 0),
+      ));
+    } else return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   useEffect(() => {
     let current = true;
@@ -120,9 +200,15 @@ export function KnowledgeBrowser({ graph, selectedNodeId, onSelectNode, onFocusN
     catch { setError(t("knowledge.error.agent")); setErrorKind("agent"); }
     finally { setBusy(false); }
   };
-  return (
-    <aside className="knowledge-browser" aria-label={t("knowledge.browser.title")}>
-      <header><strong>{t("knowledge.browser.title")}</strong><small>{graph.source.name}</small></header>
+  const browser = (
+    <aside ref={browserRef} className="knowledge-browser" aria-label={t("knowledge.browser.title")}
+      style={position ? { left: position.left, top: position.top } : undefined}>
+      <header className="knowledge-browser__drag-handle" tabIndex={0}
+        aria-label={t("knowledge.browser.dragHint")} title={t("knowledge.browser.dragHint")}
+        onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag}
+        onPointerCancel={endDrag} onLostPointerCapture={endDrag} onKeyDown={moveWithKeyboard}>
+        <strong>{t("knowledge.browser.title")}</strong><small>{graph.source.name}</small>
+      </header>
       <label>{t("knowledge.search.label")}<input type="search" value={query} maxLength={256}
         placeholder={t("knowledge.search.placeholder")}
         onChange={(event) => { setQuery(event.target.value); setOffset(0); setPreviousOffsets([]); }} /></label>
@@ -213,4 +299,5 @@ export function KnowledgeBrowser({ graph, selectedNodeId, onSelectNode, onFocusN
       </section> : null}
     </aside>
   );
+  return workspace ? createPortal(browser, workspace) : browser;
 }

@@ -1,6 +1,7 @@
 export const KNOWLEDGE_TRANSLATIONS = {
   "en-US": {
     "knowledge.browser.title": "Knowledge explorer",
+    "knowledge.browser.dragHint": "Move Knowledge explorer with the pointer or arrow keys; press Home to reset its position",
     "knowledge.search.label": "Find notes",
     "knowledge.search.placeholder": "Title, alias, path or tag",
     "knowledge.tag.label": "Tag",
@@ -97,6 +98,7 @@ export const KNOWLEDGE_TRANSLATIONS = {
   },
   "zh-CN": {
     "knowledge.browser.title": "知识探索",
+    "knowledge.browser.dragHint": "拖动知识探索；也可用方向键移动，按 Home 恢复位置",
     "knowledge.search.label": "查找笔记",
     "knowledge.search.placeholder": "标题、别名、路径或标签",
     "knowledge.tag.label": "标签",
