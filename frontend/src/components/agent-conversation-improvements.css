@@ -140,7 +140,12 @@
 .agent-linked-context.is-compact > button:last-child { grid-column: 6; grid-row: 1; }
 
 .agent-source-excerpts { min-width: 0; }
+.agent-linked-context__heading { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.agent-linked-context__heading > button { font-size: 11px; padding: 2px 6px; }
+.agent-linked-context.is-compact .agent-linked-context__heading { display: none; }
 .agent-source-excerpts summary { overflow-wrap: anywhere; }
+.agent-source-excerpts.is-staged { margin-bottom: 0; }
+.agent-source-excerpts__label { display: block; margin-bottom: 4px; }
 .agent-source-excerpts__panel > details { padding: 7px 0; border-top: 1px solid var(--shell-border); }
 .agent-source-excerpts__panel > details:first-child { border-top: 0; }
 .agent-source-excerpts__panel > button {

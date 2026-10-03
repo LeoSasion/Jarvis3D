@@ -271,14 +271,14 @@ function activateWindow(state, id, patch = {}) {
   };
 }
 
-function placeAgentBesideKnowledge(state, handoff) {
+function placeAgentBesideKnowledge(state, handoff, force = false) {
   const current = state.windows.agent;
   if (!current || current.maximized || !handoff) return state;
 
-  // The browser and right-side panels are measured after CSS layout. Only move
-  // the untouched default layout; a manually arranged window wins.
+  // The browser and right-side panels are measured after CSS layout. Automatic
+  // handoff preserves manual placement; the explicit arrange action can override it.
   const defaultBounds = getDefaultWindowBounds("agent", state.viewport);
-  if (!current.knowledgePlaced
+  if (!force && !current.knowledgePlaced
     && Object.keys(defaultBounds).some((key) => current.bounds[key] !== defaultBounds[key])) {
     return state;
   }
@@ -357,6 +357,8 @@ export function workspaceWindowReducer(state, action) {
       return activateOrdinaryWindow(state, id);
     case "OPEN_FROM_KNOWLEDGE":
       return activateWindow(placeAgentBesideKnowledge(state, action.knowledgeHandoff), "agent");
+    case "ARRANGE_WITH_KNOWLEDGE":
+      return activateWindow(placeAgentBesideKnowledge(state, action.knowledgeHandoff, true), "agent");
     case "ACTIVATE":
     case "RESTORE":
       return activateOrdinaryWindow(state, id);

@@ -6,6 +6,11 @@ export function getKnowledgeSearchKey(revision, query, tag, offset) {
   return JSON.stringify([revision, query, tag, offset]);
 }
 
+export function reconcileKnowledgeDraft(currentDraft, previousSuggestion, nextSuggestion) {
+  const current = typeof currentDraft === "string" ? currentDraft : "";
+  return current.trim() && current !== previousSuggestion ? current : nextSuggestion;
+}
+
 export function isKnowledgeBasketItemStale(item, revision) {
   return Boolean(item?.excerpt?.revision && revision && item.excerpt.revision !== revision);
 }

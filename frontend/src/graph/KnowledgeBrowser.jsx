@@ -21,6 +21,7 @@ export function KnowledgeBrowser({ graph, selectedNodeId, onSelectNode, onFocusN
   const [previousOffsets, setPreviousOffsets] = useState([]);
   const [search, setSearch] = useState(null);
   const [searching, setSearching] = useState(false);
+  const [resultsExpanded, setResultsExpanded] = useState(true);
   const [scope, setScope] = useState(0);
   const [neighborhood, setNeighborhood] = useState(null);
   const [excerpt, setExcerpt] = useState(null);
@@ -155,9 +156,14 @@ export function KnowledgeBrowser({ graph, selectedNodeId, onSelectNode, onFocusN
     return () => { readSequence.current += 1; };
   }, [selectedNodeId, graph.source.revision]);
 
+  useEffect(() => {
+    setResultsExpanded(!selectedNodeId);
+  }, [selectedNodeId]);
+
   const choose = (node) => {
     if (!node || !currentSearch) return;
     onSelectNode(node);
+    setResultsExpanded(false);
     if (!graph.nodes.some((item) => item.id === node.id)) setScope(1);
     onFocusNode?.(node);
   };
@@ -196,7 +202,10 @@ export function KnowledgeBrowser({ graph, selectedNodeId, onSelectNode, onFocusN
   const ask = async (intent) => {
     if (!basket.length || staleBasketCount || basketRevisionPending) return;
     setBusy(true);
-    try { await onLinkToAgent(basket, intent === "question" ? "" : t(`knowledge.prompt.${intent}`)); }
+    const promptKey = intent === "summary"
+      ? `knowledge.prompt.summary.${basket.length === 1 ? "single" : "multiple"}`
+      : `knowledge.prompt.${intent}`;
+    try { await onLinkToAgent(basket, intent === "question" ? "" : t(promptKey)); }
     catch { setError(t("knowledge.error.agent")); setErrorKind("agent"); }
     finally { setBusy(false); }
   };
@@ -209,28 +218,35 @@ export function KnowledgeBrowser({ graph, selectedNodeId, onSelectNode, onFocusN
         onPointerCancel={endDrag} onLostPointerCapture={endDrag} onKeyDown={moveWithKeyboard}>
         <strong>{t("knowledge.browser.title")}</strong><small>{graph.source.name}</small>
       </header>
+      <div className="knowledge-browser__body">
       <label>{t("knowledge.search.label")}<input type="search" value={query} maxLength={256}
         placeholder={t("knowledge.search.placeholder")}
-        onChange={(event) => { setQuery(event.target.value); setOffset(0); setPreviousOffsets([]); }} /></label>
-      <label>{t("knowledge.tag.label")}<select value={tag} onChange={(event) => { setTag(event.target.value); setOffset(0); setPreviousOffsets([]); }}>
+        onChange={(event) => { setQuery(event.target.value); setOffset(0); setPreviousOffsets([]); setResultsExpanded(true); }} /></label>
+      <label>{t("knowledge.tag.label")}<select value={tag} onChange={(event) => { setTag(event.target.value); setOffset(0); setPreviousOffsets([]); setResultsExpanded(true); }}>
         <option value="">{t("knowledge.tag.all")}</option>
         {(search?.tags ?? []).map((value) => <option key={value} value={value}>{value}</option>)}
       </select></label>
-      <div className="knowledge-browser__status" role="status">
-        {searching ? t("knowledge.search.loading") : t("knowledge.search.count", { count: search?.total ?? 0 })}
-        {search?.truncated ? <small>{t("knowledge.search.bounded")}</small> : null}
+      <div className="knowledge-browser__results-heading">
+        <div className="knowledge-browser__status" role="status">
+          {searching ? t("knowledge.search.loading") : t("knowledge.search.count", { count: search?.total ?? 0 })}
+          {search?.truncated ? <small>{t("knowledge.search.bounded")}</small> : null}
+        </div>
+        {selected ? <button type="button" aria-expanded={resultsExpanded}
+          onClick={() => setResultsExpanded((value) => !value)}>
+          {t(resultsExpanded ? "knowledge.search.hideResults" : "knowledge.search.showResults")}
+        </button> : null}
       </div>
       {error ? <p role="alert">{error} {errorKind === "search" ? <button type="button" onClick={() => setRetry((value) => value + 1)}>{t("knowledge.retry")}</button> : null}</p> : null}
       {query || tag ? <button type="button" className="knowledge-browser__clear-search" onClick={() => {
-        setQuery(""); setTag(""); setOffset(0); setPreviousOffsets([]);
+        setQuery(""); setTag(""); setOffset(0); setPreviousOffsets([]); setResultsExpanded(true);
       }}>{t("knowledge.search.clear")}</button> : null}
-      <ul className="knowledge-browser__results" aria-label={t("knowledge.search.results")}>
+      {resultsExpanded ? <ul className="knowledge-browser__results" aria-label={t("knowledge.search.results")}>
         {(currentSearch?.items ?? []).map((node) => <li key={node.id}><button type="button"
           aria-current={node.id === selectedNodeId ? "true" : undefined} onClick={() => choose(node)}>
           <strong>{node.title}</strong><small>{node.relativePath}</small>
         </button></li>)}
-      </ul>
-      {currentSearch && (currentSearch.nextOffset < currentSearch.total || offset > 0) ? <nav className="knowledge-browser__actions" aria-label={t("knowledge.search.pages")}>
+      </ul> : null}
+      {resultsExpanded && currentSearch && (currentSearch.nextOffset < currentSearch.total || offset > 0) ? <nav className="knowledge-browser__actions" aria-label={t("knowledge.search.pages")}>
         <button type="button" disabled={searching || !previousOffsets.length} onClick={() => {
           setOffset(previousOffsets.at(-1) ?? 0); setPreviousOffsets((values) => values.slice(0, -1));
         }}>{t("knowledge.previous")}</button>
@@ -243,7 +259,7 @@ export function KnowledgeBrowser({ graph, selectedNodeId, onSelectNode, onFocusN
         <h3>{selected.title}</h3><small>{selected.relativePath}</small>
         <div className="knowledge-browser__actions">
           <button type="button" disabled={!currentSearch} onClick={() => onFocusNode?.(selected)}>{t("knowledge.locate")}</button>
-          <button type="button" onClick={() => onSelectNode(null)}>{t("knowledge.selection.clear")}</button>
+          <button type="button" onClick={() => { onSelectNode(null); setResultsExpanded(true); }}>{t("knowledge.selection.clear")}</button>
         </div>
         {selected.aliases?.length ? <p>{t("knowledge.aliases")}: {selected.aliases.join(" · ")}</p> : null}
         <div className="knowledge-browser__actions" aria-label={t("knowledge.scope")}>
@@ -277,6 +293,7 @@ export function KnowledgeBrowser({ graph, selectedNodeId, onSelectNode, onFocusN
             onClick={stage}>{t("knowledge.excerpt.add")}</button>
         </div> : null}
       </section> : null}
+      </div>
       {basket.length ? <section className="knowledge-browser__basket">
         <strong>{t("knowledge.send.title", { count: basket.length })}</strong>
         {basketRevisionPending ? <p role="status">{t("knowledge.send.checking")}</p> : null}

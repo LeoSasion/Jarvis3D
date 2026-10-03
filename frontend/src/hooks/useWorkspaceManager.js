@@ -108,6 +108,10 @@ export function useWorkspaceManager() {
     type: "OPEN_FROM_KNOWLEDGE",
     knowledgeHandoff: measureKnowledgeHandoff(),
   }), []);
+  const arrangeWithKnowledge = useCallback(() => dispatch({
+    type: "ARRANGE_WITH_KNOWLEDGE",
+    knowledgeHandoff: measureKnowledgeHandoff(),
+  }), []);
   const close = useCallback((id) => dispatch({ type: "CLOSE", id }), []);
   const activate = useCallback((id) => dispatch({ type: "ACTIVATE", id }), []);
   const minimize = useCallback((id) => dispatch({ type: "MINIMIZE", id }), []);
@@ -132,6 +136,7 @@ export function useWorkspaceManager() {
     taskbarWindows,
     open,
     openFromKnowledge,
+    arrangeWithKnowledge,
     close,
     activate,
     minimize,

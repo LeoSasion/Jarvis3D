@@ -139,16 +139,23 @@ function messageDisplayText(message) {
 
 function SourceExcerpts({ sources, t, phase = "complete", onReattach }) {
   if (!sources.length) return null;
-  return <details className="agent-source-excerpts" open={phase === "staged" || undefined}>
-    <summary>{t(getAgentSourceLabelKey(phase))} ({sources.length})</summary>
+  const label = `${t(getAgentSourceLabelKey(phase))} (${sources.length})`;
+  const rows = sources.map((source, index) => <details key={`${source.path}-${index}`}
+    open={phase === "staged" && sources.length === 1 ? true : undefined}>
+    <summary>[{source.source ?? `S${index + 1}`}] {source.title ?? source.name} · {source.path} · L{source.startLine}–{source.endLine}</summary>
+    <AgentSourceLines source={source} />
+  </details>);
+  if (phase === "staged") return <div className="agent-source-excerpts is-staged">
+    <small className="agent-source-excerpts__label">{label}</small>
+    <div className="agent-source-excerpts__panel">{rows}</div>
+  </div>;
+  return <details className="agent-source-excerpts">
+    <summary>{label}</summary>
     <div className="agent-source-excerpts__panel">
       {onReattach ? <button type="button" onClick={() => onReattach(sources)}>
         {t("agent.context.action.reattach")}
       </button> : null}
-      {sources.map((source, index) => <details key={`${source.path}-${index}`}>
-        <summary>[{source.source ?? `S${index + 1}`}] {source.title ?? source.name} · {source.path} · L{source.startLine}–{source.endLine}</summary>
-        <AgentSourceLines source={source} />
-      </details>)}
+      {rows}
     </div>
   </details>;
 }
@@ -171,6 +178,7 @@ function LinkedContextEvent({
   onLinkSelection,
   onReattach,
   onClear,
+  onArrangeWithKnowledge,
   t,
 }) {
   const items = context?.items ?? [];
@@ -216,32 +224,37 @@ function LinkedContextEvent({
   const compact = phase !== "staged";
   const excerpts = items.filter((item) => item.excerpt)
     .map((item) => ({ title: item.name, path: item.path, ...item.excerpt }));
+  const hasExcerpts = excerpts.length > 0;
   return (
     <section
       className={`agent-linked-context is-${phase}${compact ? " is-compact" : ""}`}
-      aria-label={t(items.some((item) => item.excerpt) ? "knowledge.agent.contextAria" : "agent.context.linked.aria", { status: copy.label })}
+      aria-label={t(hasExcerpts ? "knowledge.agent.contextAria" : "agent.context.linked.aria", { status: copy.label })}
     >
       <span className="agent-flow-node" aria-hidden="true"><DocumentRegular /></span>
       <div className="agent-linked-context__identity">
-        <small>{t(items.some((item) => item.excerpt) ? "knowledge.agent.contentLabel" : "agent.context.linked.metadataLabel")}</small>
-        <strong>
+        <div className="agent-linked-context__heading">
+          <small>{t(hasExcerpts ? "knowledge.agent.contentLabel" : "agent.context.linked.metadataLabel")}</small>
+          {!compact && hasExcerpts && onArrangeWithKnowledge ? <button type="button"
+            onClick={onArrangeWithKnowledge}>{t("knowledge.agent.arrangeBeside")}</button> : null}
+        </div>
+        {compact || !hasExcerpts ? <strong>
           {compact ? copy.label : items.length === 1
             ? items[0].name : t("agent.context.linked.items", { count: items.length })}
-        </strong>
-        <code>
+        </strong> : null}
+        {compact || !hasExcerpts ? <code>
           {compact ? t("agent.context.linked.items", { count: items.length }) : items.length === 1
             ? items[0].path : t("agent.context.linked.snapshots", { count: items.length })}
-        </code>
-        {!compact && excerpts.length ? <>
+        </code> : null}
+        {!compact && hasExcerpts ? <>
           <p>{t("knowledge.agent.scope")}</p>
           <SourceExcerpts t={t} phase="staged" sources={excerpts} />
         </> : null}
       </div>
-      <div className="agent-linked-context__state" role="status">
+      {compact || !hasExcerpts ? <div className="agent-linked-context__state" role="status">
         {!compact ? <strong>{copy.label}</strong> : null}
         <small>{copy.detail}</small>
-      </div>
-      {compact && excerpts.length ? <SourceExcerpts t={t} phase={phase} sources={excerpts} /> : null}
+      </div> : null}
+      {compact && hasExcerpts ? <SourceExcerpts t={t} phase={phase} sources={excerpts} /> : null}
       {historical ? <button type="button" className="agent-linked-context__reattach"
         onClick={() => onReattach?.(items)} disabled={!chatAvailable}>
         {t("agent.context.action.reattach")}
@@ -279,6 +292,7 @@ export function AgentConversationWindow({
   onNewSession,
   onLinkExplorerSelection,
   onClearLinkedContext,
+  onArrangeWithKnowledge,
   onReuseLinkedResult,
   onClose,
   onMinimize,
@@ -416,6 +430,9 @@ export function AgentConversationWindow({
   const linkedRelationMessageId = linkedRelationMessage?.id ?? null;
   const linkedDirectiveArmed = Boolean(linkedContext?.items?.length)
     && linkedFlowPhase === "staged";
+  const pendingExcerptCount = linkedDirectiveArmed
+    ? linkedContext.items.filter((item) => item.excerpt).length
+    : 0;
   const hasLinkedContextControl = Boolean(linkedContext?.items?.length)
     || Boolean(explorerSelection?.length);
   const closeSourceDrawer = () => {
@@ -629,7 +646,7 @@ export function AgentConversationWindow({
                   ? t(linkedContext.items.some((item) => item.excerpt) ? "knowledge.agent.readyDetail" : "agent.start.linked.detail")
                   : emptyCopy.detail}</p>
               </span>
-              {channelReady && !errorView ? (
+              {channelReady && !errorView && !pendingExcerptCount ? (
                 <div className="agent-starters" aria-label={t("agent.start.aria")}>
                   {["plan", "questions"].map((intent) => (
                     <button
@@ -691,6 +708,7 @@ export function AgentConversationWindow({
                 onLinkSelection={onLinkExplorerSelection}
                 onReattach={onLinkExplorerSelection}
                 onClear={onClearLinkedContext}
+                onArrangeWithKnowledge={onArrangeWithKnowledge}
                 t={t}
               />
             </div>
@@ -763,7 +781,9 @@ export function AgentConversationWindow({
             <span className="agent-footer__status">
               {draft.length >= 12000 ? <code>{draft.length} / 16,000</code> : null}
               <code>
-                {supportsChat
+                {pendingExcerptCount
+                  ? t("knowledge.agent.pendingCount", { count: pendingExcerptCount })
+                  : supportsChat
                   ? t("agent.connection.chatOnly")
                   : t("agent.connection.statusOnly")}
               </code>

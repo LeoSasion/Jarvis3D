@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getLatestAgentRelationMessage } from "./agent-context-model.js";
+import { reconcileKnowledgeDraft } from "./graph/knowledge-browser-model.js";
 import { canUseAgentChat } from "./agent-session-model.js";
 import { getBootChecks, getDegradedBootCheckIds } from "./boot-checks.js";
 import { CommandOverlay } from "./components/CommandOverlay.jsx";
@@ -66,6 +67,7 @@ export function App() {
     taskbarWindows: internalTaskbarWindows,
     open: openWorkspaceWindow,
     openFromKnowledge: openAgentFromKnowledge,
+    arrangeWithKnowledge: arrangeAgentWithKnowledge,
     close: closeWorkspaceWindow,
     activate: activateWorkspaceWindow,
     minimize: minimizeWorkspaceWindow,
@@ -93,6 +95,7 @@ export function App() {
   const [bootReview, setBootReview] = useState(false);
   const [startupDegraded, setStartupDegraded] = useState([]);
   const startupIssueReportedRef = useRef(false);
+  const lastKnowledgeSuggestedDraftRef = useRef(null);
   const [graphLaunchpadHidden, setGraphLaunchpadHidden] = useState(false);
   const [notice, setNotice] = useState(null);
   const [localFeedEvents, setLocalFeedEvents] = useState([]);
@@ -350,7 +353,9 @@ export function App() {
     }
     await openAgent("knowledge");
     if (directive !== null) {
-      agentSession.setDraft((current) => current.trim() ? current : directive);
+      const previousSuggestion = lastKnowledgeSuggestedDraftRef.current;
+      agentSession.setDraft((current) => reconcileKnowledgeDraft(current, previousSuggestion, directive));
+      lastKnowledgeSuggestedDraftRef.current = directive;
     }
     showToast(stagedItems.some((item) => item.excerpt)
       ? translate("knowledge.agent.stagedToast", { count: stagedItems.length })
@@ -1005,6 +1010,10 @@ export function App() {
               onNewSession={agentSession.newSession}
               onLinkExplorerSelection={linkExplorerSelectionToAgent}
               onClearLinkedContext={clearLinkedAgentContext}
+              onArrangeWithKnowledge={workspaceState.viewport.width >= 1280
+                && !workspaceState.windows.agent.knowledgePlaced
+                && !workspaceState.windows.agent.maximized
+                ? arrangeAgentWithKnowledge : null}
               onReuseLinkedResult={reuseLinkedAgentResult}
               onMinimize={() => minimizeWorkspaceWindow("agent")}
               onToggleMaximize={() => handleToggleWorkspaceMaximize("agent")}

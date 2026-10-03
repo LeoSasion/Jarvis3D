@@ -171,6 +171,10 @@ test("knowledge handoff keeps the source panel visible without moving a custom A
   assert.deepEqual(state.windows.agent.bounds, custom);
   assert.equal("autoPlacement" in serializeWorkspaceLayout(state).windows.agent, false);
 
+  state = reduce(state, "ARRANGE_WITH_KNOWLEDGE", "agent", { knowledgeHandoff: handoff });
+  assert.deepEqual(state.windows.agent.bounds, placed);
+  assert.equal(state.windows.agent.knowledgePlaced, true);
+
   const narrowState = reduce(createWorkspaceWindowState(narrow), "OPEN_FROM_KNOWLEDGE", "agent", {
     knowledgeHandoff: narrowHandoff,
   });

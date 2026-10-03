@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createKnowledgeContextItem, getKnowledgeNeighborhood, getKnowledgeSearchKey,
-  isKnowledgeBasketItemStale, searchKnowledgeNodes,
+  isKnowledgeBasketItemStale, reconcileKnowledgeDraft, searchKnowledgeNodes,
 } from "../src/graph/knowledge-browser-model.js";
 import { createAgentContextModel, createAgentPromptForContext } from "../src/agent-context-model.js";
 import { getNoteSources } from "../src/agent-conversation-library.js";
@@ -29,6 +29,15 @@ test("search request identity changes with query, page, tag, or source revision"
   assert.notEqual(current, getKnowledgeSearchKey("r1", "alpha", "", 40));
   assert.notEqual(current, getKnowledgeSearchKey("r1", "alpha", "red", 0));
   assert.notEqual(current, getKnowledgeSearchKey("r2", "alpha", "", 0));
+});
+
+test("changing Knowledge intent updates an untouched draft but preserves an edited one", () => {
+  const summary = "Summarize [S1]";
+  const comparison = "Compare [S1] and [S2]";
+  assert.equal(reconcileKnowledgeDraft("", null, summary), summary);
+  assert.equal(reconcileKnowledgeDraft(summary, summary, comparison), comparison);
+  assert.equal(reconcileKnowledgeDraft(comparison, comparison, ""), "");
+  assert.equal(reconcileKnowledgeDraft("My own question", summary, comparison), "My own question");
 });
 test("an excerpt remains a frozen snapshot and becomes stale after a new scan", () => {
   const item = createKnowledgeContextItem({
